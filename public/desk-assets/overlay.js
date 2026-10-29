@@ -46,6 +46,8 @@
   // Brand tokens: --ink is the deep panel, --accent the soft brand tint,
   // --glass the frosted panel surface. Everything is straight (no skew) so
   // text reads easily, with subtle glass panels and smooth readable motion.
+  // A live --scale UI slider lets the operator size cards on air; polls and
+  // scores animate into place; the CRID jumbotron breathes so it feels alive.
   const CSS = `
 html,body{margin:0;background:transparent!important;overflow:hidden}
 #desk{position:fixed;inset:0;pointer-events:none;color:#FFFFFF;
@@ -54,7 +56,9 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
   --brand:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text",
     "Segoe UI",Roboto,"Helvetica Neue",Helvetica,Arial,sans-serif;
   font-family:var(--brand);
-  --m:clamp(12px,4vmin,32px);font-size:calc(var(--scale)*clamp(15px,3.5vmin,26px));line-height:1.4}
+  --m:clamp(12px,4vmin,32px);
+  --scale:1;
+  font-size:calc(var(--scale)*clamp(15px,3.5vmin,26px));line-height:1.4}
 .slot{position:absolute;display:grid;width:min(calc(100vw - 2*var(--m)),30em)}
 .slot>*{grid-area:1/1}
 .slot::before{content:"";grid-area:1/1;align-self:end;pointer-events:none;opacity:0;
@@ -75,13 +79,33 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
   padding:1em 1.15em .9em;opacity:0;transform:translateY(14px) scale(.985);
   box-shadow:0 20px 40px rgba(0,0,0,.45),0 0 0 1px rgba(255,255,255,.08);
   transition:opacity .45s cubic-bezier(.16,1,.3,1),
-              transform .45s cubic-bezier(.16,1,.3,1)}
+              transform .45s cubic-bezier(.16,1,.3,1),
+              filter .45s ease}
 .pos-top-left .card,.pos-top-right .card{align-self:start}
 .anim-slide .card{transform:translateY(18px) scale(.98)}
 .card.in{opacity:1;transform:none}
 .card.out{opacity:0;transform:translateY(-10px) scale(.97)}
 .anim-none .card{transition:none}
 .conf-test{border-color:rgba(255,255,255,.35)}
+
+/* live scale control — the whole desk scales with --scale, operator-driven */
+#desk{transform:scale(var(--scale));transform-origin:var(--scale-origin,50% 100%)}
+.scale-wrap{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);
+  z-index:50;pointer-events:auto;background:rgba(15,15,18,.82);
+  backdrop-filter:blur(12px) saturate(160%);-webkit-backdrop-filter:blur(12px) saturate(160%);
+  border:.09em solid rgba(255,255,255,.2);border-radius:999px;padding:.35em .85em;
+  display:flex;align-items:center;gap:.7em;box-shadow:0 10px 30px rgba(0,0,0,.45);
+  opacity:0;transition:opacity .3s ease}
+#desk.debug .scale-wrap{opacity:1}
+.scale-wrap label{font-size:.62em;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;color:#8E8E93;font-family:var(--brand)}
+.scale-wrap input{appearance:none;width:90px;height:6px;background:rgba(255,255,255,.18);
+  border-radius:3px;outline:none;pointer-events:auto}
+.scale-wrap input::-webkit-slider-thumb{appearance:none;width:14px;height:14px;
+  background:var(--accent);border-radius:50%;pointer-events:auto;
+  box-shadow:0 0 8px var(--accent-glow)}
+.scale-wrap .val{font-size:.68em;font-weight:700;color:#FFFFFF;
+  font-variant-numeric:tabular-nums}
 
 /* confidence chips: filled tint = confirmed, outlined = reported,
    dashed = disputed/unverified, grey = test */
@@ -114,17 +138,27 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 .opt .fill{position:absolute;inset:0 auto 0 0;width:0;background:var(--accent);opacity:.9;
   transition:width .7s cubic-bezier(.22,1,.36,1),opacity .3s}
 .opt .row{position:relative;display:flex;justify-content:space-between;gap:.6em}
-.opt.lead{border-color:var(--accent)}
+.opt .label{position:relative;z-index:1}
+.opt .pct{position:relative;z-index:1;font-variant-numeric:tabular-nums}
+.opt.lead{border-color:var(--accent);background:rgba(10,132,255,.10)}
 .opt.lead .fill{opacity:1}
+
+/* pulse the whole poll row when it takes the lead */
+@keyframes lead-pulse{
+  0%{box-shadow:0 0 0 0 rgba(10,132,255,.45)}
+  70%{box-shadow:0 0 0 8px rgba(10,132,255,0)}
+  100%{box-shadow:0 0 0 0 rgba(10,132,255,0)}
+}
+.opt.lead{animation:lead-pulse 1.2s ease-out}
+.anim-none .fill,.anim-none .opt{transition:none}
 .poll-state{margin:0;font-size:.7em;font-weight:600;color:#8E8E93;text-transform:uppercase;letter-spacing:.06em}
-.anim-none .fill{transition:none}
 .xframe{position:fixed;inset:0;width:100%;height:100%;border:0;background:transparent}
 .dot{position:fixed;right:10px;top:10px;width:10px;height:10px;border-radius:50%;background:#34C759;
-  box-shadow:0 0 0 rgba(52,199,89,.4);animate-dot 2s ease-in-out infinite}
+  box-shadow:0 0 0 rgba(52,199,89,.4);animation:pulse-dot 2s ease-in-out infinite}
 .dot.off{background:#FF3B30}
-@keyframes animate-dot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.55;transform:scale(1.15)}}
+@keyframes pulse-dot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.55;transform:scale(1.15)}}
 
-/* ---------- CRID Jumbotron (soft glass, readable) ---------- */
+/* ---------- CRID Jumbotron — alive, breathing, not just static ---------- */
 .crid-pos-top #crid-jumbotron{top:calc(var(--m) + env(safe-area-inset-top,0px));bottom:auto}
 .crid-pos-bottom #crid-jumbotron{bottom:calc(var(--m) + env(safe-area-inset-bottom,0px));top:auto}
 #crid-jumbotron{position:absolute;left:50%;transform:translate(-50%,-14px);
@@ -135,7 +169,8 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
   box-shadow:0 24px 48px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.1);
   opacity:0;transform:translate(-50%,-14px) scale(.97);
   transition:opacity .5s cubic-bezier(.16,1,.3,1),
-              transform .5s cubic-bezier(.16,1,.3,1)}
+              transform .5s cubic-bezier(.16,1,.3,1),
+              filter .5s ease}
 .crid-pos-bottom #crid-jumbotron{transform:translate(-50%,14px) scale(.97)}
 #crid-jumbotron.in{opacity:1;transform:translate(-50%,0) scale(1)}
 #crid-jumbotron.out{opacity:0;transform:translate(-50%,-14px) scale(.97)}
@@ -144,7 +179,8 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
   font-size:.66em;font-weight:700;font-family:var(--brand);
   text-transform:uppercase;letter-spacing:.07em}
 .crid-tag-wrap{display:flex;align-items:center;gap:.4em;flex-wrap:wrap}
-.crid-brand{background:var(--accent);color:#FFFFFF;padding:.18em .65em;border-radius:.9em;font-weight:700}
+.crid-brand{background:var(--accent);color:#FFFFFF;padding:.18em .65em;border-radius:.9em;font-weight:700;
+  animation:brand-glow 3s ease-in-out infinite alternate}
 .crid-kind{background:rgba(255,255,255,.08);color:#FFFFFF;border:.09em solid rgba(255,255,255,.25);
   padding:.18em .6em;border-radius:.9em;text-transform:uppercase;font-weight:700}
 .crid-stranger{color:#C7C7CC;font-size:.88em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -163,11 +199,27 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 .crid-v-none{color:#8E8E93;font-size:.9em;font-weight:600;letter-spacing:.03em}
 .crid-tally{color:var(--accent);font-size:.9em;font-weight:700}
 
+/* alive motions on the jumbotron */
+@keyframes brand-glow{0%{box-shadow:0 0 0 rgba(10,132,255,.4);filter:brightness(1)}
+  100%{box-shadow:0 0 14px rgba(10,132,255,.55);filter:brightness(1.08)}}
+@keyframes breathe{0%,100%{transform:translate(-50%,0) scale(1);filter:brightness(1)}
+  50%{transform:translate(-50%,-1px) scale(1.006);filter:brightness(1.03)}}
+#crid-jumbotron.in{animation:breathe 5s ease-in-out infinite}
+@keyframes drift{0%,100%{transform:translate(-50%,0) scale(1)}
+  33%{transform:translate(-50%,-2px) scale(1.004)}
+  66%{transform:translate(-50%,1px) scale(1.002)}}
+.crid-pos-bottom #crid-jumbotron.in{animation:drift 6s ease-in-out infinite}
+@keyframes badge-blink{0%,100%{opacity:1}50%{opacity:.45}}
+.crid-brand{animation:brand-glow 3s ease-in-out infinite alternate,
+                 badge-blink 2s ease-in-out infinite}
+
 @media (prefers-reduced-motion:reduce){
   .card{transform:none;transition:none}
-  #crid-jumbotron{transform:translate(-50%,0);transition:none}
+  #crid-jumbotron{transform:translate(-50%,0);transition:none;animation:none}
   .fill{transition:none}
-  .dot{animation:none}}
+  .dot{animation:none}
+  .crid-brand{animation:none}
+  .scale-wrap input::-webkit-slider-thumb{animation:none}}
 `;
 
   // ---------- tiny DOM helper (text nodes only: nothing is parsed as HTML) ----------
@@ -209,8 +261,8 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
   const pollBlock = (poll) => {
     const rows = poll.options.map((o) => {
       const fill = h("span", "fill");
-      const pct = h("span", "");
-      return { id: o.id, fill, pct, el: h("div", "opt", fill, h("div", "row", h("span", "", o.label), pct)) };
+      const pct = h("span", "pct");
+      return { id: o.id, fill, pct, el: h("div", "opt", fill, h("div", "row", h("span", "label", o.label), pct)) };
     });
     const note = h("p", "poll-state");
     const box = h("div", "poll", rows.map((r) => r.el), note);
@@ -260,10 +312,23 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
   document.head.append(style);
 
   const slot = h("div", "slot");
-  const root = h("div", `pos-${CFG.pos} anim-${CFG.anim} crid-pos-${CFG.cridPos}`, slot);
+  const root = h("div", `pos-${CFG.pos} anim-${CFG.anim} crid-pos-${CFG.cridPos}${CFG.debug ? " debug" : ""}`, slot);
   root.id = "desk";
   root.style.setProperty("--scale", CFG.scale);
   document.body.append(root);
+
+  // live scale slider — debug-only control so the operator can size cards on air
+  const scaleWrap = h("div", "scale-wrap");
+  const scaleLabel = h("span", "", "SCALE");
+  const scaleInput = h("input", "", { type: "range", min: "0.6", max: "1.4", step: "0.05", value: String(CFG.scale) });
+  const scaleVal = h("span", "val", CFG.scale.toFixed(2));
+  scaleWrap.append(scaleLabel, scaleInput, scaleVal);
+  scaleInput.addEventListener("input", () => {
+    const v = scaleInput.value;
+    root.style.setProperty("--scale", v);
+    scaleVal.textContent = v;
+  });
+  if (CFG.debug) document.body.append(scaleWrap);
 
   const dot = CFG.debug ? h("div", "dot") : null;
   if (dot) document.body.append(dot);

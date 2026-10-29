@@ -50,19 +50,20 @@
   // scores animate into place; the CRID jumbotron breathes so it feels alive.
   const CSS = `
 html,body{margin:0;background:transparent!important;overflow:hidden}
-#desk{position:fixed;inset:0;pointer-events:none;color:#FFFFFF;
-  --accent:#0A84FF;--accent-glow:rgba(10,132,255,.35);--ink:#0A0A0C;
-  --glass:rgba(15,15,18,.78);
-  --brand:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text",
-    "Segoe UI",Roboto,"Helvetica Neue",Helvetica,Arial,sans-serif;
+#desk{position:fixed;inset:0;pointer-events:none;color:#f3f2f0;
+  --accent:#ff453a;--accent-glow:rgba(255,69,58,.35);--ink:#f3f2f0;
+  --glass:#111214f0;--surface-soft:#ededef11;--surface-line:#ededef21;
+  --radius:1rem;
+  --brand:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;
   font-family:var(--brand);
+  font-synthesis:none;text-rendering:optimizelegibility;-webkit-font-smoothing:antialiased;
   --m:clamp(12px,4vmin,32px);
   --scale:1;
   font-size:calc(var(--scale)*clamp(15px,3.5vmin,26px));line-height:1.4}
 .slot{position:absolute;display:grid;width:min(calc(100vw - 2*var(--m)),42em)}
 .slot>*{grid-area:1/1;justify-self:center}
 .slot::before{content:"";grid-area:1/1;align-self:end;pointer-events:none;opacity:0;
-  border:.12em solid var(--accent);box-shadow:0 0 24px var(--accent-glow);
+  border:.10em solid var(--accent);box-shadow:0 0 20px var(--accent-glow);
   transition:opacity .35s ease}
 .slot:not(:empty)::before{opacity:1}
 .pos-top-left .slot::before,.pos-top-right .slot::before{align-self:start}
@@ -80,17 +81,15 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 }
 
 .card{box-sizing:border-box;align-self:end;position:relative;
-  background:var(--glass);backdrop-filter:blur(16px) saturate(180%);
-  -webkit-backdrop-filter:blur(16px) saturate(180%);
-  border:.10em solid rgba(255,255,255,.2);border-radius:1.4em;
-  padding:1.1em 1.35em 1em;opacity:0;transform:translateY(16px) scale(.98);
-  width:100%;
-  box-shadow:0 24px 48px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.1);
-  transition:opacity .5s cubic-bezier(.16,1,.3,1),
-              transform .5s cubic-bezier(.16,1,.3,1),
-              filter .5s ease}
+  background:var(--glass);backdrop-filter:blur(18px) saturate(1.14);
+  -webkit-backdrop-filter:blur(18px) saturate(1.14);
+  border:1px solid var(--surface-line);border-radius:19px;
+  padding:13px 14px 12px;opacity:0;transform:translateY(11px) scale(.985);
+  width:100%;max-height:34dvh;
+  box-shadow:0 10px 30px #00000045,inset 0 1px #ffffff14;
+  transition:opacity .24s cubic-bezier(.2,.8,.2,1),transform .24s cubic-bezier(.2,.8,.2,1),filter .24s ease}
 .pos-top-left .card,.pos-top-right .card{align-self:start}
-.anim-slide .card{transform:translateY(18px) scale(.98)}
+.anim-slide .card{transform:translateY(11px) scale(.985)}
 .card.in{opacity:1;transform:none}
 .card.out{opacity:0;transform:translateY(-10px) scale(.97)}
 .anim-none .card{transition:none}
@@ -119,21 +118,21 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
    dashed = disputed/unverified, grey = test */
 .chip{border:.09em solid var(--accent);color:var(--accent);padding:.05em .7em;border-radius:.9em;
   font-weight:700;font-family:var(--brand);text-transform:uppercase;letter-spacing:.04em;font-size:.82em}
-.conf-confirmed .chip{background:var(--accent);color:#FFFFFF}
-.conf-disputed .chip{border-color:#FFFFFF;color:#FFFFFF}
-.conf-unverified .chip{border-color:#FFFFFF;color:#FFFFFF;border-style:dashed}
+.conf-confirmed .chip{background:var(--accent);color:#111214}
+.conf-disputed .chip{border-color:#f3f2f0;color:#f3f2f0}
+.conf-unverified .chip{border-color:#f3f2f0;color:#f3f2f0;border-style:dashed}
 .conf-test .chip{border-color:#8E8E93;color:#8E8E93}
 
 .meta{display:flex;align-items:center;gap:.55em;margin-bottom:.4em;font-size:.66em;font-weight:600;
-  font-family:var(--brand);text-transform:uppercase;letter-spacing:.08em;color:#8E8E93}
+  font-family:var(--brand);text-transform:uppercase;letter-spacing:.08em;color:#a4a3a2}
 .meta>span:first-child{color:var(--accent)}
 .headline{margin:0;font-size:1.35em;font-weight:800;line-height:1.25;
-  letter-spacing:-.01em;color:#FFFFFF}
-.summary{margin:.55em 0 0;font-size:1.05em;font-weight:600;color:#C7C7CC}
-.source{margin:.55em 0 0;font-size:.66em;font-weight:600;color:#8E8E93;
+  letter-spacing:-.01em;color:#f3f2f0}
+.summary{margin:.55em 0 0;font-size:1.05em;font-weight:600;color:#c7c7cc}
+.source{margin:.55em 0 0;font-size:.66em;font-weight:600;color:#a4a3a2;
   text-transform:uppercase;letter-spacing:.07em}
-.ask{margin:.85em -1em 0 -1em;padding:.65em 1em;background:rgba(10,132,255,.14);
-  border:.09em solid rgba(10,132,255,.45);color:#FFFFFF;
+.ask{margin:.85em -1em 0 -1em;padding:.65em 1em;background:#d95d5314;
+  border:1px solid var(--accent);color:#f3f2f0;
   font-weight:700;font-family:var(--brand);text-transform:uppercase;letter-spacing:.04em}
 .headline,.summary,.ask{overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical}
 .headline{-webkit-line-clamp:3}.summary{-webkit-line-clamp:3}.ask{-webkit-line-clamp:2}
@@ -148,22 +147,23 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 .opt .row{position:relative;display:flex;justify-content:space-between;gap:.6em}
 .opt .label{position:relative;z-index:1}
 .opt .pct{position:relative;z-index:1;font-variant-numeric:tabular-nums}
-.opt.lead{border-color:var(--accent);background:rgba(10,132,255,.10)}
+.opt.lead{border-color:var(--accent);background:rgba(255,69,58,.2)}
 .opt.lead .fill{opacity:1}
 
 /* pulse the whole poll row when it takes the lead */
 @keyframes lead-pulse{
-  0%{box-shadow:0 0 0 0 rgba(10,132,255,.45)}
-  70%{box-shadow:0 0 0 8px rgba(10,132,255,0)}
-  100%{box-shadow:0 0 0 0 rgba(10,132,255,0)}
+  0%{box-shadow:0 0 0 0 rgba(255,69,58,.45)}
+  70%{box-shadow:0 0 0 8px rgba(255,69,58,0)}
+  100%{box-shadow:0 0 0 0 rgba(255,69,58,0)}
 }
 .opt.lead{animation:lead-pulse 1.2s ease-out}
 .anim-none .fill,.anim-none .opt{transition:none}
 .poll-state{margin:0;font-size:.7em;font-weight:600;color:#8E8E93;text-transform:uppercase;letter-spacing:.06em}
 .xframe{position:fixed;inset:0;width:100%;height:100%;border:0;background:transparent}
-.dot{position:fixed;right:10px;top:10px;width:10px;height:10px;border-radius:50%;background:#34C759;
-  box-shadow:0 0 0 rgba(52,199,89,.4);animation:pulse-dot 2s ease-in-out infinite}
-.dot.off{background:#FF3B30}
+.dot{position:fixed;right:10px;top:10px;width:10px;height:10px;border-radius:50%;background:#70d89a;
+  box-shadow:0 0 10px #70d89a80;animation:pulse-dot 2s ease-in-out infinite}
+.dot.off{background:#ff453a}
+.dot.loading{background:#ff453a}
 @keyframes pulse-dot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.55;transform:scale(1.15)}}
 
 /* ---------- CRID Jumbotron — alive, breathing, not just static ---------- */
@@ -171,9 +171,9 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 .crid-pos-bottom #crid-jumbotron{bottom:calc(var(--m) + env(safe-area-inset-bottom,0px));top:auto}
 #crid-jumbotron{position:absolute;left:50%;transform:translate(-50%,-14px);
   width:min(calc(100vw - 2*var(--m)),46em);max-width:96vw;box-sizing:border-box;pointer-events:none;z-index:10;
-  background:rgba(15,15,18,.85);backdrop-filter:blur(16px) saturate(180%);
+  background:#111214f0;backdrop-filter:blur(16px) saturate(180%);
   -webkit-backdrop-filter:blur(16px) saturate(180%);
-  border:.10em solid rgba(255,255,255,.2);border-radius:1.4em;padding:.85em 1.1em;
+  border:.10em solid var(--surface-line);border-radius:1.4em;padding:.85em 1.1em;
   box-shadow:0 24px 48px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.1);
   opacity:0;transform:translate(-50%,-14px) scale(.97);
   transition:opacity .5s cubic-bezier(.16,1,.3,1),
@@ -187,20 +187,20 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
   font-size:.66em;font-weight:700;font-family:var(--brand);
   text-transform:uppercase;letter-spacing:.07em}
 .crid-tag-wrap{display:flex;align-items:center;gap:.4em;flex-wrap:wrap}
-.crid-brand{background:var(--accent);color:#FFFFFF;padding:.18em .65em;border-radius:.9em;font-weight:700;
+.crid-brand{background:var(--accent);color:#111214;padding:.18em .65em;border-radius:.9em;font-weight:700;
   animation:brand-glow 3s ease-in-out infinite alternate}
-.crid-kind{background:rgba(255,255,255,.08);color:#FFFFFF;border:.09em solid rgba(255,255,255,.25);
+.crid-kind{background:rgba(255,255,255,.08);color:#f3f2f0;border:.09em solid rgba(255,255,255,.25);
   padding:.18em .6em;border-radius:.9em;text-transform:uppercase;font-weight:700}
-.crid-stranger{color:#C7C7CC;font-size:.88em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.crid-stranger strong{color:#FFFFFF}
+.crid-stranger{color:#c7c7cc;font-size:.88em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crid-stranger strong{color:#f3f2f0}
 .crid-title{margin:0 0 .5em;font-size:1.05em;font-weight:700;line-height:1.3;
-  color:#FFFFFF;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3}
+  color:#f3f2f0;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3}
 .crid-foot{display:flex;align-items:center;justify-content:space-between;gap:.5em;padding-top:.5em;
   border-top:.08em solid rgba(255,255,255,.16);font-size:.78em;font-weight:700;font-family:var(--brand)}
 .crid-verdict{display:inline-flex;align-items:center;gap:.4em;padding:.3em .85em;border-radius:.9em;
   font-weight:700;text-transform:uppercase;letter-spacing:.04em}
 /* filled tint = rent paid, outlined = still owing */
-.crid-v-1{background:var(--accent);color:#FFFFFF;border:.09em solid var(--accent);
+.crid-v-1{background:var(--accent);color:#111214;border:.09em solid var(--accent);
   box-shadow:0 0 16px var(--accent-glow)}
 .crid-v-0{background:transparent;color:var(--accent);border:.09em solid var(--accent);
   box-shadow:0 0 16px var(--accent-glow)}
@@ -208,8 +208,8 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 .crid-tally{color:var(--accent);font-size:.9em;font-weight:700}
 
 /* alive motions on the jumbotron */
-@keyframes brand-glow{0%{box-shadow:0 0 0 rgba(10,132,255,.4);filter:brightness(1)}
-  100%{box-shadow:0 0 14px rgba(10,132,255,.55);filter:brightness(1.08)}}
+@keyframes brand-glow{0%{box-shadow:0 0 0 rgba(255,69,58,.4);filter:brightness(1)}
+  100%{box-shadow:0 0 14px rgba(255,69,58,.55);filter:brightness(1.08)}}
 @keyframes breathe{0%,100%{transform:translate(-50%,0) scale(1);filter:brightness(1)}
   50%{transform:translate(-50%,-1px) scale(1.006);filter:brightness(1.03)}}
 #crid-jumbotron.in{animation:breathe 5s ease-in-out infinite}

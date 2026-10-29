@@ -59,10 +59,10 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
   --m:clamp(12px,4vmin,32px);
   --scale:1;
   font-size:calc(var(--scale)*clamp(15px,3.5vmin,26px));line-height:1.4}
-.slot{position:absolute;display:grid;width:min(calc(100vw - 2*var(--m)),30em)}
-.slot>*{grid-area:1/1}
+.slot{position:absolute;display:grid;width:min(calc(100vw - 2*var(--m)),42em)}
+.slot>*{grid-area:1/1;justify-self:center}
 .slot::before{content:"";grid-area:1/1;align-self:end;pointer-events:none;opacity:0;
-  border:.12em solid var(--accent);box-shadow:0 0 20px var(--accent-glow);
+  border:.12em solid var(--accent);box-shadow:0 0 24px var(--accent-glow);
   transition:opacity .35s ease}
 .slot:not(:empty)::before{opacity:1}
 .pos-top-left .slot::before,.pos-top-right .slot::before{align-self:start}
@@ -70,17 +70,25 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 .pos-bottom-right .slot{right:var(--m);bottom:calc(var(--m) + env(safe-area-inset-bottom,0px))}
 .pos-top-left .slot{left:var(--m);top:calc(var(--m) + env(safe-area-inset-top,0px))}
 .pos-top-right .slot{right:var(--m);top:calc(var(--m) + env(safe-area-inset-top,0px))}
-@media (min-aspect-ratio:1/1){.slot{width:min(48vw,32em)}}
+@media (min-aspect-ratio:1/1){
+  .slot{width:min(calc(100vw - 2*var(--m)),56em)}
+  .card{padding:1.3em 1.6em 1.2em;border-radius:1.6em}
+  .headline{font-size:1.5em}
+  .summary{font-size:1.15em}
+  #crid-jumbotron{width:min(calc(100vw - 2*var(--m)),60em);padding:1.1em 1.5em;border-radius:1.8em}
+  .crid-title{font-size:1.2em}
+}
 
 .card{box-sizing:border-box;align-self:end;position:relative;
-  background:var(--glass);backdrop-filter:blur(14px) saturate(160%);
-  -webkit-backdrop-filter:blur(14px) saturate(160%);
-  border:.10em solid rgba(255,255,255,.18);border-radius:1.2em;
-  padding:1em 1.15em .9em;opacity:0;transform:translateY(14px) scale(.985);
-  box-shadow:0 20px 40px rgba(0,0,0,.45),0 0 0 1px rgba(255,255,255,.08);
-  transition:opacity .45s cubic-bezier(.16,1,.3,1),
-              transform .45s cubic-bezier(.16,1,.3,1),
-              filter .45s ease}
+  background:var(--glass);backdrop-filter:blur(16px) saturate(180%);
+  -webkit-backdrop-filter:blur(16px) saturate(180%);
+  border:.10em solid rgba(255,255,255,.2);border-radius:1.4em;
+  padding:1.1em 1.35em 1em;opacity:0;transform:translateY(16px) scale(.98);
+  width:100%;
+  box-shadow:0 24px 48px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.1);
+  transition:opacity .5s cubic-bezier(.16,1,.3,1),
+              transform .5s cubic-bezier(.16,1,.3,1),
+              filter .5s ease}
 .pos-top-left .card,.pos-top-right .card{align-self:start}
 .anim-slide .card{transform:translateY(18px) scale(.98)}
 .card.in{opacity:1;transform:none}
@@ -119,9 +127,9 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 .meta{display:flex;align-items:center;gap:.55em;margin-bottom:.4em;font-size:.66em;font-weight:600;
   font-family:var(--brand);text-transform:uppercase;letter-spacing:.08em;color:#8E8E93}
 .meta>span:first-child{color:var(--accent)}
-.headline{margin:0;font-size:1.18em;font-weight:700;line-height:1.2;
-  letter-spacing:-.005em;color:#FFFFFF}
-.summary{margin:.5em 0 0;font-size:.92em;font-weight:500;color:#C7C7CC}
+.headline{margin:0;font-size:1.35em;font-weight:800;line-height:1.25;
+  letter-spacing:-.01em;color:#FFFFFF}
+.summary{margin:.55em 0 0;font-size:1.05em;font-weight:600;color:#C7C7CC}
 .source{margin:.55em 0 0;font-size:.66em;font-weight:600;color:#8E8E93;
   text-transform:uppercase;letter-spacing:.07em}
 .ask{margin:.85em -1em 0 -1em;padding:.65em 1em;background:rgba(10,132,255,.14);
@@ -162,7 +170,7 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 .crid-pos-top #crid-jumbotron{top:calc(var(--m) + env(safe-area-inset-top,0px));bottom:auto}
 .crid-pos-bottom #crid-jumbotron{bottom:calc(var(--m) + env(safe-area-inset-bottom,0px));top:auto}
 #crid-jumbotron{position:absolute;left:50%;transform:translate(-50%,-14px);
-  width:min(calc(100vw - 2*var(--m)),34em);max-width:94vw;box-sizing:border-box;pointer-events:none;z-index:10;
+  width:min(calc(100vw - 2*var(--m)),46em);max-width:96vw;box-sizing:border-box;pointer-events:none;z-index:10;
   background:rgba(15,15,18,.85);backdrop-filter:blur(16px) saturate(180%);
   -webkit-backdrop-filter:blur(16px) saturate(180%);
   border:.10em solid rgba(255,255,255,.2);border-radius:1.4em;padding:.85em 1.1em;

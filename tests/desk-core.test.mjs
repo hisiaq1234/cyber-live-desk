@@ -161,7 +161,11 @@ test("auto-advance is a no-op for a state that is not expired", async () => {
 test("the overlay's poll gets 204 until the version moves, and no private fields when it does", async () => {
   const cards = [card({ id: "a", presenterNotes: "ask the minister first", source: { publisher: "P", url: "https://secret.example/leak" } })];
   const store = makeStore({ cards: JSON.stringify(cards) });
-  const s = await commitState(store, DEFAULT_STATE, { visible: true, activeCardId: "a", expiresAt: NOW + 30_000 });
+  const s = await commitState(store, DEFAULT_STATE, {
+    visible: true, activeCardId: "a", expiresAt: NOW + 30_000,
+    researchApprovalMode: "all", trustedFeedIds: ["premiumtimes"],
+    twitchChatEnabled: true, twitchAllowedUserIds: ["222"],
+  });
   assert.equal((await publicState(store, String(s.version), NOW)).status, 204);
 
   const res = await publicState(store, String(s.version - 1), NOW);
@@ -172,6 +176,10 @@ test("the overlay's poll gets 204 until the version moves, and no private fields
   assert.ok(!wire.includes("secret.example"), "source URLs must never reach a viewer");
   assert.ok(!wire.includes("activeCardId"), "the internal id stays out of the public state");
   assert.ok(!wire.includes("autoResearch"), "the operator's automation settings stay private");
+  assert.ok(!wire.includes("researchApprovalMode"), "the research approval rule stays private");
+  assert.ok(!wire.includes("trustedFeedIds"), "the trusted feed list stays private");
+  assert.ok(!wire.includes("twitchChatEnabled"), "Twitch control state stays private");
+  assert.ok(!wire.includes("twitchAllowedUserIds"), "the Twitch allowlist stays private");
   assert.equal(res.body.autoPlay, false, "autoPlay is public because the overlay needs it");
 });
 

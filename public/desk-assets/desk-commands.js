@@ -1,6 +1,6 @@
-/* CYBER LIVE DESK — chat command rules.
-   No DOM in here on purpose: the controller imports this file and so do the tests, so the rule
-   that decides who may move your on-air cards is the one rule on this page that is proven. */
+/* CYBER LIVE DESK — shared chat command rules.
+   No DOM in here on purpose: the controller imports this file for the command help and poll
+   validation, and the tests pin the parser against the server copy so the two can never drift. */
 
 // "desk" then the verb, glued, spaced, dashed or underscored: desknext, desk next, !desk_next.
 // A message must start with it, so nobody's ordinary chat line becomes a command by accident.
@@ -43,10 +43,29 @@ export function parsePollSpec(rest) {
   return { question: question.slice(0, 140), options: opts.map((o) => o.slice(0, 40)) };
 }
 
-// Anonymous Twitch chat still tags every message with the sender's badges and user id, so the
-// gate does not need a bot account: your own account is recognised by the broadcaster badge, and
-// anyone else you trust by the numeric user id you typed in. Moderators are NOT enough — a mod
-// you gave to another channel would otherwise be able to drive this desk.
+// The dashboard's poll form validates here, not in the card path. A poll with one answer or a
+// repeated answer is a poll problem, so the message is shown beside the poll fields and card
+// creation is never involved. The question may be blank because the server falls back to the
+// question of the card on screen. Returns { question, options, error } with error null on success.
+export function validatePollDraft(question, options) {
+  const q = String(question ?? "").trim();
+  const opts = (Array.isArray(options) ? options : [options])
+    .map((o) => String(o ?? "").trim())
+    .filter(Boolean);
+  if (q.length > 140) return { error: "The poll question must be 140 characters or fewer." };
+  if (opts.length < 2) return { error: "Add at least two answers, one per box." };
+  if (opts.length > 3) return { error: "A poll takes at most three answers." };
+  const tooLong = opts.find((o) => o.length > 40);
+  if (tooLong) return { error: `Keep each answer to 40 characters. "${tooLong.slice(0, 24)}…" is too long.` };
+  if (new Set(opts.map((o) => o.toLowerCase())).size !== opts.length) {
+    return { error: "Each answer must be different." };
+  }
+  return { question: q, options: opts, error: null };
+}
+
+// Legacy tab-side gate, kept because the parser tests still exercise it. Production command
+// authorization lives in netlify/functions/_twitch-core.mjs: EventSub supplies a stable
+// chatter_user_id, and a moderator badge or display name is never accepted as identity.
 export function chatMayCommand(tags, { enabled = false, allowIds = [] } = {}) {
   if (!enabled) return { ok: false, reason: "chat control is off" };
   const badges = `${tags?.["badge-info"] ?? ""},${tags?.badges ?? ""}`;

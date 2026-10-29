@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { COMMAND_HELP, chatMayCommand, parseAllowIds, parseDeskCommand, parsePollSpec } from "../public/desk-assets/desk-commands.js";
+import { COMMAND_HELP, chatMayCommand, parseAllowIds, parseDeskCommand, parsePollSpec, validatePollDraft } from "../public/desk-assets/desk-commands.js";
 
 test("every shape the streamer actually types is a command", () => {
   for (const line of ["desk next", "desknext", "!desknext", "!desk next", "DESK_NEXT", "desk  next", "/desk next"]) {
@@ -39,6 +39,20 @@ test("a poll command takes a question and up to three options", () => {
   assert.deepEqual(parseDeskCommand("desk poll Which desk?|Music|Creators"), { verb: "poll", question: "Which desk?", options: ["Music", "Creators"] });
   assert.deepEqual(parsePollSpec("Pick|A|B|C|D").options, ["A", "B", "C"], "never more than three");
   assert.deepEqual(parsePollSpec("One option only|Maybe"), { question: "One option only|Maybe", options: ["Yes", "No"] }, "one option is not a poll");
+});
+
+test("the poll form needs two or three distinct short answers and never a card message", () => {
+  assert.deepEqual(
+    validatePollDraft("  Who wins? ", [" Yes ", "No", ""]),
+    { question: "Who wins?", options: ["Yes", "No"], error: null },
+  );
+  assert.equal(validatePollDraft("", ["A", "B"]).error, null, "a blank question uses the card's question");
+  assert.match(validatePollDraft("Q", ["Only one"]).error, /at least two/i);
+  assert.match(validatePollDraft("Q", ["A", "A"]).error, /different/i);
+  assert.match(validatePollDraft("Q", ["A", "B", "C", "D"]).error, /at most three/i);
+  assert.match(validatePollDraft("Q", ["A".repeat(41), "B"]).error, /40 characters/i);
+  assert.match(validatePollDraft("q".repeat(141), ["A", "B"]).error, /140 characters/i);
+  assert.equal(validatePollDraft("Q", ["A", "B", "C"]).options.length, 3);
 });
 
 test("only the broadcaster or an allowed user id can move the desk", () => {

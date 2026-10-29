@@ -40,8 +40,17 @@ export const DEFAULT_STATE = {
   crid: null, // { id, entry, kind, title, credit, verdict, result, openedAt } — the live segment
   cridSeq: 0, // counts segments since the store existed; entry numbers never repeat
   autoPlay: false, // when on, an expired card advances to the next approved one by itself
-  autoResearch: false, // when on, the scheduled run adds new pending cards by itself
+  autoResearch: false, // when on, the scheduled run adds new research by itself
+  // Research approval is a separate, persistent decision from whether the scheduler fetches at
+  // all. Manual and scheduled runs read this same setting, so neither can bypass the other.
+  researchApprovalMode: "manual", // manual | trusted | all
+  trustedFeedIds: [], // feed ids that may be approved automatically in trusted mode
+  // Server-side Twitch command control. These stay private: the overlay never needs them.
+  twitchChatEnabled: false,
+  twitchAllowedUserIds: [],
 };
+
+export const RESEARCH_APPROVAL_MODES = ["manual", "trusted", "all"];
 
 // Clearly labelled test content only: no invented news, sources or figures.
 export const TEST_CARD = {
@@ -230,7 +239,15 @@ export const publicCard = (c) => ({
 });
 
 export function publicProjection(state) {
-  const { activeCardId, autoResearch, ...rest } = state;
+  const {
+    activeCardId,
+    autoResearch,
+    researchApprovalMode,
+    trustedFeedIds,
+    twitchChatEnabled,
+    twitchAllowedUserIds,
+    ...rest
+  } = state;
   return rest;
 }
 
@@ -314,6 +331,9 @@ export async function upsertCard(store, b, now = Date.now()) {
     order: b.order ?? old?.order ?? null,
     createdAt: old?.createdAt ?? now,
     importKey: old?.importKey ?? null,
+    // Any dashboard save is operator work, even if only the notes changed. Research never
+    // calls this function, so a machine card only gains this flag when a person touches it.
+    handEdited: Boolean(old) || old?.handEdited === true,
   };
 
   const next = old ? cards.map((c) => (c.id === card.id ? card : c)) : [...cards, card];
@@ -345,6 +365,60 @@ export function pollResult(poll) {
     total,
     tie: leaders.length > 1 && top > 0,
     options: options.map((o) => ({ label: o.label, count: o.count || 0, percent: total ? Math.round(((o.count || 0) / total) * 100) : 0 })),
+  };
+}
+
+export function matchesQueueFilter(c, filter = {}) {
+  if (!filter || typeof filter !== "object") return true;
+  const status = String(filter.status ?? "all");
+  if (status !== "all" && c.approval !== status) return false;
+  if (filter.desk && !matchesDesk(c, filter.desk)) return false;
+  if (filter.category && c.category !== filter.category) return false;
+  if (filter.source && (c.source?.publisher ?? "") !== filter.source) return false;
+  const q = String(filter.query ?? "").trim().toLowerCase();
+  if (q && !`${c.headline ?? ""} ${c.summary ?? ""} ${c.category ?? ""} ${c.source?.publisher ?? ""}`.toLowerCase().includes(q)) return false;
+  return true;
+}
+
+// Bulk approval/rejection is deliberately card-only: it never touches the live state, so the
+// card on screen cannot change just because someone selected a batch. The on-air card is also
+// protected from a bulk rejection: the operator can still reject it explicitly after hiding it.
+export async function bulkUpdateApproval(store, b, state, cards, now = Date.now()) {
+  const target = String(b.approval ?? "");
+  if (!["approved", "rejected"].includes(target)) throw new HttpError(422, "approval must be approved or rejected.");
+  const ids = [...new Set(Array.isArray(b.ids) ? b.ids.map(String) : [])];
+  if (!b.all && !ids.length) throw new HttpError(422, "Select at least one card, or send all with a filter.");
+  const filter = b.filter && typeof b.filter === "object" ? b.filter : {};
+  const wanted = b.all ? cards.filter((c) => matchesQueueFilter(c, filter)) : cards.filter((c) => ids.includes(c.id));
+  const activeId = state.visible && state.mode === "cards" ? state.activeCardId : null;
+  const skipped = [];
+  const changed = new Set();
+
+  for (const c of wanted) {
+    if (c.approval === target) continue;
+    if (target === "rejected" && c.id === activeId) {
+      skipped.push({ id: c.id, headline: c.headline, reason: "on air — hide or move it first" });
+      continue;
+    }
+    if (target === "approved" && c.type === "news-drop" && c.confidence !== "test" &&
+      (!c.source?.url || !c.source?.publisher)) {
+      skipped.push({ id: c.id, headline: c.headline, reason: "news cards need a publisher and source URL" });
+      continue;
+    }
+    changed.add(c.id);
+  }
+
+  const next = changed.size
+    ? cards.map((c) => changed.has(c.id) ? { ...c, approval: target, autoApproved: false } : c)
+    : cards;
+  if (changed.size) await store.setJSON("cards", next);
+  const heldTotal = (await readHeldResearch(store, now)).length;
+  return {
+    updated: changed.size,
+    skipped,
+    ids: [...changed],
+    cards: next,
+    counts: queueCounts(next, state, heldTotal),
   };
 }
 
@@ -506,6 +580,31 @@ export async function runAction(store, b, now = Date.now()) {
     case "auto-research":
       patch = { autoResearch: typeof b.value === "boolean" ? b.value : !state.autoResearch };
       break;
+    case "research-approval": {
+      const mode = String(b.mode ?? state.researchApprovalMode ?? "manual");
+      if (!RESEARCH_APPROVAL_MODES.includes(mode)) {
+        throw new HttpError(422, `mode must be one of ${RESEARCH_APPROVAL_MODES.join(", ")}.`);
+      }
+      const trusted = Array.isArray(b.trustedFeedIds) ? b.trustedFeedIds : state.trustedFeedIds;
+      const feedIds = FEEDS.map((f) => f.id);
+      const trustedFeedIds = [...new Set((trusted ?? []).map(String))].filter((id) => feedIds.includes(id));
+      patch = { researchApprovalMode: mode, trustedFeedIds };
+      break;
+    }
+    case "twitch-chat": {
+      const enabled = typeof b.value === "boolean" ? b.value : !state.twitchChatEnabled;
+      patch = { twitchChatEnabled: enabled };
+      break;
+    }
+    case "twitch-allow": {
+      const ids = Array.isArray(b.ids) ? b.ids : String(b.ids ?? "").split(/[^0-9]+/);
+      patch = { twitchAllowedUserIds: [...new Set(ids.map(String).filter((id) => /^\d+$/.test(id)))].slice(0, 100) };
+      break;
+    }
+    case "bulk-approval": {
+      const bulk = await bulkUpdateApproval(store, b, state, cards, now);
+      return { state, queueLength: queueOf(bulk.cards).length, bulk };
+    }
     default:
       throw new HttpError(422, "Unknown action.");
   }
@@ -719,23 +818,58 @@ export function candidates(feed, xml, now = Date.now()) {
   return out.sort((a, z) => when(z) - when(a) || a.key.localeCompare(z.key));
 }
 
-// A run every 15 minutes can outrun an operator who is busy being on air, so the auto
-// arrivals are bounded two ways: untouched machine cards older than KEEP_MS are dropped,
-// and a run never files past MAX_PENDING of them. Anything you wrote on or approved is
-// yours and is never touched by either rule.
+// A run every 15 minutes can outrun an operator who is busy being on air, so research is
+// bounded three ways: untouched machine cards older than KEEP_MS are dropped, the unread
+// research queue never holds more than MAX_PENDING, and anything that does not fit is kept
+// in a held bucket for the next run instead of being thrown away. Operator-approved cards
+// are never pruned; auto-approved machine cards remain machine cards until a person touches
+// them or approves them by hand.
 export const RESEARCH_MAX_PENDING = 60;
 export const RESEARCH_KEEP_MS = 24 * 3600 * 1000;
+export const RESEARCH_HELD_MAX = 240;
+export const RESEARCH_HELD_KEEP_MS = 7 * 24 * 3600 * 1000;
+export const HELD_RESEARCH_KEY = "research-held";
 
-// No summary, no question, still pending, filed by the importer: nobody has read it.
-export const untouchedAuto = (c) => Boolean(c.importKey) && c.approval === "pending" && !c.summary && !c.question;
+// No question, still machine-owned: nobody has read or edited it. Trend cards carry a
+// machine-written summary, so `autoContent` records exactly what the importer filed. Any
+// dashboard edit clears that marker (and sets handEdited) and makes the card the operator's.
+const LEGACY_TREND_SUMMARY = /^Trending on Google Search in /;
+const MACHINE_NOTES = /^(Publisher's own excerpt|Related coverage Google lists)/;
 
-export function pruneAutoArrivals(cards, now) {
+export const untouchedAuto = (c) => {
+  if (!c.importKey || c.handEdited || c.question) return false;
+  if (!(c.approval === "pending" || (c.approval === "approved" && c.autoApproved === true))) return false;
+  if (c.autoContent && typeof c.autoContent === "object") {
+    return (c.summary ?? "") === (c.autoContent.summary ?? "") &&
+      (c.presenterNotes ?? "") === (c.autoContent.notes ?? "");
+  }
+  // Cards filed before autoContent existed: news cards have no summary, trend cards have
+  // Google's summary pattern. Machine notes keep their known prefixes; operator notes do not.
+  return (!c.summary || (c.type === "trend-topic" && LEGACY_TREND_SUMMARY.test(c.summary))) &&
+    (!c.presenterNotes || MACHINE_NOTES.test(c.presenterNotes));
+};
+
+export function pruneAutoArrivals(cards, now, activeCardId = null) {
   const kept = [], dropped = [];
-  for (const c of cards) (untouchedAuto(c) && now - (c.createdAt ?? 0) > RESEARCH_KEEP_MS ? dropped : kept).push(c);
+  for (const c of cards) {
+    const stale = untouchedAuto(c) && c.id !== activeCardId && now - (c.createdAt ?? 0) > RESEARCH_KEEP_MS;
+    (stale ? dropped : kept).push(c);
+  }
   return { cards: kept, dropped: dropped.length };
 }
 
-export const toCard = (feed, c, now, i) => ({
+export async function readHeldResearch(store, now = Date.now()) {
+  const held = await store.get(HELD_RESEARCH_KEY, { type: "json" });
+  if (!Array.isArray(held)) return [];
+  return held.filter((x) => x && x.importKey && now - (x.heldAt ?? 0) <= RESEARCH_HELD_KEEP_MS);
+}
+
+export async function writeHeldResearch(store, held) {
+  if (held.length) await store.setJSON(HELD_RESEARCH_KEY, held.slice(0, RESEARCH_HELD_MAX));
+  else if (typeof store.delete === "function") await store.delete(HELD_RESEARCH_KEY).catch(() => {});
+}
+
+export const toCard = (feed, c, now, i, { approval = "pending", autoApproved = false } = {}) => ({
   id: cryptoRandomId(),
   type: c.type,
   category: feed.category,
@@ -743,34 +877,96 @@ export const toCard = (feed, c, now, i) => ({
   summary: c.summary,
   question: "",
   confidence: "reported", // one outlet's report, not verified by you yet
-  approval: "pending",
+  approval,
+  autoApproved: Boolean(autoApproved),
   source: { publisher: c.publisher || feed.label, url: c.url, publishedAt: c.publishedAt, retrievedAt: new Date(now).toISOString() },
   eventDate: null,
   presenterNotes: clip(c.notes || "", LIMITS.notes),
+  // The exact machine-written text, so age-out and capacity can tell an untouched trend card
+  // from one a person rewrote. upsertCard drops this marker on the first dashboard save.
+  autoContent: { summary: c.summary ?? "", notes: clip(c.notes || "", LIMITS.notes) },
   ttlSec: null,
   order: null,
   createdAt: now + i,
   importKey: c.key,
 });
 
+// A held item keeps its feed identity so the next run can file it under the same desk and
+// publisher, even if that feed is temporarily unreachable.
+const heldFromCandidate = (feed, c, now, approval, autoApproved) => ({
+  ...toCard(feed, c, now, 0, { approval, autoApproved }),
+  feedId: feed.id,
+  feedLabel: feed.label,
+  heldAt: now,
+});
+
+const approvalForFeed = (feed, state) => {
+  const mode = state?.researchApprovalMode ?? "manual";
+  const trusted = Array.isArray(state?.trustedFeedIds) ? state.trustedFeedIds : [];
+  if (mode === "all") return { approval: "approved", autoApproved: true };
+  if (mode === "trusted" && (trusted.includes(feed.id) ||
+    (feed.id === "overlap" && trusted.includes("gtrends-ng") && trusted.includes("gtrends-us")))) {
+    return { approval: "approved", autoApproved: true };
+  }
+  return { approval: "pending", autoApproved: false };
+};
+
 export const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 export const sameTopic = (a, b) => a === b || (Math.min(a.length, b.length) >= 5 && (a.includes(b) || b.includes(a)));
 
-// Manual button and scheduled run both call this. Returns a plain object; the HTTP
-// layer wraps it, the scheduler only logs it.
+// Manual button and scheduled run both call this. Approval is read from the persisted state
+// here, not from the caller, so a scheduled run can never bypass the mode the operator chose.
+// Returns a plain object; the HTTP layer wraps it, the scheduler only logs it.
 export async function runResearch(
   store,
   b = {},
   { fetchFn = globalThis.fetch, now = Date.now(), proxy = process.env.DESK_FEED_PROXY ?? "", timeoutMs = feedTimeoutMs(), budgetMs = feedBudgetMs() } = {}
 ) {
+  const heldOnly = b.heldOnly === true;
   const wanted = Array.isArray(b.feeds) && b.feeds.length ? FEEDS.filter((f) => b.feeds.includes(f.id)) : FEEDS;
+  const wantedIds = new Set(heldOnly ? [...FEEDS.map((f) => f.id), "overlap"] : wanted.map((f) => f.id));
+  const state = await readState(store);
   const cards = await readCards(store);
   const seen = new Set(cards.map((c) => c.importKey).filter(Boolean));
-  // Room is counted after the age-out this same run performs, so a queue stuffed with week-old
-  // unread stories still makes space for today's instead of stalling forever.
-  const room = Math.max(0, RESEARCH_MAX_PENDING - pruneAutoArrivals(cards, now).cards.filter(untouchedAuto).length);
+  const heldBefore = (await readHeldResearch(store, now)).filter((x) => !seen.has(x.importKey));
+  for (const h of heldBefore) seen.add(h.importKey);
 
-  const settled = await Promise.all(
+  // Room is counted after the age-out this same run performs, so a queue stuffed with old
+  // unread stories still makes space for today's instead of stalling forever. Auto-approved
+  // machine cards count as unread until a person edits or hand-approves them.
+  const activeOnScreen = state.visible && state.mode === "cards" ? state.activeCardId : null;
+  const prunedAtRead = pruneAutoArrivals(cards, now, activeOnScreen);
+  const room = Math.max(0, RESEARCH_MAX_PENDING - prunedAtRead.cards.filter(untouchedAuto).length);
+
+  const added = [];
+  const feeds = [];
+  const trendFound = {};
+  const heldKeep = [];
+  const heldNew = [];
+  let roomLeft = room;
+  let held = 0; // new items this run could not file because the queue is full
+  let heldOverflow = 0;
+
+  // Retrieve held items first, but only under the feed selection the operator asked for.
+  // A held card is re-checked against the current approval mode when it is finally filed.
+  for (const h of heldBefore) {
+    const belongs = h.feedId === "overlap"
+      ? wantedIds.has("gtrends-ng") && wantedIds.has("gtrends-us")
+      : wantedIds.has(h.feedId);
+    if (!belongs || roomLeft <= 0) { heldKeep.push(h); continue; }
+    const { feedId, feedLabel, heldAt, ...card } = h;
+    const approval = approvalForFeed({ id: feedId, label: feedLabel }, state);
+    added.push({
+      ...card,
+      id: card.id || cryptoRandomId(),
+      approval: approval.approval,
+      autoApproved: approval.autoApproved,
+      createdAt: now + added.length,
+    });
+    roomLeft--;
+  }
+
+  const settled = heldOnly ? [] : await Promise.all(
     wanted.map(async (feed) => {
       try {
         const { xml, via } = await fetchFeed(feed, fetchFn, { proxy, timeoutMs, budgetMs });
@@ -784,13 +980,8 @@ export async function runResearch(
     })
   );
 
-  const added = [];
-  const feeds = [];
-  const trendFound = {};
-  let held = 0; // new items this run could not file because the queue is full
   // Share the room instead of filling it in feed order: with two dozen feeds and a capped
   // queue, first-come would starve whichever desk you added last.
-  let roomLeft = room;
   let feedsLeft = settled.filter((s) => !s.error).length;
   for (const { feed, found, via, error } of settled) {
     if (error) {
@@ -801,60 +992,130 @@ export async function runResearch(
     feedsLeft--;
     let offered = 0;
     let filed = 0;
+    let parked = 0;
+    const approval = approvalForFeed(feed, state);
     for (const c of found) {
       if (seen.has(c.key)) continue;
       if (offered >= PER_FEED) break;
       offered++;
-      if (filed >= share || added.length >= room) continue;
+      if (filed >= share || roomLeft <= 0) {
+        // A full queue is not permission to forget the item. Park it with its feed and put it
+        // back in front of the next run, which will try again before fetching new headlines.
+        if (heldKeep.length + heldNew.length < RESEARCH_HELD_MAX) {
+          heldNew.push(heldFromCandidate(feed, c, now, approval.approval, approval.autoApproved));
+          seen.add(c.key);
+          parked++;
+        } else {
+          heldOverflow++;
+        }
+        continue;
+      }
       seen.add(c.key);
-      added.push(toCard(feed, c, now, added.length));
+      added.push(toCard(feed, c, now, added.length, approval));
       filed++;
+      roomLeft--;
     }
-    roomLeft -= filed;
-    held += offered - filed;
-    feeds.push({ id: feed.id, label: feed.label, ok: true, via, found: found.length, added: filed, held: offered - filed });
+    held += parked;
+    feeds.push({ id: feed.id, label: feed.label, ok: true, via, found: found.length, added: filed, held: parked });
     if (feed.kind === "trends") trendFound[feed.geo] = found;
   }
 
   // Topics on Google's trending lists for BOTH Nigeria and the US in the same fetch.
   if (trendFound.NG && trendFound.US) {
     const day = new Date(now).toISOString().slice(0, 10);
+    const overlapFeed = { id: "overlap", label: "Trending in both countries", category: "Trending in NG and US" };
+    const approval = approvalForFeed(overlapFeed, state);
     let offered = 0;
     let filed = 0;
+    let parked = 0;
     for (const a of trendFound.NG) {
       const hit = trendFound.US.find((u) => sameTopic(norm(a.headline), norm(u.headline)));
       const key = `overlap:${norm(a.headline)}:${day}`;
       if (!hit || seen.has(key)) continue;
       offered++;
-      seen.add(key);
-      if (added.length >= room) continue;
-      added.push(toCard({ category: "Trending in NG and US", label: "Google Trends" }, {
+      const c = {
         type: "trend-topic", headline: a.headline, summary: "Trending on Google Search in both Nigeria and the US.",
-        url: "https://trends.google.com/trending?geo=NG", publishedAt: a.publishedAt,
+        url: "https://trends.google.com/trending?geo=NG", publishedAt: a.publishedAt, publisher: "Google Trends",
         notes: `Nigeria's term: ${a.headline}. US term: ${hit.headline}. Check that they really are the same story.`, key,
-      }, now, added.length));
+      };
+      if (roomLeft <= 0) {
+        if (heldKeep.length + heldNew.length < RESEARCH_HELD_MAX) {
+          heldNew.push(heldFromCandidate(overlapFeed, c, now, approval.approval, approval.autoApproved));
+          seen.add(key);
+          parked++;
+        } else {
+          heldOverflow++;
+        }
+        continue;
+      }
+      seen.add(key);
+      added.push(toCard(overlapFeed, c, now, added.length, approval));
       filed++;
+      roomLeft--;
     }
-    held += offered - filed;
-    feeds.push({ id: "overlap", label: "Trending in both countries", ok: true, found: offered, added: filed, held: offered - filed });
+    held += parked;
+    feeds.push({ id: "overlap", label: "Trending in both countries", ok: true, found: offered, added: filed, held: parked });
   }
 
   // An auto run can land while the operator is saving a card, and research holds a copy of
   // the whole array, so re-read and merge by id instead of overwriting the blob.
   const current = await readCards(store);
-  const { cards: survivors, dropped } = pruneAutoArrivals(current, now);
-  const byKey = new Set(current.map((c) => c.importKey).filter(Boolean));
+  const latest = await readState(store);
+  const latestActive = latest.visible && latest.mode === "cards" ? latest.activeCardId : null;
+  const { cards: survivors, dropped } = pruneAutoArrivals(current, now, latestActive);
+  const byKey = new Set(survivors.map((c) => c.importKey).filter(Boolean));
   const fits = added.filter((c) => !byKey.has(c.importKey) && !survivors.some((m) => m.id === c.id));
 
-  const merged = [...survivors, ...fits];
-  if (merged.length !== current.length) await store.setJSON("cards", merged);
+  let merged = [...survivors, ...fits];
+  const sameBlob = fits.length === 0 && survivors.length === current.length && survivors.every((c, i) => c.id === current[i].id);
+  if (!sameBlob) await store.setJSON("cards", merged);
+  else merged = current;
+
+  // Keys that made it into the card blob must leave the held bucket, even if another run
+  // filed the same story between our first read and this merge. Re-read the bucket so a
+  // concurrent run's overflow is merged instead of being overwritten.
+  const mergedKeys = new Set(merged.map((c) => c.importKey).filter(Boolean));
+  const freshHeld = (await readHeldResearch(store, now)).filter((h) => !mergedKeys.has(h.importKey));
+  const heldByKey = new Map();
+  for (const h of [...heldKeep, ...heldNew, ...freshHeld]) {
+    if (!h?.importKey || mergedKeys.has(h.importKey) || heldByKey.has(h.importKey)) continue;
+    heldByKey.set(h.importKey, h);
+  }
+  const allHeld = [...heldByKey.values()];
+  if (allHeld.length > RESEARCH_HELD_MAX) {
+    heldOverflow += allHeld.length - RESEARCH_HELD_MAX;
+    allHeld.length = RESEARCH_HELD_MAX;
+  }
+  await writeHeldResearch(store, allHeld);
+
+  const addedAutoApproved = fits.filter((c) => c.autoApproved === true).length;
   return {
     added: fits.length,
+    autoApproved: addedAutoApproved,
+    approvalMode: state.researchApprovalMode ?? "manual",
     dropped,
     held,
-    pending: survivors.filter(untouchedAuto).length + fits.length,
+    heldTotal: allHeld.length,
+    heldOverflow,
+    pending: merged.filter(untouchedAuto).length,
+    pendingApproval: merged.filter((c) => c.approval === "pending").length,
+    approved: merged.filter((c) => c.approval === "approved").length,
+    capacity: RESEARCH_MAX_PENDING,
     cards: merged.length,
     feeds,
+  };
+}
+
+// Counts the operator sees on the dashboard. Held items live outside the card blob, so the
+// card list alone cannot answer "what could not be filed?".
+export function queueCounts(cards, state, heldTotal = 0) {
+  return {
+    pending: cards.filter((c) => c.approval === "pending").length,
+    approved: cards.filter((c) => c.approval === "approved").length,
+    held: heldTotal,
+    onAir: state?.visible && state.mode === "cards" && state.activeCardId ? 1 : 0,
+    unreadResearch: cards.filter(untouchedAuto).length,
+    researchCapacity: RESEARCH_MAX_PENDING,
   };
 }
 

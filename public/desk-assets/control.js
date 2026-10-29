@@ -1,8 +1,8 @@
-/* CYBER LIVE DESK — private controller, checkpoint 2. Served at /control.
+/* CYBER LIVE DESK — private controller. Served at /control.
    Operate it from a second device. Every request carries the operator token
    (stored in this browser only); the public overlay never sees notes or the token.
-   Loaded as a module so the chat command rules can be shared with the tests. */
-import { COMMAND_HELP, chatMayCommand, parseAllowIds, parseDeskCommand } from "./desk-commands.js";
+   Loaded as a module so the poll validator and command help are the tested shared copy. */
+import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.js";
 
 (() => {
   "use strict";
@@ -20,8 +20,16 @@ import { COMMAND_HELP, chatMayCommand, parseAllowIds, parseDeskCommand } from ".
   let busy = false;
   let expanded = null;
   let editing = null;
+  let desks = [];
+  let feeds = [];
+  let research = { approvalMode: "manual", trustedFeedIds: [], maxPending: 60, held: 0, heldItems: [] };
+  let counts = { pending: 0, approved: 0, held: 0, onAir: 0, unreadResearch: 0, researchCapacity: 60 };
+  let twitch = { configured: false, enabled: false, verified: false, tested: false, ready: false, missing: [], allowedUserIds: [] };
+  let approvalDirty = false;
+  let twitchDirty = false;
   const drafts = {}; // unsaved presenter notes, by card id
-  const filter = { text: "", cat: "", status: "approved" };
+  const selected = new Set(); // cards ticked for a bulk action
+  const filter = { text: "", cat: "", status: "approved", desk: "", source: "" };
 
   // ---------- helpers ----------
   const h = (tag, props, ...kids) => {
@@ -81,7 +89,8 @@ import { COMMAND_HELP, chatMayCommand, parseAllowIds, parseDeskCommand } from ".
       state = j.state;
       offset = j.serverNow - Date.now();
       renderLive();
-    } catch (e) { toast(e.message, true); }
+      return j;
+    } catch (e) { toast(e.message, true); return null; }
     finally { busy = false; document.body.classList.remove("busy"); }
   };
 
@@ -91,6 +100,7 @@ import { COMMAND_HELP, chatMayCommand, parseAllowIds, parseDeskCommand } from ".
       const i = cards.findIndex((c) => c.id === card.id);
       if (i >= 0) cards[i] = card; else cards.push(card);
       renderLive();
+      await load(); // refresh counts and server-derived desk ids
       toast("Card saved.");
       return card;
     } catch (e) { toast(e.message, true); return null; }
@@ -101,13 +111,18 @@ import { COMMAND_HELP, chatMayCommand, parseAllowIds, parseDeskCommand } from ".
       const j = await api("/api/desk/cards");
       cards = j.cards; state = j.state; offset = j.serverNow - Date.now();
       if (Array.isArray(j.desks)) desks = j.desks;
+      if (Array.isArray(j.feeds)) feeds = j.feeds;
+      if (j.research) research = j.research;
+      if (j.counts) counts = j.counts;
+      if (j.twitch) twitch = j.twitch;
       renderLive();
+      drawTwitchServer();
     } catch (e) { if (token) toast(e.message, true); }
   };
 
   // ---------- layout ----------
   const CSS = `
-*{box-sizing:border-box}body{margin:0;background:#0B1220;color:#E8EEF7;font:16px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+*{box-sizing:border-box}[hidden]{display:none!important}body{margin:0;background:#0B1220;color:#E8EEF7;font:16px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 #app{max-width:1200px;margin:0 auto;padding:12px 12px 90px;display:grid;gap:12px}
 @media (min-width: 960px){
   #app{grid-template-columns: 460px 1fr; align-items: start;}
@@ -136,6 +151,30 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
 .opt{display:flex;align-items:center;gap:8px;margin-bottom:6px}.opt .name{flex:1;font-weight:700}.opt .b{min-width:64px}
 .toast{position:fixed;left:12px;right:12px;bottom:14px;max-width:560px;margin:0 auto;padding:12px;border-radius:12px;background:#14594A;opacity:0;pointer-events:none;transition:opacity .2s;z-index:9}
 .toast.show{opacity:1}.toast.bad{background:#8A2F25}a{color:#7CC4FF}
+.counts{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:8px 0}
+.count{background:#0B1220;border:1px solid #2A3750;border-radius:10px;padding:7px 8px;text-align:center}
+.count strong{display:block;font-size:1.15rem}.count span{font-size:.72rem;color:#9FB0C6}
+.count.live{border-color:#FF5A47}.count.warn{border-color:#FFB224}
+.bulk{display:grid;gap:8px;background:#0B1220;border:1px solid #2A3750;border-radius:12px;padding:10px;margin:8px 0}
+.bulk .row{flex-wrap:wrap}.bulk .row>*{flex:1 1 130px}
+.b.approve{background:#2ED3A5;color:#062017}.b.reject{background:#FF7A66;color:#2A0905}
+.warnbox{background:#3A2B10;border:1px solid #8A6418;color:#FFD15C;border-radius:10px;padding:9px 10px;font-size:.86rem}
+.selectbox{width:auto!important;flex:0 0 auto!important;accent-color:#FFB224;transform:scale(1.25);margin-right:4px}
+.item-head{display:flex;align-items:flex-start;gap:8px}.item-head h3{flex:1}
+.bulk-note{font-size:.84rem;color:#9FB0C6;margin:0}
+.bulk-note strong{color:#FFD15C}
+.feed-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 8px;margin:6px 0}
+.feed-check{display:flex;align-items:center;gap:6px;font-size:.82rem;color:#C7D4E5}
+.feed-check input{width:auto;flex:0 0 auto;accent-color:#FFB224}
+.twitch-box{background:#0B1220;border:1px solid #2A3750;border-radius:10px;padding:9px 10px;margin:8px 0;font-size:.88rem}
+.twitch-box p{margin:4px 0}
+.setup{font-size:.82rem;color:#9FB0C6;margin:6px 0 0;padding-left:1.2em}
+.setup li{margin:3px 0}
+.statusline{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.statusline .sub{flex:1 1 180px}
+.poll-error{display:none;color:#FF9A8D;background:#3A1A18;border:1px solid #8A2F25;border-radius:10px;padding:8px 10px;font-size:.9rem;margin:4px 0 8px}
+.poll-error.show{display:block}
+.twitch-state{font-weight:800}.twitch-state.ok{color:#2ED3A5}.twitch-state.bad{color:#FF9A8D}.twitch-state.wait{color:#FFD15C}
 
 /* Preview monitor */
 .preview-wrap{position:relative;background:#050912;border-radius:12px;overflow:hidden;border:1px solid #2A3750;margin:8px 0;display:flex;justify-content:center;align-items:center;padding:12px;min-height:220px}
@@ -260,7 +299,6 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
   // ---------- desks ----------
   // The manual side of what chat can say. The server owns the list and sends it with the cards,
   // so this selector and a "desk <name>" command can never drift apart.
-  let desks = [];
   const deskSel = h("select", { onchange: () => act("desk", { desk: deskSel.value }) });
   const deskChipsEl = h("div", "desk-chips");
   const drawDesks = () => {
@@ -290,54 +328,209 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
       btn("Street question", () => streetQuestion()),
       btn("Hide overlay", () => act("hide"), "b danger")));
 
-  // ---------- auto or manual ----------
-  // Both switches start off and only ever move what you already approved. Hold, Hide, Next
-  // and Show override auto-play instantly; auto research only ever files PENDING cards.
+  // ---------- automation and research approval ----------
+  // Auto-play and auto research only move or file what the operator has approved (or what the
+  // persisted research mode explicitly auto-approves). Hold, Hide, Next and Show still win.
   const AUTO_MIN = 15; // must match the cron in netlify/functions/desk-auto-research.mjs
-  const MAX_PENDING = 60; // must match RESEARCH_MAX_PENDING in netlify/functions/_desk-core.mjs
   const autoPlayBtn = btn("Auto-play: off", () => act("auto-play"));
   const autoResearchBtn = btn("Auto research: off", () => act("auto-research"));
   const autoNote = h("p", "sub");
-  const autoEl = h("section", "panel", h("h2", {}, "Auto or manual"),
-    h("div", "grid", autoPlayBtn, autoResearchBtn), autoNote);
+  const autoWarn = h("div", "warnbox");
+  autoWarn.hidden = true;
 
+  // The approval mode is persisted, not a request parameter, so the scheduled function reads
+  // exactly the same rule the manual fetch does. The browser can only change the setting.
+  const approvalModeSel = h("select", {
+    onchange: () => { approvalDirty = true; drawApprovalMode(); },
+  },
+    h("option", { value: "manual" }, "Manual — every incoming card waits for me"),
+    h("option", { value: "trusted" }, "Trusted feeds — auto-approve the feeds I tick"),
+    h("option", { value: "all" }, "All incoming — auto-approve every research card"));
+  const trustedWrap = h("div", "feed-grid");
+  const approvalNote = h("p", "sub");
+  const heldNote = h("p", "sub");
+  const heldList = h("div");
+
+  const approvalSaveBtn = btn("Save approval mode", () => saveApproval(), "go small");
+  const approvalWords = () => ({ manual: "Manual", trusted: "Trusted feeds", all: "All incoming" }[approvalModeSel.value] || "Manual");
+  const updateApprovalNote = () => {
+    const mode = approvalModeSel.value;
+    const checked = trustedWrap.querySelectorAll("input[data-feed]:checked").length;
+    approvalNote.textContent =
+      mode === "all" ? "Scheduled and manual research both approve every new card automatically. They can enter on-air rotation when auto-play is on; approval does not change the card on screen now."
+        : mode === "trusted" ? (checked ? `${checked} feed${checked === 1 ? "" : "s"} auto-approve their cards. Everything else stays pending. The same list is used by scheduled and manual research.` : "Tick at least one trusted feed. Until then every card stays pending.")
+          : "Nothing is approved automatically. Scheduled and manual research both file every new card as pending.";
+    approvalSaveBtn.textContent = approvalDirty ? "Save approval mode •" : "Save approval mode";
+  };
+
+  const drawApprovalMode = () => {
+    if (!approvalDirty) approvalModeSel.value = state?.researchApprovalMode ?? research.approvalMode ?? "manual";
+    const mode = approvalModeSel.value;
+    trustedWrap.hidden = mode !== "trusted";
+    if (!approvalDirty) {
+      if (trustedWrap.children.length !== feeds.length) {
+        trustedWrap.replaceChildren(...feeds.map((f) => h("label", "feed-check",
+          h("input", {
+            type: "checkbox", "data-feed": f.id,
+            onchange: () => { approvalDirty = true; updateApprovalNote(); },
+          }),
+          `${f.label} (${f.category})`)));
+      }
+      const chosen = new Set(research.trustedFeedIds ?? []);
+      for (const input of trustedWrap.querySelectorAll("input[data-feed]")) input.checked = chosen.has(input.dataset.feed);
+    }
+    updateApprovalNote();
+  };
+
+  const saveApproval = async () => {
+    const trustedFeedIds = [...trustedWrap.querySelectorAll("input[data-feed]:checked")].map((i) => i.dataset.feed);
+    const j = await act("research-approval", { mode: approvalModeSel.value, trustedFeedIds });
+    if (!j) return;
+    approvalDirty = false;
+    await load();
+    toast(`Research approval: ${approvalWords()}.`);
+  };
+
+  const drawAutomation = () => {
+    autoPlayBtn.textContent = state?.autoPlay ? "Auto-play: on" : "Auto-play: off";
+    autoPlayBtn.classList.toggle("on", !!state?.autoPlay);
+    autoResearchBtn.textContent = state?.autoResearch ? "Auto research: on" : "Auto research: off";
+    autoResearchBtn.classList.toggle("on", !!state?.autoResearch);
+    autoWarn.hidden = !state?.autoPlay;
+    autoWarn.textContent = "Auto-play is on. Approved cards can enter on-air rotation when the current card expires. Approving a card never changes the card that is on screen now.";
+    const approved = cards.filter((c) => c.approval === "approved").length;
+    autoNote.textContent =
+      (state?.autoPlay
+        ? `On air: cards move on by themselves when their seconds run out (${approved} approved). Hold or Hide stops it.`
+        : "On air: nothing moves unless you tap it.") +
+      " " +
+      (state?.autoResearch
+        ? `Research: the scheduled job fetches about every ${AUTO_MIN} min. It uses the saved approval mode below and never changes the card on air.`
+        : "Research: the scheduled job is idle. Manual fetch still works.");
+    drawApprovalMode();
+    const held = Number(research.held) || 0;
+    const max = Number(research.maxPending) || 60;
+    heldNote.textContent = held
+      ? `${held} researched item${held === 1 ? " is" : "s are"} held because the unread queue is full (${max} cards). They are retried before new headlines on the next research run; nothing was discarded.`
+      : `No research is waiting in the held bucket. The unread research queue holds ${max} cards at most.`;
+    heldBtn.textContent = held ? `Retry held now (${held})` : "Retry held now";
+    heldBtn.disabled = !held;
+    const heldItems = (research.heldItems ?? []).slice(0, 8);
+    heldList.replaceChildren(...heldItems.map((x) =>
+      h("p", "sub", `${x.headline} — ${x.feedLabel || x.feedId || "feed"}, held ${fmt(new Date(x.heldAt).toISOString())}`)));
+  };
+
+  const heldBtn = btn("Retry held now", () => runResearchNow({ heldOnly: true }), "small");
+  const autoEl = h("section", "panel", h("h2", {}, "Automation & approvals"),
+    h("div", "grid", autoPlayBtn, autoResearchBtn), autoNote, autoWarn,
+    h("h3", { style: "margin:12px 0 6px;font-size:.95rem" }, "Research approval mode"),
+    h("label", "f", h("span", {}, "What happens to incoming research"), approvalModeSel),
+    trustedWrap, approvalNote,
+    h("div", { style: "height:8px" }), approvalSaveBtn,
+    h("div", { class: "twitch-box" }, heldNote, heldBtn, heldList));
+
+  // ---------- live poll ----------
+  // Separate answer boxes make the 2-or-3 rule visible before sending. A poll validation error
+  // is shown here, never through the card editor or a card-creation message.
   const pq = h("input", { placeholder: "Leave blank to use the card's question", maxlength: 140 });
-  const po = h("textarea", { rows: 3, placeholder: "One answer per line (2 or 3)" });
+  const p1 = h("input", { placeholder: "Option 1", maxlength: 40 });
+  const p2 = h("input", { placeholder: "Option 2", maxlength: 40 });
+  const p3 = h("input", { placeholder: "Option 3 (optional)", maxlength: 40 });
+  const pollError = h("div", "poll-error");
+  const clearPollError = () => { pollError.classList.remove("show"); pollError.textContent = ""; };
+  const showPollError = (msg) => { pollError.textContent = msg; pollError.classList.add("show"); };
+  for (const el of [pq, p1, p2, p3]) el.addEventListener("input", clearPollError);
+  const startPoll = async () => {
+    const draft = validatePollDraft(pq.value, [p1.value, p2.value, p3.value]);
+    if (draft.error) { showPollError(draft.error); return; }
+    if (busy) return;
+    clearPollError();
+    busy = true; document.body.classList.add("busy");
+    try {
+      // Poll errors stay in the poll panel. They are never routed through the card editor or a
+      // card-creation toast, even when the server refuses a blank question.
+      const j = await api("/api/desk/action", { action: "start-poll", question: draft.question, options: draft.options });
+      state = j.state; offset = j.serverNow - Date.now(); renderLive();
+      pq.value = ""; p1.value = ""; p2.value = ""; p3.value = "";
+      toast("Poll started.");
+    } catch (e) { showPollError(e.message); }
+    finally { busy = false; document.body.classList.remove("busy"); }
+  };
   const pollLive = h("div");
   const pollEl = h("section", "panel", h("h2", {}, "Live poll"),
     h("label", "f", h("span", {}, "Question"), pq),
-    h("label", "f", h("span", {}, "Answers"), po),
-    btn("Start poll", () => act("start-poll", { question: pq.value, options: po.value.split("\n").map((s) => s.trim()).filter(Boolean) }), "go"),
+    h("label", "f", h("span", {}, "Option 1"), p1),
+    h("label", "f", h("span", {}, "Option 2"), p2),
+    h("label", "f", h("span", {}, "Option 3 (optional)"), p3),
+    pollError,
+    btn("Start poll", startPoll, "go"),
     pollLive);
 
-  const fText = h("input", { placeholder: "Search headlines", oninput: () => { filter.text = fText.value.toLowerCase(); renderQueue(); } });
-  const fCat = h("select", { onchange: () => { filter.cat = fCat.value; renderQueue(); } });
+  // ---------- queue filters and bulk approval ----------
+  const fText = h("input", { placeholder: "Search headlines", oninput: () => { filter.text = fText.value.toLowerCase(); clearSelection(); renderQueue(); } });
+  const fCat = h("select", { onchange: () => { filter.cat = fCat.value; clearSelection(); renderQueue(); } });
+  const fDesk = h("select", { onchange: () => { filter.desk = fDesk.value; clearSelection(); renderQueue(); } });
+  const fSource = h("select", { onchange: () => { filter.source = fSource.value; clearSelection(); renderQueue(); } });
   const fStatus = sel(["approved", "pending", "rejected", "all"], "approved");
-  fStatus.onchange = () => { filter.status = fStatus.value; renderQueue(); };
+  fStatus.onchange = () => { filter.status = fStatus.value; clearSelection(); renderQueue(); };
   const queueEl = h("div");
   const editorEl = h("section", "panel");
   editorEl.hidden = true;
   const researchEl = h("div");
-  const researchBtn = btn("Fetch headlines now (Nigeria + US)", async () => {
+  const bulkNote = h("p", "bulk-note");
+  const approveSelectedBtn = btn("Approve selected", () => bulkAction("approved", false), "approve small");
+  const rejectSelectedBtn = btn("Reject selected", () => bulkAction("rejected", false), "reject small");
+  const approveAllBtn = btn("Approve all pending", () => bulkAction("approved", true), "approve small");
+  const rejectFilteredBtn = btn("Reject all filtered", () => bulkAction("rejected", true), "reject small");
+  const selectAllBtn = btn("Select all shown", () => toggleSelectAll(), "small");
+  const clearSelBtn = btn("Clear selection", () => { clearSelection(); renderQueue(); }, "small");
+  const bulkEl = h("div", "bulk",
+    h("div", "row", selectAllBtn, clearSelBtn),
+    h("div", "row", approveSelectedBtn, rejectSelectedBtn),
+    h("div", "row", approveAllBtn, rejectFilteredBtn),
+    bulkNote,
+    h("p", "bulk-note", "Approving adds cards to the on-air queue; with auto-play on they can enter rotation, but approval never changes the card on screen now. On-air cards are protected from bulk rejection."));
+
+  const runResearchNow = async ({ heldOnly = false } = {}) => {
     if (busy) return;
-    busy = true; researchBtn.disabled = true; researchBtn.textContent = "Fetching…";
+    busy = true; document.body.classList.add("busy");
+    researchBtn.disabled = true; heldBtn.disabled = true;
+    const oldText = researchBtn.textContent;
+    researchBtn.textContent = heldOnly ? "Retrying held…" : "Fetching…";
     try {
-      const j = await api("/api/desk/research", {});
-      filter.status = "pending"; fStatus.value = "pending";
+      const j = await api("/api/desk/research", heldOnly ? { heldOnly: true } : {});
+      if (!heldOnly) {
+        filter.status = j.approvalMode === "manual" ? "pending" : "all";
+        fStatus.value = filter.status;
+        clearSelection();
+      }
       await load();
+      const mode = j.approvalMode === "all" ? "all incoming" : j.approvalMode === "trusted" ? "trusted feeds" : "manual";
       researchEl.replaceChildren(h("div", {},
-        h("p", "sub", `${j.added} new cards added as pending. Open one, write your own summary and question, then approve.`),
+        h("p", "sub", heldOnly
+          ? `${j.added} held item${j.added === 1 ? "" : "s"} filed. ${j.heldTotal} still held.`
+          : `${j.added} card${j.added === 1 ? "" : "s"} filed under ${mode} approval (${j.autoApproved} auto-approved). You can review pending cards, write your own summary and question, then approve.`),
         j.dropped ? h("p", "sub", `${j.dropped} auto cards you never wrote on were older than a day and have been dropped.`) : null,
-        j.held ? h("p", "sub", `${j.held} more were ready but were not filed: ${j.pending} pending already fills the queue of ${MAX_PENDING}. Approve or reject some, or they age out after a day.`) : null,
-        j.feeds.map((f) => h("p", "sub", f.ok ? `${f.label}: ${f.found} found, ${f.added} new${f.via && f.via !== "direct" ? ` (via ${f.via})` : ""}` : `${f.label}: failed (${f.error})`))));
-      toast(`${j.added} new pending cards.`);
+        j.held ? h("p", "sub", `${j.held} more were ready but were not filed: the unread queue is full. They are held for the next run, not discarded.`) : null,
+        j.heldOverflow ? h("p", "sub", `${j.heldOverflow} items could not even fit in the held bucket and will be offered again by the feed next run.`) : null,
+        h("p", "sub", `Held bucket: ${j.heldTotal}. Unread research: ${j.pending}/${j.capacity} slots used${j.pendingApproval != null ? `; ${j.pendingApproval} cards still need approval` : ""}.`),
+        j.feeds.map((f) => h("p", "sub", f.ok ? `${f.label}: ${f.found} found, ${f.added} filed${f.held ? `, ${f.held} held` : ""}${f.via && f.via !== "direct" ? ` (via ${f.via})` : ""}` : `${f.label}: failed (${f.error})`))));
+      toast(heldOnly ? `${j.added} held items filed.` : `${j.added} research cards filed.`);
     } catch (e) { toast(e.message, true); }
-    finally { busy = false; researchBtn.disabled = false; researchBtn.textContent = "Fetch headlines now (Nigeria + US)"; }
-  }, "go small");
+    finally {
+      busy = false; document.body.classList.remove("busy");
+      researchBtn.disabled = false; researchBtn.textContent = oldText;
+      drawAutomation();
+    }
+  };
+  const researchBtn = btn("Fetch headlines now (Nigeria + US)", () => runResearchNow(), "go small");
   researchBtn.style.width = "100%";
   const queuePanel = h("section", "panel", h("h2", {}, "Card queue"),
     researchBtn, researchEl, h("div", { style: "height:8px" }),
-    h("div", "row", fText, fCat, fStatus), h("div", { style: "height:8px" }), queueEl,
+    h("div", "row", fText, fStatus),
+    h("div", "row", fDesk, fCat),
+    h("div", "row", fSource),
+    bulkEl, h("div", { style: "height:8px" }), queueEl,
     btn("New card", () => openEditor(null), "small"));
 
   // ---------- Naija to US slang ----------
@@ -377,45 +570,88 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
     h("div", "row", btn("Show now", () => useSlang(true), "go small"), btn("Add to queue", () => useSlang(false), "small")));
 
 
-  // ---------- Twitch chat (read-only) ----------
-  // Runs in this tab: keep it open and the screen awake while live.
-  // Uses Twitch's anonymous read-only chat login, so it can read chat but never post.
-  // The same socket also reads desk commands, which is why this tab has to be open: a Netlify
-  // function answers a request and dies, so nothing server-side can hold a chat connection.
+  // ---------- Twitch: server-side control + read-only chat reader ----------
+  // Desk commands are handled by the EventSub webhook, so the dashboard does not need to be
+  // open and the browser never decides who may move the desk. The socket below is only for
+  // reading chat and tallying poll votes; it cannot execute a desk command.
   const CHAT_KEY = "desk.channel";
-  const CMD_KEY = "desk.commands";
-  const IDS_KEY = "desk.commandIds";
-  const chat = { ws: null, name: "", want: false, retry: 0, count: true, commands: false, allowIds: [], log: [], msgs: [], seen: 0, hidden: 0, voters: new Map(), votePollId: null, syncTimer: null, drawTimer: null };
+  const chat = { ws: null, name: "", want: false, retry: 0, count: true, msgs: [], seen: 0, hidden: 0, voters: new Map(), votePollId: null, syncTimer: null, drawTimer: null };
   let savedChannel = "";
-  let savedIds = "";
-  try {
-    savedChannel = localStorage.getItem(CHAT_KEY) || "";
-    savedIds = localStorage.getItem(IDS_KEY) || "";
-    chat.commands = localStorage.getItem(CMD_KEY) === "1";
-    chat.allowIds = parseAllowIds(savedIds);
-  } catch { /* ignore */ }
+  try { savedChannel = localStorage.getItem(CHAT_KEY) || ""; } catch { /* ignore */ }
   const chInput = h("input", { value: savedChannel || "otolorin_cyber", placeholder: "Twitch channel name" });
   const chStatus = h("p", "sub", "Not connected.");
   const chCount = h("input", { type: "checkbox", checked: true, style: "width:auto;flex:0 0 auto", onchange: () => { chat.count = chCount.checked; } });
-  const chCmd = h("input", {
-    type: "checkbox", checked: chat.commands, style: "width:auto;flex:0 0 auto",
-    onchange: () => { chat.commands = chCmd.checked; try { localStorage.setItem(CMD_KEY, chCmd.checked ? "1" : "0"); } catch { /* ignore */ } },
-  });
-  const chIds = h("textarea", {
-    rows: 2, value: savedIds, placeholder: "Twitch user ids allowed to command, separated by commas or lines",
-    onchange: () => { chat.allowIds = parseAllowIds(chIds.value); try { localStorage.setItem(IDS_KEY, chIds.value); } catch { /* ignore */ } },
-  });
   const chInbox = h("div");
-  const chLog = h("div", "sub");
   const chBtn = btn("Connect to chat", () => (chat.want ? chatStop() : chatStart()), "go");
-  const chatPanel = h("section", "panel", h("h2", {}, "Twitch chat"),
+  const chatPanel = h("section", "panel", h("h2", {}, "Twitch chat reader"),
     h("div", "row", chInput, chBtn), chStatus,
     h("label", { class: "row", style: "margin:8px 0" }, chCount, h("span", {}, "Count 1, 2, 3 or !vote a as poll votes")),
-    h("label", { class: "row", style: "margin:8px 0" }, chCmd, h("span", {}, "Let chat drive the desk (this tab only)")),
-    chIds,
-    h("p", "sub", "Your own account always counts, plus the ids above. Moderators do not. Commands: " + COMMAND_HELP),
-    chLog,
+    h("p", "sub", "Read-only convenience: this tab reads chat and poll votes. Desk commands are handled by the server webhook below, so they keep working when this tab is closed."),
     chInbox);
+
+  const twitchStateEl = h("div");
+  const twitchIds = h("textarea", {
+    rows: 2, placeholder: "Twitch user ids allowed to command, separated by commas or lines",
+    oninput: () => { twitchDirty = true; },
+  });
+  const twitchToggleBtn = btn("Enable server control", async () => {
+    const j = await act("twitch-chat", { value: !twitch.enabled });
+    if (!j) return;
+    await load();
+    toast(j.state.twitchChatEnabled ? "Server chat control enabled." : "Server chat control disabled.");
+  }, "small");
+  const twitchSaveIds = async () => {
+    const j = await act("twitch-allow", { ids: parseAllowIds(twitchIds.value) });
+    if (!j) return;
+    twitchDirty = false;
+    await load();
+    toast("Twitch allowlist saved.");
+  };
+  const copyCallback = () => {
+    const url = twitch.callbackUrl || `${location.origin}/api/twitch/eventsub`;
+    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(url).then(() => toast("Callback URL copied.")).catch(() => prompt("EventSub callback URL:", url));
+    else prompt("EventSub callback URL:", url);
+  };
+  const twitchPanel = h("section", "panel", h("h2", {}, "Twitch server control"),
+    twitchStateEl,
+    h("div", "twitch-box",
+      h("p", "sub", "Commands: " + COMMAND_HELP),
+      h("label", "f", h("span", {}, "Stable user ids allowed to command (broadcaster is always allowed)"), twitchIds),
+      h("div", "row", btn("Save allowed ids", twitchSaveIds, "small"),
+        btn("Copy callback URL", copyCallback, "small"), twitchToggleBtn)),
+    h("div", "twitch-box",
+      h("p", "sub", "Dashboard controls remain the manual fallback. Twitch can only move cards that are already approved."),
+      h("ol", "setup",
+        h("li", {}, "Create a Twitch app in the Twitch developer console and set its OAuth redirect URL to this site."),
+        h("li", {}, "Create a user token with user:read:chat, user:bot and channel:bot for the broadcaster (or a bot account in the channel)."),
+        h("li", {}, "In Netlify, set TWITCH_WEBHOOK_SECRET and TWITCH_BROADCASTER_USER_ID. Optional: TWITCH_ALLOWED_USER_IDS, TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET, TWITCH_EVENTSUB_CALLBACK."),
+        h("li", {}, "Create a channel.chat.message EventSub webhook subscription with the callback URL above and the same secret."),
+        h("li", {}, "Enable server control here. The panel says Ready only after Twitch has completed the webhook challenge and a signed test command from the broadcaster has run."))));
+
+  const drawTwitchServer = () => {
+    const missing = twitch.missing ?? [];
+    const stateClass = twitch.ready ? "ok" : twitch.configured ? "wait" : "bad";
+    const stateText = twitch.ready ? "READY — verified webhook and successful test command"
+      : twitch.verified && twitch.enabled ? "Webhook verified — send desk next from the broadcaster to test"
+      : twitch.verified ? "Webhook verified — server control is off"
+      : twitch.configured && twitch.enabled ? "Configured — waiting for Twitch to verify the callback"
+      : twitch.configured ? "Configured — server control is off"
+      : "Not configured — no command can arrive from Twitch yet";
+    twitchStateEl.replaceChildren(
+      h("p", { class: "statusline" },
+        h("span", { class: "twitch-state " + stateClass }, stateText),
+        h("span", "sub", twitch.verifiedAt ? `Verified ${fmt(twitch.verifiedAt)}` : "No verified webhook yet")),
+      missing.length ? h("p", "sub", "Missing Netlify env: " + missing.join(", ")) : null,
+      h("p", "sub", `Callback: ${twitch.callbackUrl || `${location.origin}/api/twitch/eventsub`}`),
+      h("p", "sub", `Enabled: ${twitch.enabled ? "yes" : "no"} · Allowed ids: ${(twitch.allowedUserIds ?? []).join(", ") || "broadcaster only"}`),
+      twitch.lastEventAt ? h("p", "sub", `Last event: ${fmt(twitch.lastEventAt)}${twitch.lastCommand ? ` · ${twitch.lastCommand}` : ""}`) : null,
+      twitch.lastError ? h("p", { style: "color:#FF9A8D" }, `Last error: ${twitch.lastError}`) : null);
+    twitchToggleBtn.textContent = twitch.enabled ? "Disable server control" : "Enable server control";
+    twitchToggleBtn.classList.toggle("on", Boolean(twitch.enabled));
+    if (!twitchDirty && document.activeElement !== twitchIds) {
+      twitchIds.value = (twitch.allowedUserIds ?? []).join(", ");
+    }
+  };
 
   const OPTION = /^(?:!vote\s+)?([1-3a-c])$/i;
   const optionFor = (text) => {
@@ -458,52 +694,10 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
   };
   const drawSoon = () => { if (!chat.drawTimer) chat.drawTimer = setTimeout(drawInbox, 400); };
 
-  const logChat = (line, bad = false) => {
-    chat.log.push({ t: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), line, bad });
-    if (chat.log.length > 6) chat.log.shift();
-    chLog.replaceChildren(...chat.log.map((l) => h("div", { style: l.bad ? "color:#FF9A8D" : "" }, `${l.t}  ${l.line}`)));
-  };
-
-  // A command can only move what is already approved. Approving, editing, deleting and fetching
-  // stay behind the panel, so a leaked user id gets a remote for the cards you already picked.
-  const CHAT_ACTIONS = { next: "next", prev: "previous", hold: "hold", hide: "hide", stop: "end-poll" };
-  const commandBody = (cmd) =>
-    cmd.verb === "poll" ? { action: "start-poll", question: cmd.question, options: cmd.options }
-      : cmd.verb === "auto" ? { action: "auto-play", value: cmd.value === "on" }
-      : cmd.verb === "desk" ? { action: "desk", desk: cmd.desk }
-      : { action: CHAT_ACTIONS[cmd.verb] };
-  const asText = (cmd) =>
-    cmd.verb === "poll" ? `desk poll ${cmd.question || "(card question)"}`
-      : cmd.verb === "auto" ? `desk auto ${cmd.value}`
-      : cmd.verb === "desk" ? `desk ${cmd.desk}`
-      : `desk ${cmd.verb}`;
-
-  const runCommand = async (name, id, cmd, tags) => {
-    const gate = chatMayCommand(tags, { enabled: true, allowIds: chat.allowIds });
-    if (!gate.ok) return logChat(`${name} (${id}) tried ${asText(cmd)} — ${gate.reason}`, true);
-    if (busy) return logChat(`${asText(cmd)} ignored: the panel was busy`, true);
-    busy = true;
-    document.body.classList.add("busy");
-    try {
-      const j = await api("/api/desk/action", commandBody(cmd));
-      state = j.state;
-      offset = j.serverNow - Date.now();
-      renderLive();
-      logChat(`${name} as ${gate.as}: ${asText(cmd)} → ${j.state.desk ? j.state.desk + " desk" : "all desks"}, ${j.state.visible ? "on air" : "hidden"}`);
-    } catch (e) {
-      logChat(`${name}: ${asText(cmd)} refused — ${e.message}`, true);
-    } finally {
-      busy = false;
-      document.body.classList.remove("busy");
-    }
-  };
-
-  const onChat = (name, id, text, tags) => {
+  const onChat = (name, id, text) => {
     chat.seen++;
-    // Commands are checked before the vote matcher and before the link filter, so a command is
-    // never mistaken for a vote and never counted as a hidden message.
-    const cmd = chat.commands ? parseDeskCommand(text) : null;
-    if (cmd) { runCommand(name, id, cmd, tags); return drawSoon(); }
+    // This reader never runs desk commands. They arrive by the signed EventSub webhook, so a
+    // closed tab cannot disable them and an open tab cannot widen who is allowed to send them.
     const opt = chat.count && state?.poll?.active ? optionFor(text) : null;
     if (opt) {
       if (chat.votePollId !== state.poll.id) { chat.voters.clear(); chat.votePollId = state.poll.id; }
@@ -581,7 +775,7 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
   drawInbox();
 
   const colLeft = h("div", "col-left", statusEl, previewPanel, controlsEl, cridPanel);
-  const colRight = h("div", "col-right", autoEl, pollEl, chatPanel, slangPanel, queuePanel, editorEl);
+  const colRight = h("div", "col-right", autoEl, pollEl, twitchPanel, chatPanel, slangPanel, queuePanel, editorEl);
   root.append(colLeft, colRight);
 
   // ---------- login ----------
@@ -606,6 +800,15 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
   const activeCard = () => cards.find((c) => c.id === state?.activeCardId) || null;
 
   const cdEl = h("span", "sub");
+  const countsEl = h("div", "counts");
+  const drawCounts = () => {
+    const n = (v) => Number(v) || 0;
+    countsEl.replaceChildren(
+      h("div", "count", h("strong", {}, n(counts.pending)), h("span", {}, "pending approval")),
+      h("div", "count", h("strong", {}, n(counts.approved)), h("span", {}, "approved in queue")),
+      h("div", "count warn", h("strong", {}, n(counts.held)), h("span", {}, "held · queue full")),
+      h("div", "count live", h("strong", {}, n(counts.onAir)), h("span", {}, "on air now")));
+  };
   const renderCountdown = () => {
     if (!state?.visible) return (cdEl.textContent = "");
     if (state.hold) return (cdEl.textContent = "Holding: it will stay until you hide it.");
@@ -638,27 +841,14 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
       h("div", "now", what),
       h("div", "sub", `Mode: ${state.mode === "x-following" ? "X feed" : "Cards"}` +
         `${state.showSource ? ", source shown" : ""}${desk ? `, ${desk.label} desk` : ""}`),
-      cdEl);
+      cdEl, countsEl);
     renderCountdown();
+    drawCounts();
     holdBtn.textContent = state.hold ? "Release hold" : "Hold card"; holdBtn.classList.toggle("on", state.hold);
     srcBtn.textContent = state.showSource ? "Hide source" : "Show source"; srcBtn.classList.toggle("on", state.showSource);
     modeBtn.textContent = state.mode === "x-following" ? "Back to cards" : "X feed"; modeBtn.classList.toggle("on", state.mode === "x-following");
 
-    autoPlayBtn.textContent = state.autoPlay ? "Auto-play: on" : "Auto-play: off";
-    autoPlayBtn.classList.toggle("on", !!state.autoPlay);
-    autoResearchBtn.textContent = state.autoResearch ? "Auto research: on" : "Auto research: off";
-    autoResearchBtn.classList.toggle("on", !!state.autoResearch);
-    const approved = desk ? desk.count : cards.filter((c) => c.approval === "approved").length;
-    const inDesk = desk ? ` on the ${desk.label} desk` : " in the queue";
-    autoNote.textContent =
-      (state.autoPlay
-        ? `On air: cards move on by themselves when their seconds run out (${approved} approved${inDesk}). Hold or Hide stops it.`
-        : "On air: nothing moves unless you tap it.") +
-      " " +
-      (state.autoResearch
-        ? `Research: new headlines and trends arrive about every ${AUTO_MIN} min as pending, never on air. Anything you have not written on is dropped after a day, and the queue holds ${MAX_PENDING} at most.`
-        : `Research: manual only. The scheduled job stays idle while this is off.`);
-
+    drawAutomation();
     renderQueue(); // refreshes the on-stream highlight
     pollLive.replaceChildren();
     const p = state.poll;
@@ -686,24 +876,96 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
     act("show", { cardId: list[(i + 1) % list.length].id });
   };
 
-  const renderQueue = () => {
-    const cats = [...new Set(cards.map((c) => c.category).filter(Boolean))].sort();
-    const keep = filter.cat;
-    fCat.replaceChildren(h("option", { value: "" }, "All categories"), ...cats.map((c) => h("option", { value: c }, c)));
-    fCat.value = cats.includes(keep) ? keep : "";
-    filter.cat = fCat.value;
+  function clearSelection() { selected.clear(); }
 
-    const list = cards.filter((c) =>
-      (filter.status === "all" || c.approval === filter.status) &&
-      (!filter.cat || c.category === filter.cat) &&
-      (!filter.text || (c.headline + " " + c.summary + " " + c.category).toLowerCase().includes(filter.text)));
+  // Mirrors the server's matchesQueueFilter. deskIds are derived by the server from the same
+  // matchesDesk rule that bulk-approval uses, so the preview and the action cannot disagree.
+  const matchesBulkFilter = (c, status = filter.status) => {
+    if (status !== "all" && c.approval !== status) return false;
+    if (filter.desk && !(c.deskIds ?? []).includes(filter.desk)) return false;
+    if (filter.cat && c.category !== filter.cat) return false;
+    if (filter.source && (c.source?.publisher ?? "") !== filter.source) return false;
+    if (filter.text && !`${c.headline ?? ""} ${c.summary ?? ""} ${c.category ?? ""} ${c.source?.publisher ?? ""}`.toLowerCase().includes(filter.text)) return false;
+    return true;
+  };
+
+  const queueList = () => {
+    const list = cards.filter((c) => matchesBulkFilter(c, filter.status));
     // Approved cards are shown in the order the server plays them, so what auto-play will
     // do next is readable off the queue. Anything else is newest-first.
-    let nextId = null;
-    if (filter.status === "approved") {
-      list.sort((a, b) => (a.order ?? a.createdAt) - (b.order ?? b.createdAt));
-      nextId = autoNextId(list);
-    } else list.sort((a, b) => b.createdAt - a.createdAt);
+    if (filter.status === "approved") list.sort((a, b) => (a.order ?? a.createdAt) - (b.order ?? b.createdAt));
+    else list.sort((a, b) => b.createdAt - a.createdAt);
+    return list;
+  };
+
+  const serverFilter = (status = filter.status) => ({
+    status,
+    desk: filter.desk || undefined,
+    category: filter.cat || undefined,
+    source: filter.source || undefined,
+    query: filter.text || undefined,
+  });
+
+  const updateBulkBar = (visible = queueList()) => {
+    for (const id of [...selected]) if (!cards.some((c) => c.id === id)) selected.delete(id);
+    const picked = cards.filter((c) => selected.has(c.id)).length;
+    const pending = cards.filter((c) => matchesBulkFilter(c, "pending")).length;
+    approveSelectedBtn.textContent = `Approve selected (${picked})`;
+    rejectSelectedBtn.textContent = `Reject selected (${picked})`;
+    approveAllBtn.textContent = `Approve all pending (${pending})`;
+    approveAllBtn.disabled = pending === 0;
+    rejectFilteredBtn.textContent = `Reject all filtered (${visible.length})`;
+    selectAllBtn.textContent = visible.length && visible.every((c) => selected.has(c.id)) ? "Unselect all shown" : "Select all shown";
+    bulkNote.textContent = `${picked} selected of ${visible.length} shown. ${pending} pending match the desk, category and source filters.`;
+  };
+
+  const toggleSelectAll = () => {
+    const visible = queueList();
+    if (!visible.length) return toast("Nothing is shown to select.", true);
+    const all = visible.every((c) => selected.has(c.id));
+    for (const c of visible) { if (all) selected.delete(c.id); else selected.add(c.id); }
+    renderQueue();
+  };
+
+  const bulkAction = async (approval, all) => {
+    if (!all && !selected.size) return toast("Select at least one card first.", true);
+    if (all && approval === "rejected" && !confirm("Reject every card matching the current filters? Cards on air are skipped. This cannot be undone in one step.")) return;
+    const body = { action: "bulk-approval", approval };
+    if (all) { body.all = true; body.filter = serverFilter(approval === "approved" ? "pending" : filter.status); }
+    else body.ids = [...selected];
+    const j = await act("bulk-approval", body);
+    if (!j) return;
+    const b = j.bulk ?? {};
+    const skipped = b.skipped ?? [];
+    const verb = approval === "approved" ? "approved" : "rejected";
+    toast(`${b.updated ?? 0} card${b.updated === 1 ? "" : "s"} ${verb}.` +
+      (skipped.length ? ` ${skipped.length} skipped: ${skipped[0].reason}.` : ""));
+    selected.clear();
+    await load();
+  };
+
+  const renderQueue = () => {
+    const cats = [...new Set(cards.map((c) => c.category).filter(Boolean))].sort();
+    const keepCat = filter.cat;
+    fCat.replaceChildren(h("option", { value: "" }, "All categories"), ...cats.map((c) => h("option", { value: c }, c)));
+    fCat.value = cats.includes(keepCat) ? keepCat : "";
+    filter.cat = fCat.value;
+
+    const keepDesk = filter.desk;
+    fDesk.replaceChildren(h("option", { value: "" }, "All topic desks"),
+      ...desks.map((d) => h("option", { value: d.id }, `${d.label} (${d.count})`)));
+    fDesk.value = desks.some((d) => d.id === keepDesk) ? keepDesk : "";
+    filter.desk = fDesk.value;
+
+    const sources = [...new Set(cards.map((c) => c.source?.publisher).filter(Boolean))].sort();
+    const keepSource = filter.source;
+    fSource.replaceChildren(h("option", { value: "" }, "All sources"), ...sources.map((s) => h("option", { value: s }, s)));
+    fSource.value = sources.includes(keepSource) ? keepSource : "";
+    filter.source = fSource.value;
+
+    const list = queueList();
+    const nextId = filter.status === "approved" ? autoNextId(list) : null;
+    updateBulkBar(list);
     queueEl.replaceChildren(...(list.length ? list.map((c) => renderItem(c, c.id === nextId)) : [h("p", "sub", "No cards match. Change the filters or add a card.")]));
   };
 
@@ -719,8 +981,16 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
     const open = expanded === c.id;
     const show = btn("Show on stream", () => act("show", { cardId: c.id }), "go small");
     show.disabled = c.approval !== "approved";
+    const tick = h("input", {
+      type: "checkbox", class: "selectbox", checked: selected.has(c.id),
+      "aria-label": "Select " + c.headline,
+      onchange: () => {
+        if (tick.checked) selected.add(c.id); else selected.delete(c.id);
+        updateBulkBar();
+      },
+    });
     const el = h("div", "item" + (onAir ? " onair" : ""),
-      h("h3", {}, c.headline),
+      h("div", "item-head", tick, h("h3", {}, c.headline)),
       h("div", "chips",
         h("span", "chip", c.type), c.category && h("span", "chip", c.category),
         c.type === "news-drop" && h("span", "chip " + (c.confidence === "confirmed" ? "ok" : c.confidence === "disputed" || c.confidence === "unverified" ? "warn" : ""), c.confidence),

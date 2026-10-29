@@ -1,2 +1,10 @@
 # Local Netlify folder
 .netlify
+
+# Locally generated function bundles and manifests
+netlify/functions/*.zip
+netlify/functions/manifest.json
+
+# Installed dependencies and local tool config
+node_modules/
+mcp.json

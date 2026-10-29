@@ -11,12 +11,16 @@
 //   GET  /api/desk/cards       operator full queue incl. presenter notes
 //   POST /api/desk/cards       operator create or update one card
 //   POST /api/desk/action      operator show | next | previous | hide | hold | source | mode |
-//                              desk | poll actions | auto-play | auto-research
-//   POST /api/desk/research    operator fetch Nigerian + US headlines and trends into PENDING cards
+//                              desk | poll actions | auto-play | auto-research | bulk-approval |
+//                              research-approval | twitch-chat | twitch-allow
+//   POST /api/desk/research    operator fetch headlines/trends, or held items with heldOnly
+//   GET  /api/desk/twitch      operator-only Twitch EventSub configuration status
 //
 // Env: DESK_OPERATOR_TOKEN (required). Storage: Netlify Blobs, strong consistency.
 // Optional for research: DESK_FEED_PROXY (a scraping API, your own worker or an RSS-Bridge
 // instance, see proxyFor in the core), DESK_FEED_TIMEOUT_MS and DESK_FEED_BUDGET_MS.
+// Twitch webhook secrets live in Netlify environment variables, never in this file; see
+// TWITCH_SETUP.md and netlify/functions/twitch-eventsub.mjs.
 // Single operator assumed: concurrent writes are last-write-wins, except the auto-play
 // advance, which re-checks the version it read so a race cannot skip a card.
 
@@ -24,16 +28,22 @@ import { getStore } from "@netlify/blobs";
 import { timingSafeEqual } from "node:crypto";
 import {
   DESKS,
+  FEEDS,
   HttpError,
+  RESEARCH_MAX_PENDING,
   STORE_NAME,
+  matchesDesk,
   publicState,
+  queueCounts,
   queueOf,
   readCards,
+  readHeldResearch,
   readState,
   runAction,
   runResearch,
   upsertCard,
 } from "./_desk-core.mjs";
+import { twitchStatus } from "./_twitch-core.mjs";
 
 export const config = { path: ["/api/desk/*", "/desk", "/control"] };
 
@@ -80,19 +90,36 @@ export default async (req) => {
     const s = store();
     if (req.method === "GET" && route === "/api/desk/cards") {
       const cs = await readCards(s);
+      const state = await readState(s);
+      const held = await readHeldResearch(s);
       return json({
-        cards: cs,
-        state: await readState(s),
-        // Each desk reports how many approved cards it currently holds, so the panel can show an
-        // empty one instead of letting you discover it by pressing a button.
+        // deskIds are derived per card for the controller's preview. They are never stored;
+        // bulk-approval re-derives the same matchesDesk rule on the server for the action.
+        cards: cs.map((c) => ({ ...c, deskIds: DESKS.filter((d) => matchesDesk(c, d.id)).map((d) => d.id) })),
+        state,
+        counts: queueCounts(cs, state, held.length),
         desks: DESKS.map((d) => ({ id: d.id, label: d.label, count: queueOf(cs, d.id).length })),
+        feeds: FEEDS.map((f) => ({ id: f.id, label: f.label, category: f.category })),
+        research: {
+          approvalMode: state.researchApprovalMode,
+          trustedFeedIds: state.trustedFeedIds,
+          maxPending: RESEARCH_MAX_PENDING,
+          held: held.length,
+          heldItems: held.slice(0, 20).map((h) => ({
+            headline: h.headline, feedId: h.feedId, feedLabel: h.feedLabel, heldAt: h.heldAt,
+          })),
+        },
+        twitch: await twitchStatus(s, state, { origin: url.origin }),
         serverNow: Date.now(),
       });
     }
+    if (req.method === "GET" && route === "/api/desk/twitch") {
+      return json(await twitchStatus(s, await readState(s), { origin: url.origin }));
+    }
     if (req.method === "POST" && route === "/api/desk/cards") return json({ card: await upsertCard(s, await readBody(req)) });
     if (req.method === "POST" && route === "/api/desk/action") {
-      const { state, queueLength } = await runAction(s, await readBody(req));
-      return json({ ok: true, state, queueLength, serverNow: Date.now() });
+      const result = await runAction(s, await readBody(req));
+      return json({ ok: true, ...result, serverNow: Date.now() });
     }
     if (req.method === "POST" && route === "/api/desk/research") return json(await runResearch(s, await readBody(req)));
     throw new HttpError(404, "Not found.");

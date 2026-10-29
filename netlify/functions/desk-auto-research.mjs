@@ -1,7 +1,8 @@
 // CYBER LIVE DESK — scheduled auto-research.
 // Runs on its own clock, does one thing, and only when the operator switched
-// "Auto research" on in the controller. Cards land as PENDING, exactly like the
-// manual button; nothing here can approve or show anything.
+// "Auto research" on in the controller. It calls the same runResearch as the manual
+// button, so the persisted approval mode (manual, trusted feeds, or all incoming) is
+// honoured identically. It never shows a card and never changes the on-air card.
 //
 // Netlify rules this file obeys (checked against the docs on 2026-10-29):
 //   - a function with `config.schedule` never accepts web requests, so there is no
@@ -32,8 +33,10 @@ export default async (req) => {
   try {
     const result = await runResearch(store);
     console.log(
-      `auto research: ${result.added} new pending, ${result.dropped} stale dropped, ${result.held} held back (queue capped), ` +
-        `${result.pending} waiting out of ${result.cards} cards; ${result.feeds.filter((f) => !f.ok).length} feed(s) failed`
+      `auto research: ${result.added} new (${result.autoApproved} auto-approved, mode ${result.approvalMode}), ` +
+        `${result.dropped} stale dropped, ${result.held} newly held / ${result.heldTotal} waiting in the held bucket, ` +
+        `${result.pending} unread research cards out of ${result.cards} cards; ` +
+        `${result.feeds.filter((f) => !f.ok).length} feed(s) failed`
     );
     return Response.json({ ok: true, ...result });
   } catch (err) {

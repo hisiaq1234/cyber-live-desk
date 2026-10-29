@@ -122,8 +122,8 @@ import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.
 
   // ---------- layout ----------
   const CSS = `
-*{{box-sizing:border-box}}[hidden]{{display:none!important}}html{{overflow-y:auto}}body{{margin:0;background:#0B1220;color:#E8EEF7;font:16px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow-y:auto;min-height:100dvh}}
-#app{{max-width:1200px;margin:0 auto;padding:12px 12px 90px;display:grid;gap:12px}}
+*{box-sizing:border-box}[hidden]{display:none!important}html{overflow-y:auto}body{margin:0;background:#0B1220;color:#E8EEF7;font:16px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow-y:auto;min-height:100dvh}
+#app{max-width:1200px;margin:0 auto;padding:12px 12px 90px;display:grid;gap:12px}
 @media (min-width: 960px){
   #app{grid-template-columns: 460px 1fr; align-items: start;}
   .col-left{display:grid;gap:12px;position:sticky;top:12px;}

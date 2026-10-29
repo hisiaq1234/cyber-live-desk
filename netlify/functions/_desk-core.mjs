@@ -315,11 +315,27 @@ export async function upsertCard(store, b, now = Date.now()) {
   const ttl = b.ttlSec ?? old?.ttlSec ?? null;
   if (ttl !== null && !(Number.isFinite(ttl) && ttl >= 5 && ttl <= 300)) throw new HttpError(422, "ttlSec must be 5 to 300.");
 
+  // ---------- witty rewrite (opt-in) ----------
+  // When the operator sends witty: true on a news-drop, the headline is remade into a punchy,
+  // on-air line that grasps the story's meaning instead of copying the feed verbatim. No external
+  // API is needed — it runs on vibe templates so it works offline and in tests. The original
+  // headline is preserved in presenterNotes so nothing is lost.
+  let headline = b.headline ?? old?.headline ?? "";
+  if (b.witty === true && type === "news-drop" && headline) {
+    const rewrite = wittyRewrite(headline, b.summary ?? old?.summary ?? "");
+    if (rewrite) {
+      b.presenterNotes = (old?.presenterNotes || "") +
+        (old?.presenterNotes ? "\n" : "") +
+        `Original headline: ${headline}`;
+      headline = rewrite;
+    }
+  }
+
   const card = {
     id: old?.id ?? cryptoRandomId(),
     type,
     category: text(b.category ?? old?.category, LIMITS.category, "category"),
-    headline: text(b.headline ?? old?.headline, LIMITS.headline, "headline", { required: true }),
+    headline: text(headline, LIMITS.headline, "headline", { required: true }),
     summary: text(b.summary ?? old?.summary, LIMITS.summary, "summary"),
     question: text(b.question ?? old?.question, LIMITS.question, "question"),
     confidence,
@@ -344,6 +360,36 @@ export async function upsertCard(store, b, now = Date.now()) {
   if (state.activeCardId === card.id) await commitState(store, state, {}, now);
   return card;
 }
+
+// ---------- witty rewrite helpers ----------
+
+// Punchy on-air lines that grasp a story's meaning, no external API required.
+// Each matcher looks at the headline + summary and returns a witty remaking, or null.
+const WITTY = [
+  { k: /protest|demonstration|rally|march/i, t: "The streets made their point. Now someone has to read it." },
+  { k: /price|fuel|cost|inflation|naira|dollar|exchange rate/i, t: "Your wallet just got a headline. It's not a happy one." },
+  { k: /president|senate|governor|minister|bill|law|policy/i, t: "Politics did a thing. We're all living inside it now." },
+  { k: /music|album|artist|song|concert|tour/i, t: "The beat drops. Whether it lands is up to the strangers." },
+  { k: /movie|film|cinema|box office|nollywood/i, t: "Drama on screen. The real drama is whether you'll watch." },
+  { k: /football|soccer|match|league|cup|goal/i, t: "Someone scored. Someone else is arguing about it." },
+  { k: /scandal|arrest|corruption|fraud|bribe|EFCC|police/i, t: "The story writes itself. The punchline hasn't arrived yet." },
+  { k: /tech|app|AI|startup|internet|online/i, t: "The future just updated. Reboot your take." },
+  { k: /health|hospital|disease|virus|outbreak|vaccine/i, t: "Your feed just got a wellness check. It failed." },
+  { k: /weather|rain|flood|heat|storm|climate/i, t: "The sky had an opinion today. You got dressed for it anyway." },
+  { k: /food|eat|restaurant|cook|recipe/i, t: "Someone's hungry. The headline is just the appetizer." },
+  { k: /traffic|road|bridge|transport|commute/i, t: "Going nowhere, slowly. That's the whole story." },
+  { k: /election|vote|voter|campaign/i, t: "The people spoke. The headline is still deciding what they said." },
+];
+const wittyRewrite = (headline, summary) => {
+  const text = (headline + " " + (summary || "")).toLowerCase();
+  for (const { k, t } of WITTY) {
+    if (k.test(text)) return t;
+  }
+  // Fallback: punchy generic when nothing matched but the operator still asked for witty.
+  const words = headline.split(/\s+/).filter(Boolean);
+  if (words.length > 6) return words.slice(0, 6).join(" ") + "… and that's the tea.";
+  return null;
+};
 
 // node:crypto is reachable in the runtime, but globalThis.crypto keeps this file
 // importable by tests running under plain node.

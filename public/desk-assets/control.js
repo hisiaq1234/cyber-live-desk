@@ -1043,6 +1043,7 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
       publishedAt: h("input", { type: "datetime-local", value: toLocalInput(s.publishedAt) }),
       eventDate: h("input", { type: "date", value: (c.eventDate || "").slice(0, 10) }),
       ttlSec: h("input", { type: "number", min: 5, max: 300, value: c.ttlSec ?? "", placeholder: "45" }),
+      witty: h("input", { type: "checkbox", style: "width:auto;flex:0 0 auto", checked: c.witty === true }),
     };
     const L = (label, el) => h("label", "f", h("span", {}, label), el);
     editorEl.append(h("h2", {}, c.id ? "Edit card" : "New card"),
@@ -1050,6 +1051,7 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
       L("Question for the audience", f.question), L("Confidence (news cards)", f.confidence), L("Approval", f.approval),
       L("Publisher", f.publisher), L("Source URL", f.url), L("Published (local time)", f.publishedAt),
       L("Event date", f.eventDate), L("Seconds on screen (5 to 300)", f.ttlSec),
+      L("Witty on-air rewrite", f.witty),
       h("div", "row",
         btn("Save card", async () => {
           const ok = await saveCard({
@@ -1057,6 +1059,7 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
             summary: f.summary.value, question: f.question.value, confidence: f.confidence.value, approval: f.approval.value,
             source: { publisher: f.publisher.value, url: f.url.value.trim() || null, publishedAt: f.publishedAt.value ? new Date(f.publishedAt.value).toISOString() : "" },
             eventDate: f.eventDate.value, ttlSec: f.ttlSec.value ? Number(f.ttlSec.value) : null,
+            witty: f.witty.checked === true,
           });
           if (ok) { editing = null; renderEditor(); }
         }, "go"),

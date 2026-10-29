@@ -1,0 +1,830 @@
+// Run with: node --test
+// The core takes its store as an argument, so these run under plain node with no
+// dependencies. Feed fixtures under tests/fixtures/ are trimmed real responses captured
+// from the live feeds on 2026-10-28, including a blocked site's 403 page.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+import {
+  DEFAULT_STATE,
+  DESKS,
+  FEEDS,
+  HttpError,
+  LIMITS,
+  PER_FEED,
+  RESEARCH_KEEP_MS,
+  RESEARCH_MAX_PENDING,
+  advanceIfExpired,
+  autoAdvancePlan,
+  candidates,
+  commitState,
+  matchesDesk,
+  nextAfter,
+  pruneAutoArrivals,
+  proxyFor,
+  publicState,
+  queueOf,
+  readCards,
+  readState,
+  resolveDesk,
+  runAction,
+  runResearch,
+  untouchedAuto,
+  upsertCard,
+} from "../netlify/functions/_desk-core.mjs";
+
+// Captured feeds publish on 2026-10-28; the 3-day freshness window needs a matching clock.
+const NOW = Date.parse("2026-10-28T23:00:00Z");
+
+const makeStore = (initial = {}) => {
+  const m = new Map(Object.entries(initial));
+  return {
+    async get(key, opts) {
+      const v = m.get(key);
+      if (v == null) return null;
+      return opts?.type === "json" ? JSON.parse(v) : v;
+    },
+    async setJSON(key, value) {
+      m.set(key, JSON.stringify(value));
+    },
+    dump: () => Object.fromEntries(m),
+  };
+};
+
+const card = (over = {}) => ({
+  id: "c1",
+  type: "news-drop",
+  headline: "First",
+  approval: "approved",
+  createdAt: 1,
+  order: null,
+  ttlSec: null,
+  source: { publisher: "P", url: "https://e.com/1" },
+  ...over,
+});
+
+const feed = (id) => FEEDS.find((f) => f.id === id);
+const fixture = (name) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8");
+const fakeFetch = (bodies) => async (url) => {
+  const hit = Object.entries(bodies).find(([k]) => url.startsWith(k));
+  if (!hit) return { ok: false, status: 404, async text() { return ""; } };
+  const body = hit[1];
+  if (body instanceof Error) throw body;
+  if (typeof body === "object") return { ok: false, status: body.status, async text() { return body.body ?? ""; } };
+  return { ok: true, status: 200, async text() { return body; } };
+};
+
+// ---------- state that was already deployed ----------
+
+test("a state blob from before the auto flags still reads with them off", async () => {
+  // This is literally what is in production now: version 16, no autoPlay, no autoResearch.
+  const store = makeStore({ state: JSON.stringify({ version: 16, updatedAt: 1, mode: "cards", visible: true, activeCardId: "x" }) });
+  const state = await readState(store);
+  assert.equal(state.autoPlay, false);
+  assert.equal(state.autoResearch, false);
+  assert.equal(state.version, 16);
+  assert.equal(state.poll, null);
+});
+
+// ---------- auto-play rules ----------
+
+test("auto-play only moves a visible, unheld, expired card in cards mode", () => {
+  const q = [card({ id: "a" }), card({ id: "b" })];
+  const base = { ...DEFAULT_STATE, mode: "cards", visible: true, activeCardId: "a", expiresAt: NOW - 1, autoPlay: true };
+  assert.ok(autoAdvancePlan(base, q, NOW));
+  assert.equal(autoAdvancePlan({ ...base, autoPlay: false }, q, NOW), null, "manual mode must not move");
+  assert.equal(autoAdvancePlan({ ...base, hold: true }, q, NOW), null, "hold wins over auto-play");
+  assert.equal(autoAdvancePlan({ ...base, expiresAt: NOW + 5000 }, q, NOW), null, "not expired yet");
+  assert.equal(autoAdvancePlan({ ...base, mode: "x-following" }, q, NOW), null, "X feed is not ours to advance");
+  assert.equal(autoAdvancePlan({ ...base, poll: { active: true } }, q, NOW), null, "an open poll is the operator's");
+  assert.equal(autoAdvancePlan(base, [], NOW), null, "nothing approved, nothing to show");
+});
+
+test("auto-play finishes a closed poll and moves to the approved card after it", () => {
+  const q = [card({ id: "a" }), card({ id: "b" })];
+  const s = { ...DEFAULT_STATE, visible: true, activeCardId: "a", expiresAt: NOW - 1, autoPlay: true, poll: { active: false, question: "q" } };
+  const plan = autoAdvancePlan(s, q, NOW);
+  assert.equal(plan.activeCardId, "b");
+  assert.equal(plan.poll, null, "a stale result screen must not stay on air");
+});
+
+test("auto-play wraps and reuses the same card when the queue holds one", () => {
+  const one = [card({ id: "a" })];
+  assert.equal(nextAfter(one, "a").id, "a");
+  assert.equal(nextAfter([card({ id: "a" }), card({ id: "b" })], "b").id, "a", "wraps past the end");
+  assert.equal(nextAfter([card({ id: "a" })], "gone").id, "a", "unknown id starts at the top");
+  assert.equal(nextAfter([], "a"), null);
+});
+
+test("auto-play uses the ttl of the card it moves TO, not the one leaving", () => {
+  const q = [card({ id: "a", ttlSec: 90 }), card({ id: "b", ttlSec: null })];
+  const s = { ...DEFAULT_STATE, visible: true, activeCardId: "a", expiresAt: NOW - 1, autoPlay: true };
+  const toB = autoAdvancePlan(s, q, NOW);
+  assert.equal(toB.activeCardId, "b");
+  assert.equal(toB.expiresAt, NOW + 45_000, "b has no ttl of its own, so the default applies");
+  const toA = autoAdvancePlan({ ...s, activeCardId: "b" }, q, NOW);
+  assert.equal(toA.activeCardId, "a");
+  assert.equal(toA.expiresAt, NOW + 90_000, "a sets itself to 90s");
+});
+
+test("the queue the operator sees is the queue auto-play walks", () => {
+  const cards = [card({ id: "late", createdAt: 5 }), card({ id: "first", createdAt: 9, order: 1 }), card({ id: "draft", approval: "pending", createdAt: 1 })];
+  assert.deepEqual(queueOf(cards).map((c) => c.id), ["first", "late"]);
+  const s = { ...DEFAULT_STATE, visible: true, activeCardId: "first", expiresAt: NOW - 1, autoPlay: true };
+  assert.equal(autoAdvancePlan(s, queueOf(cards), NOW).activeCardId, "late");
+});
+
+// ---------- concurrency ----------
+
+test("two overlapping advances move one card, not two", async () => {
+  const store = makeStore({ cards: JSON.stringify([card({ id: "a" }), card({ id: "b" }), card({ id: "c" })]) });
+  const seeded = await commitState(store, DEFAULT_STATE, { visible: true, mode: "cards", activeCardId: "a", expiresAt: NOW - 1, autoPlay: true });
+  const twoReaders = await Promise.all([advanceIfExpired(store, seeded, NOW), advanceIfExpired(store, seeded, NOW)]);
+  const final = await readState(store);
+  assert.equal(sameVersion(twoReaders.map((r) => r?.version ?? final.version)), 1, "the second reader must not advance again");
+  assert.notEqual(final.activeCardId, "a");
+  assert.equal(final.activeCardId, "b", "one advance, no card skipped");
+  assert.equal(final.version, seeded.version + 1);
+});
+
+const sameVersion = (list) => new Set(list).size;
+
+test("auto-advance is a no-op for a state that is not expired", async () => {
+  const store = makeStore({ cards: JSON.stringify([card({ id: "a" }), card({ id: "b" })]) });
+  const s = await commitState(store, DEFAULT_STATE, { visible: true, activeCardId: "a", expiresAt: NOW + 10_000, autoPlay: true });
+  assert.equal(await advanceIfExpired(store, s, NOW), null);
+});
+
+// ---------- the public feed ----------
+
+test("the overlay's poll gets 204 until the version moves, and no private fields when it does", async () => {
+  const cards = [card({ id: "a", presenterNotes: "ask the minister first", source: { publisher: "P", url: "https://secret.example/leak" } })];
+  const store = makeStore({ cards: JSON.stringify(cards) });
+  const s = await commitState(store, DEFAULT_STATE, { visible: true, activeCardId: "a", expiresAt: NOW + 30_000 });
+  assert.equal((await publicState(store, String(s.version), NOW)).status, 204);
+
+  const res = await publicState(store, String(s.version - 1), NOW);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.card.headline, "First");
+  const wire = JSON.stringify(res.body);
+  assert.ok(!wire.includes("ask the minister"), "presenter notes must never reach a viewer");
+  assert.ok(!wire.includes("secret.example"), "source URLs must never reach a viewer");
+  assert.ok(!wire.includes("activeCardId"), "the internal id stays out of the public state");
+  assert.ok(!wire.includes("autoResearch"), "the operator's automation settings stay private");
+  assert.equal(res.body.autoPlay, false, "autoPlay is public because the overlay needs it");
+});
+
+test("an unapproved card cannot be served even if the state points at it", async () => {
+  const store = makeStore({
+    cards: JSON.stringify([card({ id: "a", approval: "pending" })]),
+    state: JSON.stringify({ ...DEFAULT_STATE, visible: true, activeCardId: "a", expiresAt: NOW + 30_000, version: 3 }),
+  });
+  const res = await publicState(store, null, NOW);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.card, null);
+});
+
+test("auto-play advances at the moment the overlay reads, so nothing moves when nobody watches", async () => {
+  const store = makeStore({ cards: JSON.stringify([card({ id: "a", headline: "A" }), card({ id: "b", headline: "B" })]) });
+  const s = await commitState(store, DEFAULT_STATE, { visible: true, activeCardId: "a", expiresAt: NOW - 1, autoPlay: true });
+  const first = await publicState(store, null, NOW);
+  assert.equal(first.body.card.headline, "B", "the expired card was replaced on read");
+  assert.ok(first.body.expiresAt > NOW, "the new card got a fresh clock");
+  const again = await publicState(store, null, NOW + 1000);
+  assert.equal(again.body.card.headline, "B", "reading twice inside the ttl does not skip a card");
+  assert.equal((await readState(store)).activeCardId, "b");
+});
+
+test("auto-play stays out of the way when it is off", async () => {
+  const store = makeStore({ cards: JSON.stringify([card({ id: "a" }), card({ id: "b" })]) });
+  const s = await commitState(store, DEFAULT_STATE, { visible: true, activeCardId: "a", expiresAt: NOW - 1, autoPlay: false });
+  const res = await publicState(store, null, NOW);
+  assert.equal(res.body.version, s.version, "the version must not move on its own");
+  assert.ok(res.body.card && res.body.expiresAt < NOW, "an expired card is still projected; the overlay is what blanks it in manual mode");
+});
+
+// ---------- operator switches ----------
+
+test("the two switches toggle, and turning auto-play on mid-expiry restarts the clock", async () => {
+  const store = makeStore({ cards: JSON.stringify([card({ id: "a" })]) });
+  const a1 = await runAction(store, { action: "auto-play" }, NOW);
+  assert.equal(a1.state.autoPlay, true);
+  const a2 = await runAction(store, { action: "auto-research" }, NOW);
+  assert.equal(a2.state.autoResearch, true);
+  assert.equal(a2.state.autoPlay, true, "one switch must not disturb the other");
+  assert.equal((await runAction(store, { action: "auto-research", value: false }, NOW)).state.autoResearch, false, "explicit value beats toggle");
+
+  const expired = await commitState(store, a2.state, { visible: true, activeCardId: "a", expiresAt: NOW - 1 });
+  const on = await runAction(store, { action: "auto-play", value: true }, NOW);
+  assert.equal(on.state.version, expired.version + 1);
+  assert.ok(on.state.expiresAt > NOW, "so the operator does not lose the card the instant they flip it");
+});
+
+test("auto-play on does not touch hold, hide, or the manual show path", async () => {
+  const store = makeStore({ cards: JSON.stringify([card({ id: "a" }), card({ id: "b" })]) });
+  await commitState(store, DEFAULT_STATE, { visible: true, activeCardId: "a", autoPlay: true });
+  const held = await runAction(store, { action: "show", cardId: "b" }, NOW);
+  assert.equal(held.state.activeCardId, "b");
+  assert.ok(held.state.expiresAt > NOW);
+  const hid = await runAction(store, { action: "hide" }, NOW);
+  assert.equal(hid.state.visible, false);
+  assert.equal(hid.state.expiresAt, null);
+  assert.equal(autoAdvancePlan(hid.state, queueOf(await readCards(store)), NOW + 99999), null);
+});
+
+// ---------- editorial gate ----------
+
+test("an approved news-drop is refused without a publisher and a link", async () => {
+  const store = makeStore();
+  await assert.rejects(
+    () => upsertCard(store, { type: "news-drop", headline: "Something happened", approval: "approved" }, NOW),
+    (e) => e instanceof HttpError && e.status === 422
+  );
+  const ok = await upsertCard(store, { type: "news-drop", headline: "Something happened", approval: "approved",
+    source: { publisher: "Channels", url: "https://www.channelstv.com/x/" } }, NOW);
+  assert.equal(ok.approval, "approved");
+  const testCard = await upsertCard(store, { type: "news-drop", headline: "Overlay check", approval: "approved", confidence: "test" }, NOW);
+  assert.equal(testCard.source.url, null, "a labelled test card is exempt");
+});
+
+test("auto-play can never show a card that is not approved", async () => {
+  const store = makeStore({ cards: JSON.stringify([card({ id: "a", approval: "approved" }), card({ id: "b", approval: "pending" })]) });
+  const s = await commitState(store, DEFAULT_STATE, { visible: true, activeCardId: "a", expiresAt: NOW - 1, autoPlay: true });
+  assert.equal((await publicState(store, null, NOW)).body.card.headline, "First", "it moved to a, then stayed: b is not in the queue");
+  assert.equal((await readState(store)).activeCardId, "a");
+});
+
+test("a pending card saved by research stays invisible until approved", async () => {
+  const store = makeStore();
+  const c = await upsertCard(store, { type: "news-drop", headline: "Raw headline", approval: "pending",
+    source: { publisher: "Premium Times", url: "https://www.premiumtimesng.com/x" } }, NOW);
+  assert.equal(c.approval, "pending");
+  assert.deepEqual(queueOf(await readCards(store)).map((x) => x.headline), ["Overlay test card"], "only the seeded test card is playable");
+});
+
+// ---------- feed parsing, against real captured XML ----------
+
+test("Google News: publisher comes from the source tag and the title suffix is stripped", () => {
+  const found = candidates(feed("gnews-ng"), fixture("gnews-ng.xml"), NOW);
+  assert.equal(found.length, 4);
+  const first = found[0];
+  assert.equal(first.type, "news-drop");
+  assert.ok(first.publisher.length > 1, `publisher: ${first.publisher}`);
+  assert.ok(!first.headline.endsWith(`- ${first.publisher}`), "the trailing publisher is off the headline");
+  assert.ok(/^https:\/\//.test(first.url));
+  assert.equal(first.summary, "", "the excerpt does not become the summary; the operator writes that");
+  assert.ok(first.key === first.url);
+});
+
+test("WordPress feeds: CDATA titles survive and the excerpt lands in private notes", () => {
+  const pt = candidates(feed("premiumtimes"), fixture("premiumtimes.xml"), NOW);
+  assert.equal(pt.length, 2);
+  assert.ok(!pt[0].headline.includes("<"), `no markup in the headline: ${pt[0].headline}`);
+  assert.ok(!pt[0].headline.includes("CDATA"));
+  assert.ok(pt[0].notes.startsWith("Publisher's own excerpt"), "excerpt is notes-only");
+  assert.ok(pt[0].headline.length <= 120);
+  const pidgin = candidates(feed("bbc-pidgin"), fixture("bbc-pidgin.xml"), NOW);
+  assert.equal(pidgin.length, 2);
+  assert.ok(pidgin[0].publisher, "publisher falls back to the feed label when the item has no source tag");
+});
+
+test("Google Trends: cards link to Trends, never to the item's own link or injected URLs", () => {
+  const found = candidates(feed("gtrends-ng"), fixture("gtrends-ng.xml"), NOW);
+  assert.equal(found.length, 3);
+  for (const t of found) {
+    assert.equal(t.type, "trend-topic");
+    assert.equal(t.url, "https://trends.google.com/trending?geo=NG", "the feed <link> is the RSS url, useless as a source");
+    assert.ok(/Trending on Google Search in Nigeria/.test(t.summary));
+    assert.ok(/searches/.test(t.summary) || !t.summary.includes("rough"), "traffic count only when the feed gave one");
+  }
+  const notes = found.map((f) => f.notes).join(" ");
+  assert.ok(notes.includes("Related coverage Google lists"), "the headline pair is kept as a checking aid");
+  assert.ok(!/https?:\/\//.test(notes), "a Trends news URL is never copied into notes — one came back carrying an injected data: payload");
+  assert.ok(!notes.includes("data:"), "no data: URL reaches a card");
+  assert.ok(found.every((f) => f.key.startsWith("trend:NG:")), "the dedupe key is the topic plus the day");
+});
+
+test("a blocked site's 403 error page never becomes a card", async () => {
+  const blocked = fixture("vanguard-403.html");
+  assert.ok(/<title>/i.test(blocked), "the page does have title and link tags a naive parser would grab");
+  const store = makeStore();
+  const res = await runResearch(store, { feeds: ["vanguard"] }, { fetchFn: fakeFetch({ "https://www.vanguardngr.com": { status: 403, body: blocked } }), now: NOW });
+  assert.equal(res.added, 0);
+  assert.equal(res.feeds[0].ok, false);
+  assert.match(res.feeds[0].error, /403 \(direct\)/, "the report names the door that failed");
+  assert.match(res.feeds[0].error, /Google News/, "and says the twin was tried as well");
+  assert.equal((await readCards(store)).length, 1, "only the seeded test card");
+});
+
+test("a feed that returns no items, or hangs, is reported and not fatal", async () => {
+  const store = makeStore();
+  const res = await runResearch(
+    store,
+    { feeds: ["businessday", "channels"] },
+    { fetchFn: fakeFetch({
+      "https://businessday.ng": fixture("businessday.xml"),
+      "https://www.channelstv.com": new Error("socket hang up"),
+    }), now: NOW }
+  );
+  const bd = res.feeds.find((f) => f.id === "businessday");
+  const ch = res.feeds.find((f) => f.id === "channels");
+  assert.equal(bd.ok, true);
+  assert.equal(bd.added, 1);
+  assert.equal(ch.ok, false);
+  assert.match(ch.error, /socket hang up \(direct\)/, "the hang is reported, not swallowed");
+});
+
+// ---------- the four outlets that block server traffic ----------
+
+test("a blocked outlet falls back to its Google News twin and is read as Google News", async () => {
+  const store = makeStore();
+  const res = await runResearch(
+    store,
+    { feeds: ["vanguard"] },
+    { fetchFn: fakeFetch({
+      "https://www.vanguardngr.com": { status: 403, body: "<html><title>no</title></html>" },
+      "https://news.google.com/rss/search": fixture("gnews-ng.xml"),
+    }), now: NOW }
+  );
+  const f = res.feeds.find((x) => x.id === "vanguard");
+  assert.equal(f.ok, true, "the outlet is unreachable, its coverage is not");
+  assert.equal(f.via, "Google News");
+  assert.ok(f.added > 0);
+  const filed = (await readCards(store)).filter((c) => c.importKey);
+  assert.ok(filed.length > 0);
+  for (const c of filed) {
+    assert.equal(c.source.publisher.length > 1, true, "the publisher comes from Google's source tag");
+    assert.ok(!c.headline.endsWith(`- ${c.source.publisher}`), "Google's title suffix is stripped even on the twin");
+    assert.equal(c.approval, "pending");
+  }
+});
+
+test("proxyFor covers the three shapes a proxy endpoint comes in", () => {
+  const target = "https://www.vanguardngr.com/feed";
+  assert.equal(
+    proxyFor("https://api.scrapingbee.com/api/v1/?api_key=abc&url=%s", target),
+    "https://api.scrapingbee.com/api/v1/?api_key=abc&url=https%3A%2F%2Fwww.vanguardngr.com%2Ffeed"
+  );
+  assert.equal(proxyFor("https://worker.example.com/rss?url=", target), "https://worker.example.com/rss?url=https%3A%2F%2Fwww.vanguardngr.com%2Ffeed");
+  assert.equal(proxyFor("https://rsshub.example.com/guardian/", target), "https://rsshub.example.com/guardian/https://www.vanguardngr.com/feed");
+  assert.equal(proxyFor("", target), null, "unset means fetch it directly, as before");
+  assert.equal(proxyFor("ftp://nope/%s", target), null, "only http(s) templates are used");
+  assert.equal(proxyFor("https://w.example/?u=%s", "https://a.example/?x=1&y=2").includes("y%3D2"), true, "the target's own query cannot escape the template");
+});
+
+test("with a proxy set, the outlet's own feed comes through it and the doomed direct call is skipped", async () => {
+  const asked = [];
+  const fetchFn = async (url) => {
+    asked.push(url);
+    if (url.startsWith("https://proxy.example/")) return { ok: true, status: 200, async text() { return fixture("premiumtimes.xml"); } };
+    return { ok: false, status: 403, async text() { return "<html>blocked</html>"; } };
+  };
+  const store = makeStore();
+  const res = await runResearch(store, { feeds: ["vanguard"] }, { fetchFn, now: NOW, proxy: "https://proxy.example/fetch?url=%s&api_key=abc" });
+  const f = res.feeds.find((x) => x.id === "vanguard");
+  assert.equal(f.ok, true);
+  assert.equal(f.via, "proxy");
+  assert.equal(asked.length, 1, "one request, not three");
+  assert.ok(asked[0].startsWith("https://proxy.example/"), "the proxy was the door");
+  assert.ok(asked[0].includes("url=https%3A%2F%2Fwww.vanguardngr.com"), "carrying the outlet's own feed address");
+  const filed = (await readCards(store)).filter((c) => c.importKey);
+  assert.ok(filed.some((c) => c.presenterNotes.startsWith("Publisher's own excerpt")), "the outlet's own excerpt reaches the private notes");
+  assert.ok(!JSON.stringify(res).includes("api_key=abc"), "the key never appears in the report the browser sees");
+});
+
+test("a slow proxy is stopped by the per-feed budget instead of eating the function limit", async () => {
+  const asked = [];
+  const fetchFn = async (url) => {
+    asked.push(url);
+    await new Promise((r) => setTimeout(r, 1200));
+    return { ok: false, status: 500, async text() { return ""; } };
+  };
+  const store = makeStore();
+  const t0 = Date.now();
+  const res = await runResearch(store, { feeds: ["vanguard"] }, { fetchFn, now: NOW, proxy: "https://proxy.example/u=%s", budgetMs: 1500 });
+  assert.ok(Date.now() - t0 < 3000, "it gave up on schedule");
+  assert.equal(asked.length, 1, "and did not start a second attempt it had no time for");
+  assert.match(res.feeds.find((x) => x.id === "vanguard").error, /out of time/);
+});
+
+test("research files everything as pending, reported, with a traceable link", async () => {
+  const store = makeStore();
+  const res = await runResearch(store, { feeds: ["premiumtimes"] }, { fetchFn: fakeFetch({ "https://www.premiumtimesng.com": fixture("premiumtimes.xml") }), now: NOW });
+  assert.equal(res.added, 2);
+  const added = (await readCards(store)).slice(1);
+  for (const c of added) {
+    assert.equal(c.approval, "pending", "nothing auto-arrives on air");
+    assert.equal(c.confidence, "reported");
+    assert.ok(c.source.url.startsWith("https://"));
+    assert.equal(c.source.retrievedAt, new Date(NOW).toISOString());
+  }
+  assert.equal(queueOf(await readCards(store)).map((x) => x.headline).join(), "Overlay test card", "auto arrivals never enter the play queue by themselves");
+});
+
+test("re-running research adds nothing, and it cannot clobber a card the operator edited", async () => {
+  const bodies = { "https://www.premiumtimesng.com": fixture("premiumtimes.xml") };
+  const store = makeStore();
+  const first = await runResearch(store, { feeds: ["premiumtimes"] }, { fetchFn: fakeFetch(bodies), now: NOW });
+  assert.equal(first.added, 2);
+  const cards = await readCards(store);
+  await upsertCard(store, { id: cards[1].id, summary: "My own words", question: "What do you think?", presenterNotes: "checked twice", approval: "pending" }, NOW);
+
+  const second = await runResearch(store, { feeds: ["premiumtimes"] }, { fetchFn: fakeFetch(bodies), now: NOW + 60_000 });
+  assert.equal(second.added, 0, "importKey dedupe holds across runs");
+  const kept = (await readCards(store)).find((c) => c.id === cards[1].id);
+  assert.equal(kept.summary, "My own words", "an auto run must not roll back an edit");
+
+  // A run that read the queue before the operator saved must still merge, not overwrite.
+  const stale = JSON.parse(JSON.stringify(cards));
+  store.setJSON("cards", [...stale, card({ id: "mine", headline: "Added by hand", approval: "approved" })]);
+  const third = await runResearch(store, { feeds: ["premiumtimes"] }, { fetchFn: fakeFetch({ "https://www.premiumtimesng.com": fixture("premiumtimes.xml").replace(/premiumtimesng\.com\/news/, "premiumtimesng.com/other") }), now: NOW + 120_000 });
+  assert.ok(third.added >= 1);
+  assert.ok((await readCards(store)).some((c) => c.headline === "Added by hand"), "the hand-added card survived the merge");
+});
+
+test("the NG and US overlap card is labelled as its own thing", async () => {
+  const trendItem = (topic) => `<item><title>${topic}</title><ht:approx_traffic>50+</ht:approx_traffic><pubDate>Wed, 28 Oct 2026 10:00:00 -0700</pubDate><link>https://trends.google.com/trending/rss</link></item>`;
+  const bodies = {
+    "https://trends.google.com/trending/rss?geo=NG": `<rss><channel>${trendItem("tinubu surgery")}</channel></rss>`,
+    "https://trends.google.com/trending/rss?geo=US": `<rss><channel>${trendItem("Tinubu surgery")}</channel></rss>`,
+  };
+  const store = makeStore();
+  const res = await runResearch(store, { feeds: ["gtrends-ng", "gtrends-us"] }, { fetchFn: fakeFetch(bodies), now: NOW });
+  const overlap = res.feeds.find((f) => f.id === "overlap");
+  assert.equal(overlap.added, 1, "a topic on both lists gets one extra card");
+  const cards = await readCards(store);
+  const c = cards.find((x) => x.category === "Trending in NG and US");
+  assert.ok(c, "the cross-border card exists");
+  assert.equal(c.approval, "pending");
+  assert.match(c.presenterNotes, /Check that they really are the same story/);
+});
+
+// ---------- the churn the live feeds caused (found by running the real feeds twice) ----------
+
+const DAY = 24 * 3600_000;
+const rssItem = (n) =>
+  `<item><title>Story ${n}</title><pubDate>${new Date(Date.parse("2026-10-28T08:00:00Z") + n * 3600_000).toUTCString()}` +
+  `</pubDate><link>https://pt.example/${n}</link><description>excerpt ${n}</description></item>`;
+const eightItems = (order) => `<rss><channel>${order.map(rssItem).join("")}</channel></rss>`;
+const FEED_ORDER = [1, 2, 3, 4, 5, 6, 7, 8];
+const RESHUFFLED = [8, 3, 6, 1, 7, 2, 5, 4]; // what the live feed actually does between runs
+const ptFeed = () => FEEDS.find((f) => f.id === "premiumtimes");
+
+test("feed order decides nothing: the newest items win the slots", () => {
+  const forward = candidates(ptFeed(), eightItems(FEED_ORDER), NOW).map((c) => c.headline);
+  const shuffled = candidates(ptFeed(), eightItems(RESHUFFLED), NOW).map((c) => c.headline);
+  assert.deepEqual(forward, ["Story 8", "Story 7", "Story 6", "Story 5", "Story 4", "Story 3", "Story 2", "Story 1"], "newest first");
+  assert.deepEqual(shuffled, forward, "the same items in a different order produce the same ranked list");
+});
+
+test("a feed that reshuffles between runs files the leftovers, then nothing", async () => {
+  let xml = eightItems(FEED_ORDER);
+  const fetchFn = async () => ({ ok: true, status: 200, async text() { return xml; } });
+  const store = makeStore();
+  const first = await runResearch(store, { feeds: ["premiumtimes"] }, { fetchFn, now: NOW });
+  assert.equal(first.added, PER_FEED, "the six newest win the six slots");
+  xml = eightItems(RESHUFFLED);
+  const second = await runResearch(store, { feeds: ["premiumtimes"] }, { fetchFn, now: NOW + 60_000 });
+  assert.equal(second.added, 2, "only the two items the first run never reached");
+  const third = await runResearch(store, { feeds: ["premiumtimes"] }, { fetchFn, now: NOW + 120_000 });
+  assert.equal(third.added, 0, "a reshuffle alone must not grow the queue");
+});
+
+test("a full pending queue is reported, not filled", async () => {
+  const full = Array.from({ length: RESEARCH_MAX_PENDING }, (_, i) =>
+    card({ id: "auto" + i, approval: "pending", summary: "", question: "", importKey: "https://pt.example/other/" + i, createdAt: NOW - 60_000 })
+  );
+  const store = makeStore({ cards: JSON.stringify(full) });
+  const res = await runResearch(store, { feeds: ["premiumtimes"] }, { fetchFn: fakeFetch({ "https://www.premiumtimesng.com": eightItems(FEED_ORDER) }), now: NOW });
+  assert.equal(res.added, 0, "nothing is filed past the cap");
+  assert.equal(res.held, PER_FEED, "the operator is told how many were ready");
+  assert.equal(res.pending, RESEARCH_MAX_PENDING);
+  const report = res.feeds.find((f) => f.id === "premiumtimes");
+  assert.deepEqual({ found: report.found, added: report.added, held: report.held }, { found: 8, added: 0, held: PER_FEED }, "the per-feed report matches what was stored");
+  assert.equal((await readCards(store)).length, RESEARCH_MAX_PENDING, "the blob did not grow");
+});
+
+test("age-out drops only machine cards nobody wrote on, and frees room in the same run", async () => {
+  const stale = { approval: "pending", summary: "", question: "", createdAt: NOW - DAY - 3600_000 };
+  const seed = [
+    card({ id: "stale-auto-1", ...stale, importKey: "k1" }),
+    card({ id: "stale-auto-2", ...stale, importKey: "k2" }),
+    card({ id: "stale-auto-edited", ...stale, importKey: "k3", summary: "I wrote this" }),
+    card({ id: "stale-auto-approved", ...stale, importKey: "k4", approval: "approved" }),
+    card({ id: "fresh-auto", approval: "pending", summary: "", question: "", importKey: "k5", createdAt: NOW - 3600_000 }),
+    card({ id: "by-hand", approval: "approved", createdAt: NOW - 30 * DAY }),
+  ];
+  const store = makeStore({ cards: JSON.stringify(seed) });
+  const res = await runResearch(store, { feeds: ["premiumtimes"] }, { fetchFn: fakeFetch({ "https://www.premiumtimesng.com": eightItems(FEED_ORDER) }), now: NOW });
+  assert.equal(res.dropped, 2, "only the two untouched, unapproved, day-old auto cards");
+  assert.equal(res.added, PER_FEED, "the age-out made room in this same run");
+  const kept = new Set((await readCards(store)).map((c) => c.id));
+  for (const id of ["stale-auto-edited", "stale-auto-approved", "fresh-auto", "by-hand"]) assert.ok(kept.has(id), `${id} is operator work or recent, it stays`);
+  assert.ok(!kept.has("stale-auto-1") && !kept.has("stale-auto-2"));
+  assert.equal(pruneAutoArrivals(seed, NOW).dropped, 2);
+  assert.equal(untouchedAuto(seed.find((c) => c.id === "by-hand")), false, "a hand-made card is never pruned");
+});
+
+// ---------- desks: sticky topic filters ----------
+
+const deskSet = () => [
+  card({ id: "p1", category: "Nigeria", headline: "Tinubu asks the Senate to pass the new tax bill", createdAt: 2 }),
+  card({ id: "m1", category: "Naija Music", headline: "Asake announces the album date", createdAt: 1 }),
+  card({ id: "m2", category: "Naija Music", headline: "Singer confirms the concert lineup", createdAt: 3 }),
+  card({ id: "v1", category: "Nollywood", headline: "Animals takes number one at the box office", createdAt: 4 }),
+  card({ id: "s1", category: "Naija Creators", headline: "TikToker's japa skit hits a million views", createdAt: 5 }),
+  card({ id: "un", category: "Naija Music", headline: "Song leak nobody approved", approval: "pending", createdAt: 6 }),
+];
+
+test("a desk queue holds only that desk's approved cards", () => {
+  const cs = deskSet();
+  assert.deepEqual(queueOf(cs, "politics").map((c) => c.id), ["p1"]);
+  assert.deepEqual(queueOf(cs, "music").map((c) => c.id), ["m1", "m2"], "in queue order");
+  assert.deepEqual(queueOf(cs, "movies").map((c) => c.id), ["v1"]);
+  assert.deepEqual(queueOf(cs, "streamers").map((c) => c.id), ["s1"]);
+  assert.deepEqual(queueOf(cs, null).map((c) => c.id), ["m1", "p1", "m2", "v1", "s1"], "no desk is the whole queue");
+});
+
+test("a card with no useful category still lands on a desk by its words", () => {
+  const c = card({ category: "Test", headline: "Olamide headlines the concert lineup" });
+  assert.equal(matchesDesk(c, "music"), true);
+  assert.equal(matchesDesk(c, "movies"), false);
+  assert.equal(matchesDesk(card({ category: "Nigeria", headline: "Fuel queue extends in Apapa" }), "politics"), false, "a story is not politics just because it happened in Nigeria");
+});
+
+test("desk names resolve through their aliases, and nothing else", () => {
+  assert.equal(resolveDesk("nollywood").id, "movies");
+  assert.equal(resolveDesk("Creators").id, "streamers");
+  assert.equal(resolveDesk("afrobeats").id, "music");
+  assert.equal(resolveDesk("all").id, null, "all is the way back out of a desk");
+  assert.equal(resolveDesk("football"), null);
+  for (const d of DESKS) assert.equal(resolveDesk(d.id).id, d.id, `${d.id} resolves from its own name`);
+});
+
+test("desk music puts that desk on air and sticks", async () => {
+  const store = makeStore({ cards: JSON.stringify(deskSet()) });
+  const res = await runAction(store, { action: "desk", desk: "music" }, NOW);
+  assert.equal(res.state.desk, "music");
+  assert.equal(res.state.activeCardId, "m1");
+  assert.equal(res.state.visible, true);
+  assert.equal(res.state.expiresAt, NOW + 45_000, "the card gets its own clock");
+});
+
+test("the same desk twice does not skip a card", async () => {
+  const store = makeStore({ cards: JSON.stringify(deskSet()) });
+  await runAction(store, { action: "desk", desk: "music" }, NOW);
+  const res = await runAction(store, { action: "desk", desk: "music" }, NOW + 1000);
+  assert.equal(res.state.activeCardId, "m1", "you are already on this desk's first card");
+});
+
+test("next moves inside the desk and wraps there", async () => {
+  const store = makeStore({ cards: JSON.stringify(deskSet()) });
+  await runAction(store, { action: "desk", desk: "music" }, NOW);
+  assert.equal((await runAction(store, { action: "next" }, NOW + 1)).state.activeCardId, "m2");
+  assert.equal((await runAction(store, { action: "next" }, NOW + 2)).state.activeCardId, "m1", "wraps inside two cards, not the five in the queue");
+  assert.equal((await runAction(store, { action: "previous" }, NOW + 3)).state.activeCardId, "m2");
+});
+
+test("auto-play advances inside the desk, not past it", async () => {
+  const store = makeStore({
+    cards: JSON.stringify(deskSet()),
+    state: JSON.stringify({ version: 3, updatedAt: 1, mode: "cards", visible: true, hold: false, desk: "music", autoPlay: true, activeCardId: "m1", expiresAt: NOW - 1, poll: null }),
+  });
+  const moved = await advanceIfExpired(store, await readState(store), NOW);
+  assert.equal(moved.activeCardId, "m2", "p1 sits between m1 and m2 in the full queue and must be skipped");
+});
+
+test("a desk with nothing approved says so and changes nothing", async () => {
+  const store = makeStore({ cards: JSON.stringify([deskSet()[0]]) });
+  await assert.rejects(
+    runAction(store, { action: "desk", desk: "movies" }, NOW),
+    /Nothing approved on the Movies desk/,
+  );
+  const s = await readState(store);
+  assert.equal(s.version, 0, "a refused command must not bump the version the overlay is polling");
+  assert.equal(s.desk, null);
+});
+
+test("an unknown desk is refused with the names that exist", async () => {
+  const store = makeStore({ cards: JSON.stringify(deskSet()) });
+  await assert.rejects(runAction(store, { action: "desk", desk: "football" }, NOW), /Unknown desk/);
+});
+
+test("desk all clears the filter and keeps the card on air", async () => {
+  const store = makeStore({ cards: JSON.stringify(deskSet()) });
+  await runAction(store, { action: "desk", desk: "music" }, NOW);
+  const res = await runAction(store, { action: "desk", desk: "all" }, NOW + 5);
+  assert.equal(res.state.desk, null);
+  assert.equal(res.state.activeCardId, "m1");
+  assert.equal(res.state.visible, true);
+});
+
+test("showing a card outside the desk leaves the desk instead of failing", async () => {
+  const store = makeStore({ cards: JSON.stringify(deskSet()) });
+  await runAction(store, { action: "desk", desk: "music" }, NOW);
+  const res = await runAction(store, { action: "show", cardId: "p1" }, NOW + 1);
+  assert.equal(res.state.activeCardId, "p1");
+  assert.equal(res.state.desk, null, "you asked for this card, so the desk filter is off");
+});
+
+test("the overlay's state carries the desk and nothing private", async () => {
+  const store = makeStore({ cards: JSON.stringify(deskSet()) });
+  await runAction(store, { action: "desk", desk: "music" }, NOW);
+  const res = await publicState(store, null, NOW + 1);
+  assert.equal(res.body.desk, "music");
+  assert.ok(!("activeCardId" in res.body));
+  assert.equal(res.body.card.id, "m1");
+});
+
+test("a state blob from before desks reads with no desk", async () => {
+  const store = makeStore({ state: JSON.stringify({ version: 16, mode: "cards", visible: true, activeCardId: "x" }) });
+  assert.equal((await readState(store)).desk, null);
+  assert.equal(DEFAULT_STATE.desk, null);
+});
+
+// ---------- the entertainment desks and the room they need ----------
+
+const DESK_FEEDS = [
+  ["ng-creators", "streamers"],
+  ["ng-music", "music"],
+  ["ng-movies", "movies"],
+  ["us-music", "music"],
+  ["us-creators", "streamers"],
+];
+
+test("the new desk feeds file cards that answer their own desk command", () => {
+  for (const [id, deskId] of DESK_FEEDS) {
+    const f = feed(id);
+    assert.ok(f, `${id} is a feed the importer knows`);
+    assert.match(f.url, /^https:\/\//, `${f.label} is fetched over https`);
+    assert.equal(matchesDesk({ category: f.category, headline: "", summary: "" }, deskId), true,
+      `${f.label} files into ${f.category}, which "desk ${deskId}" can find`);
+  }
+});
+
+test("every new feed has a second door so one block cannot kill a desk", () => {
+  for (const [id] of DESK_FEEDS) {
+    const f = feed(id);
+    assert.ok(f.alt, `${f.label} falls back to a Google News query`);
+    assert.match(f.alt, /^https:\/\/news\.google\.com\/rss\/search\?q=/);
+  }
+});
+
+test("a nearly full queue shares what is left instead of feeding the first feed", async () => {
+  const itemsFor = (host) => `<rss><channel>${[1, 2, 3, 4, 5, 6, 7, 8].map((n) =>
+    `<item><title>${host} story ${n}</title><pubDate>${new Date(Date.parse("2026-10-28T08:00:00Z") + n * 3600_000).toUTCString()}` +
+    `</pubDate><link>https://${host}/${n}</link><description>excerpt ${n}</description></item>`).join("")}</channel></rss>`;
+  const hosts = ["www.premiumtimesng.com", "dailypost.ng", "businessday.ng", "feeds.bbci.co.uk"];
+  const bodies = Object.fromEntries(hosts.map((host) => [`https://${host}`, itemsFor(host.split(".")[0])]));
+  const seed = Array.from({ length: RESEARCH_MAX_PENDING - 6 }, (_, i) =>
+    card({ id: `auto${i}`, approval: "pending", importKey: `seed${i}`, createdAt: NOW - 3600_000 }));
+  const store = makeStore({ cards: JSON.stringify(seed) });
+
+  const res = await runResearch(store, { feeds: ["premiumtimes", "dailypost", "businessday", "bbc-pidgin"] }, { fetchFn: fakeFetch(bodies), now: NOW });
+
+  const counts = res.feeds.map((f) => f.added);
+  assert.equal(res.added, 6, "the room that was left is used exactly");
+  assert.ok(counts.every((n) => n >= 1), `every feed gets a card: ${counts.join(",")}`);
+  assert.ok(Math.max(...counts) < PER_FEED, `no feed takes all six: ${counts.join(",")}`);
+  assert.equal((await readCards(store)).filter(untouchedAuto).length, RESEARCH_MAX_PENDING);
+});
+
+// ---------- CRID: the branded segment on top of the desk ----------
+
+const cridStore = () => makeStore({ cards: JSON.stringify(deskSet()) });
+const openCrid = (store, over = {}) =>
+  runAction(store, { action: "crid-open", kind: "music", title: "Does this album survive the Jumbotron?", ...over }, NOW);
+
+test("a CRID segment opens with its own entry number and nothing else changes", async () => {
+  const store = cridStore();
+  const { state } = await openCrid(store);
+
+  assert.equal(state.crid.kind, "music");
+  assert.equal(state.crid.title, "Does this album survive the Jumbotron?");
+  assert.equal(state.crid.entry, 1, "the first segment of the run is entry 1");
+  assert.equal(state.crid.verdict, null, "no verdict until someone stamps one");
+  assert.equal(state.visible, false, "opening CRID does not put a card on air");
+  assert.equal(state.mode, "cards", "opening CRID does not take over the card overlay");
+});
+
+test("entry numbers keep counting through closes, so the ledger never repeats a number", async () => {
+  const store = cridStore();
+  const first = (await openCrid(store)).state;
+  await runAction(store, { action: "crid-close" }, NOW);
+  const second = (await openCrid(store, { title: "Second segment" })).state;
+
+  assert.equal(first.crid.entry, 1);
+  assert.equal(second.crid.entry, 2, "a new segment does not reuse entry 1");
+  assert.notEqual(second.crid.id, first.crid.id);
+});
+
+test("a segment needs a kind the overlay can draw and a title the viewer can read", async () => {
+  const store = cridStore();
+  await assert.rejects(() => runAction(store, { action: "crid-open", kind: "music" }, NOW), /title/i);
+  await assert.rejects(() => runAction(store, { action: "crid-open", title: "x", kind: "football" }, NOW), /kind/i);
+  assert.equal((await readState(store)).crid, null, "a refused open leaves nothing on screen");
+});
+
+test("the verdict is only ever 1 or 0, and only on a segment that is open", async () => {
+  const store = cridStore();
+  await assert.rejects(() => runAction(store, { action: "crid-verdict", value: 1 }, NOW), /no CRID/i);
+
+  await openCrid(store);
+  assert.equal((await runAction(store, { action: "crid-verdict", value: 0 }, NOW)).state.crid.verdict, 0);
+  assert.equal((await runAction(store, { action: "crid-verdict", value: 1 }, NOW)).state.crid.verdict, 1, "correcting it is allowed");
+  await assert.rejects(() => runAction(store, { action: "crid-verdict", value: 2 }, NOW), /0 or 1/);
+  await assert.rejects(() => runAction(store, { action: "crid-verdict", value: "1" }, NOW), /0 or 1/, "a string one is not the number one");
+});
+
+test("closing a segment clears its verdict, so a stale 0 cannot ride onto the next one", async () => {
+  const store = cridStore();
+  await openCrid(store);
+  await runAction(store, { action: "crid-verdict", value: 0 }, NOW);
+  const { state } = await runAction(store, { action: "crid-close" }, NOW);
+
+  assert.equal(state.crid, null);
+  const next = (await openCrid(store, { title: "Next segment" })).state;
+  assert.equal(next.crid.verdict, null, "the closed verdict did not leak");
+});
+
+test("an ended poll writes its result onto the open segment, and the operator still stamps the verdict", async () => {
+  const store = cridStore();
+  await openCrid(store);
+  await runAction(store, { action: "start-poll", question: "Does it survive?", options: ["Yes", "No"] }, NOW);
+  await runAction(store, { action: "set-votes", counts: { a: 30, b: 7 } }, NOW);
+  const { state } = await runAction(store, { action: "end-poll" }, NOW);
+
+  assert.equal(state.crid.result.winner, "Yes");
+  assert.equal(state.crid.result.percent, 81);
+  assert.equal(state.crid.result.total, 37);
+  assert.equal(state.crid.verdict, null, "the tally is not the verdict");
+  assert.equal(state.poll.active, false, "the poll still ends the ordinary way");
+
+  await runAction(store, { action: "crid-verdict", value: 1 }, NOW);
+  assert.equal((await readState(store)).crid.result.winner, "Yes", "stamping keeps the tally visible");
+});
+
+test("a tie gets no winner, because inventing one would be a lie on air", async () => {
+  const store = cridStore();
+  await openCrid(store);
+  await runAction(store, { action: "start-poll", question: "Split room", options: ["Yes", "No"] }, NOW);
+  await runAction(store, { action: "set-votes", counts: { a: 5, b: 5 } }, NOW);
+  const { state } = await runAction(store, { action: "end-poll" }, NOW);
+
+  assert.equal(state.crid.result.winner, null);
+  assert.equal(state.crid.result.tie, true);
+});
+
+test("a vote with no poll running cannot write a result onto the segment", async () => {
+  const store = cridStore();
+  await openCrid(store);
+  await assert.rejects(() => runAction(store, { action: "set-votes", counts: { a: 1 } }, NOW), /no poll/i);
+  assert.equal((await readState(store)).crid.result ?? null, null);
+});
+
+test("a state blob from before CRID reads with nothing on the jumbotron", async () => {
+  const old = { ...DEFAULT_STATE };
+  delete old.crid;
+  delete old.cridSeq;
+  const store = makeStore({ state: JSON.stringify(old) });
+
+  const state = await readState(store);
+  assert.equal(state.crid, null);
+  assert.equal(state.cridSeq, 0);
+  const { state: after } = await openCrid(store);
+  assert.equal(after.crid.entry, 1, "counting starts from the first real segment");
+});
+
+test("the overlay's state carries the segment and still nothing private", async () => {
+  const store = cridStore();
+  await openCrid(store, { credit: "Tunde" });
+  const res = await publicState(store, null, NOW);
+
+  assert.equal(res.body.crid.credit, "Tunde", "a credited Stranger is on-screen by design");
+  assert.equal("activeCardId" in res.body, false);
+  assert.equal("autoResearch" in res.body, false);
+  assert.equal("presenterNotes" in (res.body.card ?? {}), false);
+});
+
+test("credit and title are clipped to what a jumbotron can hold", async () => {
+  const store = cridStore();
+  const { state } = await openCrid(store, { title: "T".repeat(200), credit: "C".repeat(90) });
+
+  assert.ok(state.crid.title.length <= LIMITS.cridTitle, `${state.crid.title.length} > ${LIMITS.cridTitle}`);
+  assert.ok(state.crid.credit.length <= LIMITS.cridCredit, `${state.crid.credit.length} > ${LIMITS.cridCredit}`);
+});
+
+test("stamped verdict flows cleanly into public projection and clears on segment close", async () => {
+  const store = cridStore();
+  await openCrid(store, { kind: "debate", title: "Can Afrobeats sustain stadium tours in the US?" });
+  await runAction(store, { action: "crid-verdict", value: 1 }, NOW);
+
+  let res = await publicState(store, null, NOW);
+  assert.equal(res.body.crid.verdict, 1, "stamped verdict 1 is present in public state");
+  assert.equal(res.body.crid.kind, "debate");
+
+  await runAction(store, { action: "crid-close" }, NOW);
+  res = await publicState(store, null, NOW);
+  assert.equal(res.body.crid, null, "closing leaves nothing in public state");
+});

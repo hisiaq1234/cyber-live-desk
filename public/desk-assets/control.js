@@ -459,6 +459,9 @@ import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.
             currentTab = t.id;
             haptic('light');
             renderApp();
+            if (currentTab === "studio" && (!audiomackTracks.children.length || audiomackStatus.textContent.includes("loading"))) {
+              loadAudiomack();
+            }
           }
         };
         // FIX: merge class and onclick into one props object so h() never
@@ -1091,45 +1094,86 @@ import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.
     }
   };
 
-  // ---------- Spotify (private, isolated from broadcast) ----------
-  // Displays the operator's personal Spotify top tracks. Never feeds Spotify audio into
-  // the Swae overlay or the Twitch broadcast. Spotify policy restricts cross-service
-  // playback and synchronization; this is a private listening-data view only.
-  const spotifyStatus = h("p", "sub", "Spotify: not configured.");
-  const spotifyRefreshBtn = btn("Refresh", async () => { await loadSpotify(); }, "small primary");
-  const spotifyTracks = h("div");
-  const spotifyPanel = h("section", "panel", h("h2", {}, "Spotify — Top Tracks (private)"),
-    h("div", "twitch-box",
-      h("p", "sub", "Requires SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET and SPOTIFY_REFRESH_TOKEN in Netlify env. Scope: user-top-read. Audio is not played through Swae or Twitch."),
-      spotifyStatus,
-      h("div", "row", spotifyRefreshBtn)),
-    spotifyTracks);
+  // ---------- Audiomack Music Station (Naija & Afrobeats Broadcast Stream) ----------
+  const audiomackStatus = h("p", "sub", "Audiomack: loading...");
+  const audiomackQueryIn = h("input", { placeholder: "Search Audiomack song or artist...", maxlength: 80 });
+  const audiomackSearchBtn = btn("Search", () => searchAudiomack(), "small");
+  const audiomackTrendingBtn = btn("Trending Afrobeats", () => loadAudiomack(), "small primary");
+  const audiomackTracks = h("div", { class: "stack", style: "gap:8px;margin-top:8px;" });
 
-  const loadSpotify = async () => {
-    const timeRange = "long_term";
+  const loadAudiomack = async () => {
     try {
-      const r = await fetch(`/api/spotify/top?time_range=${timeRange}&limit=5`, { cache: "no-store" });
+      audiomackStatus.textContent = "Fetching trending Audiomack tracks...";
+      const r = await fetch("/api/audiomack?mode=trending", { cache: "no-store" });
       const j = await r.json();
-      if (!r.ok || j.error) {
-        spotifyStatus.textContent = "Spotify: " + (j.error || `HTTP ${r.status}`);
-        spotifyTracks.replaceChildren(h("p", "sub", "Could not load top tracks."));
-        return;
-      }
-      spotifyStatus.textContent = `Spotify: ${j.tracks.length} track${j.tracks.length === 1 ? "" : "s"} (${j.time_range}).`;
-      spotifyTracks.replaceChildren(
-        h("h3", { style: "margin:8px 0 4px;font-size:.9rem" }, `Your top ${j.tracks.length} (${j.time_range})`),
-        j.tracks.map((t, i) => h("div", "item",
-          h("div", "item-head", h("span", {}, `${i + 1}. ${t.name}`), h("span", "chip", `by ${t.artist}`)),
-          t.albumArt ? h("img", { src: t.albumArt, alt: "", style: "width:48px;height:48px;border-radius:6px;margin:6px 0" }) : null,
-          t.album && h("p", "sub", `Album: ${t.album}`),
-          t.url && h("a", { href: t.url, target: "_blank", rel: "noopener noreferrer", style: "color:#7CC4FF" }, "Open on Spotify")
-        ))
-      );
+      renderAudiomackList(j.tracks || [], j.note || (j.configured ? "Live Audiomack stream connected." : "Curated station active."));
     } catch (e) {
-      spotifyStatus.textContent = "Spotify: request failed.";
-      spotifyTracks.replaceChildren(h("p", "sub", "Could not load top tracks."));
+      audiomackStatus.textContent = "Audiomack: request failed.";
     }
   };
+
+  const searchAudiomack = async () => {
+    const q = audiomackQueryIn.value.trim();
+    if (!q) return loadAudiomack();
+    try {
+      audiomackStatus.textContent = `Searching for "${q}"...`;
+      const r = await fetch(`/api/audiomack?mode=search&q=${encodeURIComponent(q)}`, { cache: "no-store" });
+      const j = await r.json();
+      renderAudiomackList(j.tracks || [], `Results for "${q}"`);
+    } catch (e) {
+      audiomackStatus.textContent = "Audiomack: search failed.";
+    }
+  };
+
+  audiomackQueryIn.onkeydown = (e) => { if (e.key === "Enter") searchAudiomack(); };
+
+  const renderAudiomackList = (tracks, statusMsg) => {
+    audiomackStatus.textContent = statusMsg || `Found ${tracks.length} tracks.`;
+    if (!tracks.length) {
+      audiomackTracks.replaceChildren(h("p", "sub", "No tracks found."));
+      return;
+    }
+    audiomackTracks.replaceChildren(...tracks.map((t) => {
+      const img = t.image ? h("img", { src: t.image, alt: "", style: "width:48px;height:48px;border-radius:8px;object-fit:cover;" }) : null;
+      const head = h("div", { style: "display:flex;align-items:center;gap:10px;" },
+        img,
+        h("div", { style: "flex:1;min-width:0;" },
+          h("div", { style: "font-weight:700;font-size:0.95em;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" }, t.title),
+          h("div", { style: "font-size:0.8em;color:#c7c7cc;" }, `${t.artist} ${t.genre ? `· ${t.genre}` : ""}`)
+        )
+      );
+
+      const actions = h("div", { class: "row", style: "gap:6px;margin-top:8px;" },
+        btn("▶ Play Now", async () => {
+          await act("music-add", { title: t.title, artist: t.artist, audioUrl: t.audioUrl || undefined });
+          await act("music-play");
+          toast(`Playing: ${t.title}`);
+        }, "small primary"),
+        btn("+ Queue", async () => {
+          await act("music-add", { title: t.title, artist: t.artist, audioUrl: t.audioUrl || undefined });
+          toast(`Added to Music Queue: ${t.title}`);
+        }, "small"),
+        btn("🏛 Send to CRID", () => {
+          cridTitleIn.value = `${t.title} - ${t.artist}`.slice(0, 120);
+          cridAudioIn.value = t.audioUrl || "";
+          currentTab = "crid";
+          renderApp();
+          toast("Loaded into CRID Jumbotron!");
+        }, "small")
+      );
+
+      return h("div", { class: "queue-item", style: "padding:10px 12px;margin-bottom:8px;" }, head, actions);
+    }));
+  };
+
+  const audiomackPanel = h("section", "panel stack",
+    h("h2", {}, "Audiomack Music Station"),
+    h("p", "sub", "Stream Afrobeats & Naija tracks directly through the Broadcast Music Desk and CRID Jumbotron."),
+    h("div", "row", audiomackQueryIn, audiomackSearchBtn),
+    h("div", "row", audiomackTrendingBtn),
+    audiomackStatus,
+    audiomackTracks
+  );
 
   // ---------- CRID Court ----------
   const courtQuestion = h("input", { placeholder: "Debate question", maxlength: 140 });
@@ -1249,14 +1293,14 @@ import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.
       case "topics": panels = [queuePanel, editorEl]; break;
       case "crid": panels = [cridPanel]; break;
       case "community": panels = [riadPanel, ledgerPanel, spacePanel, chatPanel, slangPanel]; break;
-      case "studio": panels = [clipPanel, musicPanel, courtPanel, spotifyPanel]; break;
+      case "studio": panels = [clipPanel, musicPanel, courtPanel, audiomackPanel]; break;
       case "settings": panels = [autoEl, pollEl, twitchPanel, settingsExtrasEl]; break;
       default: panels = [statusEl, controlsEl, previewPanel];
     }
     // Show/hide panels based on active tab
     const allPanels = [statusEl, controlsEl, previewPanel, queuePanel, editorEl, cridPanel,
       riadPanel, ledgerPanel, spacePanel, chatPanel, slangPanel,
-      clipPanel, musicPanel, courtPanel, spotifyPanel, autoEl, pollEl, twitchPanel, settingsExtrasEl];
+      clipPanel, musicPanel, courtPanel, audiomackPanel, autoEl, pollEl, twitchPanel, settingsExtrasEl];
     for (const p of allPanels) {
       if (p === editorEl) {
         p.hidden = !panels.includes(p) || !editing;

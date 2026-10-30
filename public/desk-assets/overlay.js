@@ -41,6 +41,10 @@
   const xQuery = new URLSearchParams(
     [...P].filter(([k]) => k.startsWith("x.")).map(([k, v]) => [k.slice(2), v])
   ).toString();
+  const xMode = P.get("x.mode") || "";
+  const xJPos = pick("x.jpos", ["top", "bottom"], "bottom");
+  const xJPollMs = num("x.jpoll", 60, 10, 3600) * 1000;
+  const xUserId = P.get("x.userId") || "";
 
   // ---------- styles ----------
   // Brand tokens: --ink is the deep panel, --accent the soft brand tint,
@@ -60,34 +64,40 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
   --m:clamp(12px,4vmin,32px);
   --scale:1;
   font-size:calc(var(--scale)*clamp(15px,3.5vmin,26px));line-height:1.4}
-.slot{position:absolute;display:grid;width:min(calc(100vw - 2*var(--m)),42em)}
-.slot>*{grid-area:1/1;justify-self:center}
-.slot::before{content:"";grid-area:1/1;align-self:end;pointer-events:none;opacity:0;
-  border:.10em solid var(--accent);box-shadow:0 0 20px var(--accent-glow);
-  transition:opacity .35s ease}
-.slot:not(:empty)::before{opacity:1}
-.pos-top-left .slot::before,.pos-top-right .slot::before{align-self:start}
-.pos-bottom-left .slot{left:var(--m);bottom:calc(var(--m) + env(safe-area-inset-bottom,0px))}
-.pos-bottom-right .slot{right:var(--m);bottom:calc(var(--m) + env(safe-area-inset-bottom,0px))}
-.pos-top-left .slot{left:var(--m);top:calc(var(--m) + env(safe-area-inset-top,0px))}
-.pos-top-right .slot{right:var(--m);top:calc(var(--m) + env(safe-area-inset-top,0px))}
-@media (min-aspect-ratio:1/1){
-  .slot{width:min(calc(100vw - 2*var(--m)),56em)}
-  .card{padding:1.3em 1.6em 1.2em;border-radius:1.6em}
-  .headline{font-size:1.5em}
-  .summary{font-size:1.15em}
+  .slot{position:absolute;display:grid;width:min(calc(100vw - 2*var(--m)),56em)}
+  .slot>*{grid-area:1/1;justify-self:center}
+  .slot::before{content:"";grid-area:1/1;align-self:end;pointer-events:none;opacity:0;
+    border:.10em solid var(--accent);box-shadow:0 0 20px var(--accent-glow);
+    transition:opacity .35s ease}
+  .slot:not(:empty)::before{opacity:1}
+  .pos-top-left .slot::before,.pos-top-right .slot::before{align-self:start}
+  .pos-bottom-left .slot{left:var(--m);bottom:calc(var(--m) + env(safe-area-inset-bottom,0px))}
+  .pos-bottom-right .slot{right:var(--m);bottom:calc(var(--m) + env(safe-area-inset-bottom,0px))}
+  .pos-top-left .slot{left:var(--m);top:calc(var(--m) + env(safe-area-inset-top,0px))}
+  .pos-top-right .slot{right:var(--m);top:calc(var(--m) + env(safe-area-inset-top,0px))}
   #crid-jumbotron{width:min(calc(100vw - 2*var(--m)),60em);padding:1.1em 1.5em;border-radius:1.8em}
   .crid-title{font-size:1.2em}
+
+@media (max-aspect-ratio:1/1){
+  .slot{width:min(calc(100vw - 2*var(--m)),42em)}
+  .card{padding:13px 14px 12px;border-radius:19px}
+  .headline{font-size:1.35em}
+  .summary{font-size:1.05em}
+  #crid-jumbotron{width:min(calc(100vw - 2*var(--m)),46em);padding:1.1em 1.3em;border-radius:1.6em}
+  .crid-title{font-size:1.1em}
 }
 
 .card{box-sizing:border-box;align-self:end;position:relative;
   background:var(--glass);backdrop-filter:blur(18px) saturate(1.14);
   -webkit-backdrop-filter:blur(18px) saturate(1.14);
-  border:1px solid var(--surface-line);border-radius:19px;
-  padding:13px 14px 12px;opacity:0;transform:translateY(11px) scale(.985);
+  border:1px solid var(--surface-line);border-radius:1.6em;
+  padding:1.3em 1.6em 1.2em;opacity:0;transform:translateY(11px) scale(.985);
   width:100%;max-height:34dvh;
   box-shadow:0 10px 30px #00000045,inset 0 1px #ffffff14;
   transition:opacity .24s cubic-bezier(.2,.8,.2,1),transform .24s cubic-bezier(.2,.8,.2,1),filter .24s ease}
+@media (max-aspect-ratio:1/1){
+  .card{border-radius:19px;padding:13px 14px 12px;max-height:34dvh}
+}
 .pos-top-left .card,.pos-top-right .card{align-self:start}
 .anim-slide .card{transform:translateY(11px) scale(.985)}
 .card.in{opacity:1;transform:none}
@@ -166,60 +176,180 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 .dot.loading{background:#ff453a}
 @keyframes pulse-dot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.55;transform:scale(1.15)}}
 
-/* ---------- CRID Jumbotron — alive, breathing, not just static ---------- */
+/* ---------- CRID Jumbotron — one built body, full panel, alive ---------- */
 .crid-pos-top #crid-jumbotron{top:calc(var(--m) + env(safe-area-inset-top,0px));bottom:auto}
 .crid-pos-bottom #crid-jumbotron{bottom:calc(var(--m) + env(safe-area-inset-bottom,0px));top:auto}
 #crid-jumbotron{position:absolute;left:50%;transform:translate(-50%,-14px);
   width:min(calc(100vw - 2*var(--m)),46em);max-width:96vw;box-sizing:border-box;pointer-events:none;z-index:10;
-  background:#111214f0;backdrop-filter:blur(16px) saturate(180%);
-  -webkit-backdrop-filter:blur(16px) saturate(180%);
-  border:.10em solid var(--surface-line);border-radius:1.4em;padding:.85em 1.1em;
-  box-shadow:0 24px 48px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.1);
-  opacity:0;transform:translate(-50%,-14px) scale(.97);
+  background:#111214f0;backdrop-filter:blur(20px) saturate(190%);
+  -webkit-backdrop-filter:blur(20px) saturate(190%);
+  border:.10em solid var(--surface-line);border-radius:1.6em;padding:1.1em 1.3em;
+  box-shadow:0 24px 48px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.12);
+  opacity:0;transform:translate(-50%,-14px) scale(.96);
   transition:opacity .5s cubic-bezier(.16,1,.3,1),
               transform .5s cubic-bezier(.16,1,.3,1),
               filter .5s ease}
-.crid-pos-bottom #crid-jumbotron{transform:translate(-50%,14px) scale(.97)}
+.crid-pos-bottom #crid-jumbotron{transform:translate(-50%,14px) scale(.96)}
 #crid-jumbotron.in{opacity:1;transform:translate(-50%,0) scale(1)}
-#crid-jumbotron.out{opacity:0;transform:translate(-50%,-14px) scale(.97)}
-.crid-pos-bottom #crid-jumbotron.out{transform:translate(-50%,14px) scale(.97)}
-.crid-head{display:flex;align-items:center;justify-content:space-between;gap:.5em;margin-bottom:.45em;
-  font-size:.66em;font-weight:700;font-family:var(--brand);
-  text-transform:uppercase;letter-spacing:.07em}
+#crid-jumbotron.out{opacity:0;transform:translate(-50%,-14px) scale(.95)}
+.crid-pos-bottom #crid-jumbotron.out{transform:translate(-50%,14px) scale(.95)}
+.crid-body{display:flex;flex-direction:column;gap:.7em}
+.crid-head{display:flex;align-items:center;justify-content:space-between;gap:.5em;
+  font-size:.62em;font-weight:800;font-family:var(--brand);
+  text-transform:uppercase;letter-spacing:.08em}
 .crid-tag-wrap{display:flex;align-items:center;gap:.4em;flex-wrap:wrap}
-.crid-brand{background:var(--accent);color:#111214;padding:.18em .65em;border-radius:.9em;font-weight:700;
-  animation:brand-glow 3s ease-in-out infinite alternate}
+.crid-brand{background:var(--accent);color:#111214;padding:.2em .7em;border-radius:.9em;font-weight:800;
+  animation:brand-glow 3s ease-in-out infinite alternate,badge-blink 2s ease-in-out infinite}
 .crid-kind{background:rgba(255,255,255,.08);color:#f3f2f0;border:.09em solid rgba(255,255,255,.25);
-  padding:.18em .6em;border-radius:.9em;text-transform:uppercase;font-weight:700}
-.crid-stranger{color:#c7c7cc;font-size:.88em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  padding:.2em .65em;border-radius:.9em;text-transform:uppercase;font-weight:800;font-size:.72em}
+.crid-stranger{color:#c7c7cc;font-size:.82em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.02em}
 .crid-stranger strong{color:#f3f2f0}
-.crid-title{margin:0 0 .5em;font-size:1.05em;font-weight:700;line-height:1.3;
-  color:#f3f2f0;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3}
-.crid-foot{display:flex;align-items:center;justify-content:space-between;gap:.5em;padding-top:.5em;
-  border-top:.08em solid rgba(255,255,255,.16);font-size:.78em;font-weight:700;font-family:var(--brand)}
-.crid-verdict{display:inline-flex;align-items:center;gap:.4em;padding:.3em .85em;border-radius:.9em;
-  font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.crid-title{margin:0;font-size:1.35em;font-weight:800;line-height:1.25;letter-spacing:-.015em;
+  color:#f3f2f0;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4}
+.crid-foot{display:flex;align-items:center;justify-content:space-between;gap:.6em;padding-top:.7em;
+  border-top:.08em solid rgba(255,255,255,.16)}
+.crid-verdict{display:inline-flex;align-items:center;gap:.45em;padding:.32em .9em;border-radius:.9em;
+  font-weight:800;text-transform:uppercase;letter-spacing:.05em;font-size:.78em}
 /* filled tint = rent paid, outlined = still owing */
 .crid-v-1{background:var(--accent);color:#111214;border:.09em solid var(--accent);
-  box-shadow:0 0 16px var(--accent-glow)}
+  box-shadow:0 0 20px var(--accent-glow)}
 .crid-v-0{background:transparent;color:var(--accent);border:.09em solid var(--accent);
-  box-shadow:0 0 16px var(--accent-glow)}
-.crid-v-none{color:#8E8E93;font-size:.9em;font-weight:600;letter-spacing:.03em}
-.crid-tally{color:var(--accent);font-size:.9em;font-weight:700}
+  box-shadow:0 0 20px var(--accent-glow)}
+.crid-v-none{color:#8E8E93;font-size:.88em;font-weight:600;letter-spacing:.03em}
+.crid-tally{color:var(--accent);font-size:.88em;font-weight:800}
+.crid-result{font-size:.82em;font-weight:700;letter-spacing:.04em;color:#f3f2f0}
 
-/* alive motions on the jumbotron */
+/* alive motions on the full body */
 @keyframes brand-glow{0%{box-shadow:0 0 0 rgba(255,69,58,.4);filter:brightness(1)}
-  100%{box-shadow:0 0 14px rgba(255,69,58,.55);filter:brightness(1.08)}}
+  100%{box-shadow:0 0 16px rgba(255,69,58,.6);filter:brightness(1.1)}}
 @keyframes breathe{0%,100%{transform:translate(-50%,0) scale(1);filter:brightness(1)}
-  50%{transform:translate(-50%,-1px) scale(1.006);filter:brightness(1.03)}}
+  50%{transform:translate(-50%,-1px) scale(1.007);filter:brightness(1.035)}}
 #crid-jumbotron.in{animation:breathe 5s ease-in-out infinite}
 @keyframes drift{0%,100%{transform:translate(-50%,0) scale(1)}
-  33%{transform:translate(-50%,-2px) scale(1.004)}
-  66%{transform:translate(-50%,1px) scale(1.002)}}
+  33%{transform:translate(-50%,-2px) scale(1.005)}
+  66%{transform:translate(-50%,1px) scale(1.003)}}
 .crid-pos-bottom #crid-jumbotron.in{animation:drift 6s ease-in-out infinite}
-@keyframes badge-blink{0%,100%{opacity:1}50%{opacity:.45}}
-.crid-brand{animation:brand-glow 3s ease-in-out infinite alternate,
-                 badge-blink 2s ease-in-out infinite}
+@keyframes badge-blink{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes verdict-pulse{0%,100%{box-shadow:0 0 0 rgba(255,69,58,.45)}70%{box-shadow:0 0 10px rgba(255,69,58,0)}100%{box-shadow:0 0 0 rgba(255,69,58,.45)}}
+.crid-v-1{animation:verdict-pulse 1.6s ease-in-out infinite}
+
+/* X jumbotron — a live bar of X content at the top or bottom of the desk,
+   like the CRID segment: always visible, always readable, never in the card slot. */
+.x-pos-top #x-jumbotron{top:calc(var(--m) + env(safe-area-inset-top,0px));bottom:auto}
+.x-pos-bottom #x-jumbotron{bottom:calc(var(--m) + env(safe-area-inset-bottom,0px));top:auto}
+#x-jumbotron{position:absolute;left:50%;transform:translate(-50%,-14px);
+  width:min(calc(100vw - 2*var(--m)),46em);max-width:96vw;box-sizing:border-box;pointer-events:none;z-index:10;
+  background:#111214f0;backdrop-filter:blur(16px) saturate(180%);
+  -webkit-backdrop-filter:blur(16px) saturate(180%);
+  border:.10em solid var(--surface-line);border-radius:1.4em;padding:.7em 1em;
+  box-shadow:0 24px 48px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.1);
+  opacity:0;transform:translate(-50%,-14px) scale(.97);
+  transition:opacity .5s cubic-bezier(.16,1,.3,1),transform .5s cubic-bezier(.16,1,.3,1),filter .5s ease}
+.x-pos-bottom #x-jumbotron{transform:translate(-50%,14px) scale(.97)}
+#x-jumbotron.in{opacity:1;transform:translate(-50%,0) scale(1)}
+#x-jumbotron.out{opacity:0;transform:translate(-50%,-14px) scale(.97)}
+.x-pos-bottom #x-jumbotron.out{transform:translate(-50%,14px) scale(.97)}
+.x-head{display:flex;align-items:center;gap:.5em;margin-bottom:.4em;
+  font-size:.66em;font-weight:700;font-family:var(--brand);
+  text-transform:uppercase;letter-spacing:.07em;color:#f3f2f0}
+.x-brand{background:var(--accent);color:#111214;padding:.18em .65em;border-radius:.9em;font-weight:700;}
+.x-kind{background:rgba(255,255,255,.08);color:#f3f2f0;border:.09em solid rgba(255,255,255,.25);
+  padding:.18em .6em;border-radius:.9em;text-transform:uppercase;font-weight:700;font-size:.72em}
+.x-list{display:flex;flex-direction:column;gap:.35em}
+.x-item{display:flex;align-items:baseline;gap:.55em;font-size:.92em;line-height:1.3;
+  color:#f3f2f0;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+.x-item .x-bullet{color:var(--accent);font-weight:800;font-size:1.1em;flex-shrink:0}
+.x-item .x-text{color:#c7c7cc}
+.x-item .x-author{color:var(--accent);font-weight:700}
+.x-item .x-handle{color:#8E8E93;font-size:.82em}
+.x-trend{display:flex;align-items:center;gap:.5em}
+.x-trend .x-count{color:#8E8E93;font-size:.78em;font-weight:600}
+.x-item .x-avatar{width:1.5em;height:1.5em;border-radius:50%;object-fit:cover;flex-shrink:0;
+  border:.08em solid var(--surface-line);box-shadow:0 0 6px rgba(0,0,0,.4)}
+.x-item .x-meta{display:flex;align-items:center;gap:.4em;font-size:.7em;color:#8E8E93;font-weight:600;
+  letter-spacing:.02em;margin-top:.15em}
+.x-item .x-time{color:#a4a3a2}
+.x-item .x-metric{color:#c7c7cc}
+
+/* audio strip — debug-only, operator controls audio from the controller */
+.audio-wrap{position:fixed;bottom:14px;right:14px;z-index:60;pointer-events:auto;
+  background:rgba(15,15,18,.85);backdrop-filter:blur(12px) saturate(160%);
+  border:.09em solid rgba(255,255,255,.2);border-radius:999px;padding:.35em .7em;
+  display:flex;align-items:center;gap:.6em;box-shadow:0 10px 30px rgba(0,0,0,.45);
+  opacity:0;transition:opacity .3s ease}
+#desk.debug .audio-wrap{opacity:1}
+.audio-btn{width:26px;height:26px;border:0;border-radius:50%;background:rgba(255,255,255,.15);
+  color:#f3f2f0;font-size:1rem;cursor:pointer;display:grid;place-items:center}
+.audio-btn.on{background:var(--accent);color:#111214}
+.audio-vol{width:70px;height:4px;background:rgba(255,255,255,.18);border-radius:2px;
+  outline:none;pointer-events:auto}
+.audio-vol::-webkit-slider-thumb{appearance:none;width:12px;height:12px;background:#f3f2f0;
+  border-radius:50%;pointer-events:auto}
+.audio-label{font-size:.62em;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:#8E8E93;font-family:var(--brand)}
+
+/* voice control — debug-only, operator arms listening from Swae */
+.voice-wrap{position:fixed;bottom:14px;left:14px;z-index:60;pointer-events:auto;
+  background:rgba(15,15,18,.85);backdrop-filter:blur(12px) saturate(160%);
+  border:.09em solid rgba(255,255,255,.2);border-radius:999px;padding:.35em .7em;
+  display:flex;align-items:center;gap:.6em;box-shadow:0 10px 30px rgba(0,0,0,.45);
+  opacity:0;transition:opacity .3s ease}
+#desk.debug .voice-wrap{opacity:1}
+.voice-btn{width:28px;height:28px;border:0;border-radius:50%;background:rgba(255,255,255,.15);
+  color:#f3f2f0;font-size:1.1rem;cursor:pointer;display:grid;place-items:center}
+.voice-btn.armed{background:var(--accent);color:#111214}
+.voice-btn.listening{background:#ff453a;color:#111214;animation:voice-pulse 1.5s ease-in-out infinite}
+.voice-label{font-size:.62em;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:#8E8E93;font-family:var(--brand)}
+.voice-heard{font-size:.62em;font-weight:600;color:#7CC4FF;font-family:var(--brand);
+  min-width:120px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@keyframes voice-pulse{0%,100%{box-shadow:0 0 0 rgba(255,69,58,.4)}50%{box-shadow:0 0 12px rgba(255,69,58,.6)}}
+
+/* CRID Court — structured debate */
+.court-wrap{border:.09em solid var(--surface-line);border-radius:1.2em;padding:1em;background:var(--glass);backdrop-filter:blur(12px) saturate(160%);margin:.5em 0}
+.court-question{font-size:1.1em;font-weight:800;color:#f3f2f0;margin:0 0 .6em}
+.court-viewpoints{display:flex;gap:.6em}
+.court-viewpoint{flex:1;border:.09em solid var(--surface-line);border-radius:.8em;padding:.6em .8em;background:rgba(255,255,255,.03)}
+.court-viewpoint .v-label{font-size:.62em;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#8E8E93;margin:0 0 .3em}
+.court-viewpoint .v-text{font-size:.9em;color:#f3f2f0}
+.court-votes{display:flex;gap:.6em;margin-top:.6em}
+.court-vote{border:.09em solid var(--surface-line);border-radius:.8em;padding:.4em .8em;background:rgba(255,255,255,.03);font-size:.85em;font-weight:700;color:#c7c7cc}
+.court-verdict{margin-top:.6em;font-size:1em;font-weight:900;text-transform:uppercase;letter-spacing:.1em}
+.court-verdict.w{color:#2ED3A5}.court-verdict.l{color:#FF7A66}.court-verdict.open{color:#FFB224}
+
+/* Music Desk */
+.music-wrap{border:.09em solid var(--surface-line);border-radius:1.2em;padding:1em;background:var(--glass);backdrop-filter:blur(12px) saturate(160%);margin:.5em 0}
+.music-current{font-size:1em;font-weight:800;color:#f3f2f0;margin:0 0 .3em}
+.music-artist{font-size:.8em;color:#c7c7cc;margin:0 0 .6em}
+.music-queue{font-size:.75em;color:#8E8E93;margin:0 0 .4em}
+.music-track{display:flex;gap:.4em;align-items:center;padding:.2em .4em;border-radius:.6em;background:rgba(255,255,255,.03);margin-bottom:.2em}
+.music-track.current{border-color:var(--accent);background:rgba(255,69,58,.15)}
+.music-title{flex:1;font-size:.85em;color:#f3f2f0}
+.music-artist-small{font-size:.75em;color:#c7c7cc}
+
+/* X Space Radar */
+.space-wrap{border:.09em solid var(--surface-line);border-radius:1.2em;padding:1em;background:var(--glass);backdrop-filter:blur(12px) saturate(160%);margin:.5em 0}
+.space-title{font-size:1em;font-weight:800;color:#f3f2f0;margin:0 0 .2em}
+.space-host{font-size:.8em;color:#c7c7cc;margin:0 0 .3em}
+.space-topic{font-size:.85em;color:#8E8E93;margin:0 0 .4em}
+.space-url{font-size:.72em;color:#7CC4FF;word-break:break-all}
+
+/* STRANGERS Ledger */
+.ledger-wrap{border:.09em solid var(--surface-line);border-radius:1.2em;padding:1em;background:var(--glass);backdrop-filter:blur(12px) saturate(160%);margin:.5em 0}
+.ledger-title{font-size:1em;font-weight:800;color:#f3f2f0;margin:0 0 .4em}
+.ledger-entry{font-size:.8em;color:#c7c7cc;padding:.3em 0;border-bottom:.06em solid var(--surface-line)}
+.ledger-entry:last-child{border-bottom:none}
+.ledger-type{font-size:.65em;font-weight:800;text-transform:uppercase;color:#FFB224;margin-right:.4em}
+
+/* RIAD — Rent Is Always Due */
+.riad-wrap{border:.12em solid #ff453a;border-radius:1.4em;padding:1.2em;background:var(--glass);backdrop-filter:blur(16px) saturate(200%);margin:.5em 0;box-shadow:0 0 30px rgba(255,69,58,.3)}
+.riad-title{font-size:1.2em;font-weight:900;color:#ff453a;text-transform:uppercase;letter-spacing:.1em;margin:0 0 .3em}
+.riad-text{font-size:.95em;color:#f3f2f0;margin:0}
+
+/* W/L */
+.wl-badge{display:inline-flex;align-items:center;gap:.3em;padding:.15em .6em;border-radius:.8em;font-weight:900;font-size:.85em;text-transform:uppercase;letter-spacing:.08em}
+.wl-badge.w{background:#14594A;color:#2ED3A5;border:.09em solid #2ED3A5}
+.wl-badge.l{background:#6B2E26;color:#FF7A66;border:.09em solid #FF7A66}
 
 @media (prefers-reduced-motion:reduce){
   .card{transform:none;transition:none}
@@ -314,13 +444,84 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
   register("news-drop", baseCard);
   const fallback = baseCard; // unknown types still render as a plain card
 
+  // CRID Court renderer
+  register("court", (c) => {
+    const total = (c.votes?.a ?? 0) + (c.votes?.b ?? 0);
+    const pctA = total ? Math.round((c.votes.a / total) * 100) : 0;
+    const pctB = total ? Math.round((c.votes.b / total) * 100) : 0;
+    const verdictEl = h("div", "court-verdict", c.verdict === 1 ? "W" : c.verdict === 0 ? "L" : c.status === "open" ? "OPEN" : "CLOSED");
+    verdictEl.classList.add(c.verdict === 1 ? "w" : c.verdict === 0 ? "l" : "open");
+    return h("div", "court-wrap",
+      h("div", "court-question", c.question),
+      h("div", "court-viewpoints",
+        h("div", "court-viewpoint", h("div", "v-label", "A"), h("div", "v-text", c.viewpointA)),
+        h("div", "court-viewpoint", h("div", "v-label", "B"), h("div", "v-text", c.viewpointB))),
+      h("div", "court-votes",
+        h("div", "court-vote", `A: ${c.votes?.a ?? 0} (${pctA}%)`),
+        h("div", "court-vote", `B: ${c.votes?.b ?? 0} (${pctB}%)`)),
+      verdictEl);
+  });
+
+  // Music Desk renderer
+  register("music", (c) => {
+    const music = c || state?.music || { queue: [], current: null, playing: false, volume: 1, muted: false };
+    const cur = music.current;
+    return h("div", "music-wrap",
+      cur ? h("div", "music-current", cur.title) : null,
+      cur && cur.artist ? h("div", "music-artist", cur.artist) : null,
+      h("div", "music-queue", `Queue: ${music.queue.length} · ${music.playing ? "playing" : "paused"}${music.muted ? " · muted" : ""}`),
+      music.queue.map((t) => h("div", "music-track" + (t.id === cur?.id ? " current" : ""),
+        h("span", "music-title", t.title),
+        t.artist && h("span", "music-artist-small", t.artist))),
+      h("div", "row",
+        btn("⏯", () => act("music-play"), "b small"),
+        btn("⏹", () => act("music-stop"), "b small"),
+        btn("⏭", () => act("music-next"), "b small")));
+  });
+
+  // X Space Radar renderer
+  register("space", (c) => {
+    const spaces = c.spaces || state?.spaces || [];
+    return h("div", "space-wrap",
+      ...spaces.map((s) => h("div", {},
+        h("div", "space-title", s.title),
+        s.host && h("div", "space-host", `Host: ${s.host}`),
+        s.topic && h("div", "space-topic", s.topic),
+        s.url && h("a", "space-url", { href: s.url, target: "_blank", rel: "noopener noreferrer" }, "Open on X")
+      ))
+    );
+  });
+
+  // STRANGERS Ledger renderer
+  register("ledger", (c) => {
+    const ledger = c.ledger || state?.ledger || [];
+    return h("div", "ledger-wrap",
+      h("div", "ledger-title", "STRANGERS Ledger"),
+      ...ledger.slice(-8).map((e) => h("div", "ledger-entry",
+        h("span", "ledger-type", e.type),
+        e.title,
+        e.description && h("span", {}, ` — ${e.description}`)
+      ))
+    );
+  });
+
+  // RIAD renderer
+  register("riad", (c) => {
+    const riad = c || state?.riad;
+    if (!riad || !riad.active) return null;
+    return h("div", "riad-wrap",
+      h("div", "riad-title", "RIAD — RENT IS ALWAYS DUE"),
+      h("div", "riad-text", `Raid announced${riad.channel ? ` from ${riad.channel}` : ""}.`)
+    );
+  });
+
   // ---------- mount ----------
   const style = document.createElement("style");
   style.textContent = CSS;
   document.head.append(style);
 
   const slot = h("div", "slot");
-  const root = h("div", `pos-${CFG.pos} anim-${CFG.anim} crid-pos-${CFG.cridPos}${CFG.debug ? " debug" : ""}`, slot);
+  const root = h("div", `pos-${CFG.pos} anim-${CFG.anim} crid-pos-${CFG.cridPos} x-pos-${xJPos}${CFG.debug ? " debug" : ""}`, slot);
   root.id = "desk";
   root.style.setProperty("--scale", CFG.scale);
   document.body.append(root);
@@ -343,6 +544,204 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 
   let shownKey = null;
   let xFrame = null;
+
+  // ---------- audio (Swae / stream audio) ----------
+  let audioEl = null;
+  let audioUrl = null;
+  let audioPlaying = false;
+  let audioVol = 0.7;
+
+  const audioWrap = CFG.debug ? h("div", "audio-wrap") : null;
+  const audioPlayBtn = CFG.debug ? h("button", "audio-btn", "▶") : null;
+  const audioMuteBtn = CFG.debug ? h("button", "audio-btn", "🔊") : null;
+  const audioVolIn = CFG.debug ? h("input", "", { type: "range", min: "0", max: "1", step: "0.05", value: String(audioVol) }) : null;
+  const audioLabel = CFG.debug ? h("span", "audio-label", "AUDIO") : null;
+  if (audioWrap) {
+    audioWrap.append(audioLabel, audioPlayBtn, audioMuteBtn, audioVolIn);
+    document.body.append(audioWrap);
+    audioPlayBtn.addEventListener("click", () => { audioPlaying = !audioPlaying; applyAudio(); });
+    audioMuteBtn.addEventListener("click", () => { audioVolIn.value = audioVol > 0 ? "0" : String(audioVol || 0.7); audioVol = Number(audioVolIn.value); applyAudio(); });
+    audioVolIn.addEventListener("input", () => { audioVol = Number(audioVolIn.value); applyAudio(); });
+  }
+
+  const applyAudio = () => {
+    if (!audioEl) return;
+    audioPlayBtn?.classList.toggle("on", audioPlaying);
+    audioMuteBtn.textContent = audioVol <= 0 ? "🔇" : "🔊";
+    audioVolIn.disabled = audioVol <= 0;
+    audioEl.volume = audioVol;
+    if (audioUrl && audioPlaying) {
+      audioEl.play().catch(() => { /* autoplay blocked; wait for user gesture */ });
+    } else {
+      audioEl.pause();
+    }
+  };
+
+  const setAudio = (url, playing) => {
+    const changed = url !== audioUrl;
+    audioUrl = url;
+    audioPlaying = playing === true;
+    if (changed) {
+      if (audioEl) { audioEl.pause(); audioEl.remove(); audioEl = null; }
+      if (url) {
+        audioEl = new Audio(url);
+        audioEl.volume = audioVol;
+        audioEl.addEventListener("ended", () => { audioPlaying = false; applyAudio(); });
+      }
+    }
+    applyAudio();
+  };
+
+  const stopAudio = () => setAudio(null, false);
+
+  // ---------- module elements (court, music, spaces, ledger, riad) ----------
+  let moduleEl = null;
+  let moduleKey = null;
+
+  const renderModule = (s) => {
+    if (!s) {
+      if (moduleEl) {
+        moduleEl.remove();
+        moduleEl = null;
+        moduleKey = null;
+      }
+      return;
+    }
+
+    const parts = [];
+    if (s.court) {
+      const el = (renderers.get("court") || fallback)({ type: "court", ...s.court });
+      parts.push(el);
+    }
+    if (s.music && (s.music.queue.length || s.music.current)) {
+      const el = (renderers.get("music") || fallback)({ type: "music", ...s.music });
+      parts.push(el);
+    }
+    if (s.spaces && s.spaces.length) {
+      const el = (renderers.get("space") || fallback)({ type: "space", spaces: s.spaces });
+      parts.push(el);
+    }
+    if (s.ledger && s.ledger.length) {
+      const el = (renderers.get("ledger") || fallback)({ type: "ledger", ledger: s.ledger });
+      parts.push(el);
+    }
+    if (s.riad && s.riad.active) {
+      const el = (renderers.get("riad") || fallback)({ type: "riad", ...s.riad });
+      parts.push(el);
+    }
+
+    const key = parts.map((p) => JSON.stringify(p)).join("|");
+    if (key === moduleKey && moduleEl) return;
+
+    if (moduleEl) {
+      moduleEl.remove();
+      moduleEl = null;
+    }
+
+    if (parts.length) {
+      moduleEl = h("div", "module-wrap", ...parts);
+      moduleEl.id = "modules";
+      moduleEl.style.position = "absolute";
+      moduleEl.style.inset = "0";
+      moduleEl.style.pointerEvents = "none";
+      moduleEl.style.display = "flex";
+      moduleEl.style.flexDirection = "column";
+      moduleEl.style.alignItems = "center";
+      moduleEl.style.justifyContent = "center";
+      moduleEl.style.zIndex = "15";
+      root.append(moduleEl);
+    }
+    moduleKey = key;
+  };
+
+  // ---------- voice control (Swae / iPhone microphone) ----------
+  // Web Speech API requires a user gesture to start. The overlay exposes an ARM button
+  // (debug-only). When armed, recognized phrases are sent to /api/desk/voice which maps
+  // them to a safe subset of desk actions. The overlay never holds the operator token.
+  let voiceRecognition = null;
+  let voiceArmed = false;
+  let voiceListening = false;
+  let voiceTimeout = null;
+
+  const voiceWrap = CFG.debug ? h("div", "voice-wrap") : null;
+  const voiceBtn = CFG.debug ? h("button", "voice-btn", "🎤") : null;
+  const voiceLabel = CFG.debug ? h("span", "voice-label", "VOICE") : null;
+  const voiceHeard = CFG.debug ? h("span", "voice-heard") : null;
+  if (voiceWrap) {
+    voiceWrap.append(voiceLabel, voiceBtn, voiceHeard);
+    document.body.append(voiceWrap);
+    voiceBtn.addEventListener("click", () => {
+      if (voiceListening) { voiceStop(); return; }
+      if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
+        toast("Speech recognition not supported in this browser.", true);
+        return;
+      }
+      const Ctor = window.webkitSpeechRecognition || window.SpeechRecognition;
+      voiceRecognition = new Ctor();
+      voiceRecognition.continuous = true;
+      voiceRecognition.interimResults = false;
+      voiceRecognition.lang = "en-US";
+      voiceRecognition.onstart = () => { voiceArmed = true; voiceListening = true; applyVoice(); };
+      voiceRecognition.onend = () => { voiceListening = false; applyVoice(); };
+      voiceRecognition.onresult = (e) => {
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const transcript = e.results[i][0].transcript;
+          voiceHeard.textContent = transcript;
+          voiceCmd(transcript);
+        }
+      };
+      voiceRecognition.onerror = () => { voiceListening = false; applyVoice(); };
+      voiceRecognition.start();
+    });
+  }
+
+  const applyVoice = () => {
+    voiceBtn?.classList.toggle("armed", voiceArmed && !voiceListening);
+    voiceBtn?.classList.toggle("listening", voiceListening);
+  };
+
+  const voiceStop = () => {
+    voiceArmed = false;
+    voiceListening = false;
+    try { voiceRecognition?.stop(); } catch { /* ignore */ }
+    voiceRecognition = null;
+    applyVoice();
+    clearTimeout(voiceTimeout);
+    voiceTimeout = setTimeout(() => { voiceHeard.textContent = ""; }, 3000);
+  };
+
+  const voiceCmd = (text) => {
+    const lower = text.trim().toLowerCase();
+    const phrases = [
+      { re: /clip.?that/i, action: "clip-create" },
+      { re: /next.?(topic|card)?/i, action: "next" },
+      { re: /previous|prev/i, action: "previous" },
+      { re: /hold/i, action: "hold" },
+      { re: /hide/i, action: "hide" },
+      { re: /show.?poll|open.?poll/i, action: "start-poll" },
+      { re: /lock.?vote|end.?poll|close.?poll/i, action: "end-poll" },
+      { re: /switch.?crid|open.?jumbotron/i, action: "crid-open" },
+      { re: /space.?radar|x.?space/i, action: "space-radar" },
+    ];
+    const match = phrases.find((p) => p.re.test(lower));
+    if (!match) return;
+    voiceStop();
+    fetch("/api/desk/voice", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    })
+      .then(async (r) => {
+        if (!r.ok) {
+          const err = await r.text().catch(() => "");
+          toast(`Voice refused: ${err}`, true);
+          return;
+        }
+        const j = await r.json();
+        toast(`Voice: ${j.command || text}`, true);
+      })
+      .catch(() => toast("Voice request failed.", true));
+  };
 
   const dropCard = () => {
     const old = slot.firstElementChild;
@@ -454,22 +853,123 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
     } else if (crid.verdict === 0) {
       vEl = h("span", "crid-verdict crid-v-0", "✖ STILL OWING");
     } else if (crid.result) {
-      vEl = h("span", "crid-tally", crid.result.tie ? "STRANGERS: TIE (50/50)" : `STRANGERS: ${crid.result.winner} (${crid.result.percent}%)`);
+      vEl = h("div", "crid-result",
+        crid.result.tie ? "STRANGERS: TIE (50/50)" : `STRANGERS: ${crid.result.winner} (${crid.result.percent}%)`);
     } else {
       vEl = h("span", "crid-v-none", "Live Segment · Awaiting Verdict");
     }
 
     const foot = h("div", "crid-foot", vEl);
+    const body = h("div", "crid-body", head, title, foot);
 
     if (cridEl) {
-      cridEl.replaceChildren(head, title, foot);
+      cridEl.replaceChildren(body);
     } else {
-      cridEl = h("div", "", head, title, foot);
+      cridEl = h("div", "", body);
       cridEl.id = "crid-jumbotron";
       root.append(cridEl);
       requestAnimationFrame(() => requestAnimationFrame(() => cridEl?.classList.add("in")));
     }
     cridKey = key;
+  };
+
+  // ---------- X jumbotron ----------
+  let xEl = null;
+  let xKey = null;
+  let xTimer = null;
+  let xStarted = false;
+
+  const renderXjumbotron = (feed) => {
+    if (!xMode || !feed) {
+      if (xEl) {
+        xEl.classList.remove("in");
+        xEl.classList.add("out");
+        const old = xEl;
+        setTimeout(() => old.remove(), 320);
+        xEl = null;
+        xKey = null;
+      }
+      clearTimeout(xTimer);
+      return;
+    }
+
+    const key = [xMode, xUserId, JSON.stringify(feed)].join("|");
+    if (key === xKey && xEl) {
+      clearTimeout(xTimer);
+      xTimer = setTimeout(fetchXfeed, xJPollMs);
+      return;
+    }
+
+    const brand = h("span", "x-brand", "X");
+    const kind = h("span", "x-kind", xMode === "trends" ? "Trending" : xMode === "following" ? "Following" : "For You");
+    const head = h("div", "x-head", brand, kind);
+
+    let list;
+    if (xMode === "trends") {
+      const items = (feed.trends || []).map((t) =>
+        h("div", "x-item x-trend",
+          h("span", "x-bullet", "•"),
+          h("span", "x-text", h("span", "x-author", t.name)),
+          t.tweetCount && h("span", "x-count", `${t.tweetCount.toLocaleString()} posts`)
+        )
+      );
+      list = h("div", "x-list", ...items);
+    } else {
+      const since = (iso) => {
+        if (!iso) return "";
+        const s = new Date(iso).getTime();
+        if (!s) return "";
+        const m = Math.max(0, (Date.now() - s) / 1000);
+        if (m < 60) return "just now";
+        if (m < 3600) return `${Math.round(m / 60)}m ago`;
+        if (m < 86400) return `${Math.round(m / 3600)}h ago`;
+        return `${Math.round(m / 86400)}d ago`;
+      };
+      const items = (feed.tweets || []).map((t) =>
+        h("div", "x-item",
+          t.avatar && h("img", "x-avatar", { src: t.avatar, alt: "", loading: "lazy" }),
+          h("span", "x-text",
+            h("span", "x-author", t.author),
+            t.handle && h("span", "x-handle", ` @${t.handle}`),
+            " — ",
+            t.text
+          ),
+          h("span", "x-meta",
+            h("span", "x-time", since(t.createdAt)),
+            t.metrics && h("span", "x-metric", `· ${t.metrics.like?.toLocaleString() ?? 0} ❤  ${t.metrics.repost?.toLocaleString() ?? 0} ↗`)
+          )
+        )
+      );
+      list = h("div", "x-list", ...items);
+    }
+
+    const foot = h("div", "", h("span", "x-count", new Date(feed.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })));
+
+    if (xEl) {
+      xEl.replaceChildren(head, list, foot);
+    } else {
+      xEl = h("div", "", head, list, foot);
+      xEl.id = "x-jumbotron";
+      root.append(xEl);
+      requestAnimationFrame(() => requestAnimationFrame(() => xEl?.classList.add("in")));
+    }
+    xKey = key;
+    clearTimeout(xTimer);
+    xTimer = setTimeout(fetchXfeed, xJPollMs);
+  };
+
+  const fetchXfeed = async () => {
+    if (!xMode) return;
+    const params = new URLSearchParams({ mode: xMode });
+    if (xUserId) params.set("userId", xUserId);
+    try {
+      const r = await fetch(`/api/x/feed?${params}`, { cache: "no-store" });
+      if (r.ok) {
+        renderXjumbotron(await r.json());
+      }
+    } catch {
+      // keep whatever is on screen; retry on the next cycle
+    }
   };
 
   const render = () => {
@@ -479,17 +979,32 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
       dropCard();
       setX(state.visible);
       renderCrid(null);
+      stopAudio();
+      renderModule(null);
       return;
     }
     setX(false);
     renderCrid(state.crid);
+    // Audio: CRID segment audio plays on the jumbotron; card audio plays on the card.
+    const crid = state.crid;
+    if (crid && crid.audioUrl) {
+      setAudio(crid.audioUrl, crid.audioPlaying === true);
+    } else if (state.visible && state.mode === "cards" && state.activeCardId) {
+      // Card-level audio is handled by the card renderer via opts.audioUrl when present.
+    } else {
+      stopAudio();
+    }
+    // Module rendering (court, music, spaces, ledger, riad) — separate from the card slot.
+    renderModule(state);
+    if (xMode && !xStarted) {
+      xStarted = true;
+      fetchXfeed();
+    }
     const poll = state.poll || null;
     const card = state.card || (poll ? { id: "poll-" + poll.id, type: "poll", category: "Live poll", headline: poll.question } : null);
     if (!state.visible || !card) return dropCard();
     if (state.expiresAt && state.expiresAt <= serverNow()) {
       if (!state.autoPlay) return dropCard();
-      // The server only moves the card when something reads it, so read now and keep this
-      // card on screen for a moment rather than showing a gap between the two.
       schedulePoll(250);
       if (serverNow() - state.expiresAt > GRACE_MS) return dropCard();
       expiryTimer = setTimeout(render, Math.max(50, state.expiresAt + GRACE_MS - serverNow()));

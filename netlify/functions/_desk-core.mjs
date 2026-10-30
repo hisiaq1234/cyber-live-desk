@@ -17,6 +17,7 @@ export const LIMITS = {
   notes: 2000,
   cridTitle: 120, // a jumbotron line a phone viewer has to read in seconds
   cridCredit: 30,
+  cridAudioUrl: 2000, // https audio URL the jumbotron plays on Swae / stream audio
 };
 
 // CRID — Cyber's Rent Is Due. The branded segment the desk puts on the jumbotron: one subject,
@@ -37,8 +38,18 @@ export const DEFAULT_STATE = {
   expiresAt: null,
   poll: null, // { id, question, active, options: [{ id, label, count, manual, chat }] }
   desk: null, // sticky topic filter: null, or one of DESKS ids
-  crid: null, // { id, entry, kind, title, credit, verdict, result, openedAt } — the live segment
+  crid: null, // { id, entry, kind, title, credit, audioUrl, audioPlaying, verdict, result, openedAt } — the live segment
   cridSeq: 0, // counts segments since the store existed; entry numbers never repeat
+  // CRID Court — structured debate: question, opposing viewpoints, audience votes, verdict.
+  court: null, // { id, question, viewpointA, viewpointB, votes: { a: number, b: number }, verdict: 1|0|null, status: "open"|"closed", openedAt }
+  // Music Desk — independent audio queue, independent of Spotify.
+  music: null, // { queue: [{id, title, artist, audioUrl}], current: {id, title, artist, audioUrl}|null, playing: boolean, volume: number, muted: boolean }
+  // X Space Radar — selected public X Spaces (info card + external link only).
+  spaces: [], // [{ id, title, host, topic, status, url }]
+  // STRANGERS Ledger — community interactions and decisions.
+  ledger: [], // [{ id, type, title, description, createdAt }]
+  // RIAD — Rent Is Always Due raid identity.
+  riad: null, // { active: boolean, announcedAt: number|null, channel: string|null }
   autoPlay: false, // when on, an expired card advances to the next approved one by itself
   autoResearch: false, // when on, the scheduled run adds new research by itself
   // Research approval is a separate, persistent decision from whether the scheduler fetches at
@@ -233,6 +244,7 @@ export const publicCard = (c) => ({
   summary: c.summary,
   question: c.question,
   confidence: c.confidence,
+  audioUrl: c.audioUrl ?? null,
   publisher: c.source?.publisher ?? null,
   publishedAt: c.source?.publishedAt ?? null,
   eventDate: c.eventDate ?? null,
@@ -580,8 +592,9 @@ export async function runAction(store, b, now = Date.now()) {
       if (!rawTitle) throw new HttpError(422, "title is required.");
       const title = clip(rawTitle, LIMITS.cridTitle);
       const credit = typeof b.credit === "string" && b.credit.trim() ? clip(b.credit.trim(), LIMITS.cridCredit) : null;
+      const audioUrl = typeof b.audioUrl === "string" && b.audioUrl.trim() ? clip(b.audioUrl.trim(), LIMITS.cridAudioUrl) : null;
       const entry = state.cridSeq + 1;
-      patch = { cridSeq: entry, crid: { id: cryptoRandomId(), entry, kind, title, credit, verdict: null, result: null, openedAt: now } };
+      patch = { cridSeq: entry, crid: { id: cryptoRandomId(), entry, kind, title, credit, audioUrl, audioPlaying: false, verdict: null, result: null, openedAt: now } };
       break;
     }
     case "crid-close":
@@ -591,6 +604,13 @@ export async function runAction(store, b, now = Date.now()) {
       if (!state.crid) throw new HttpError(409, "There is no CRID segment open.");
       if (!VERDICTS.includes(b.value)) throw new HttpError(422, "A verdict is 0 or 1.");
       patch = { crid: { ...state.crid, verdict: b.value } };
+      break;
+    }
+    case "crid-audio": {
+      if (!state.crid) throw new HttpError(409, "There is no CRID segment open.");
+      const playing = typeof b.playing === "boolean" ? b.playing : !state.crid.audioPlaying;
+  const url = typeof b.audioUrl === "string" && b.audioUrl.trim() ? clip(b.audioUrl.trim(), LIMITS.cridAudioUrl) : state.crid.audioUrl;
+  patch = { crid: { ...state.crid, audioUrl: url, audioPlaying: playing } };
       break;
     }
     case "clear-poll":
@@ -647,15 +667,260 @@ export async function runAction(store, b, now = Date.now()) {
       patch = { twitchAllowedUserIds: [...new Set(ids.map(String).filter((id) => /^\d+$/.test(id)))].slice(0, 100) };
       break;
     }
+    case "clip-create": {
+      const clip = await createTwitchClip(store, b, state, now);
+      patch = { lastClip: clip.clip };
+      return { state: await commitState(store, state, patch, now), clip: clip.clip };
+    }
     case "bulk-approval": {
       const bulk = await bulkUpdateApproval(store, b, state, cards, now);
       return { state, queueLength: queueOf(bulk.cards).length, bulk };
+    }
+    // ---------- CRID Court ----------
+    case "court-open": {
+      const question = text(b.question, LIMITS.question, "question");
+      if (!question) throw new HttpError(422, "A court question is required.");
+      const viewpointA = text(b.viewpointA, LIMITS.headline, "viewpointA");
+      const viewpointB = text(b.viewpointB, LIMITS.headline, "viewpointB");
+      if (!viewpointA || !viewpointB) throw new HttpError(422, "Both opposing viewpoints are required.");
+      patch = { court: { id: cryptoRandomId(), question, viewpointA, viewpointB, votes: { a: 0, b: 0 }, verdict: null, status: "open", openedAt: now } };
+      break;
+    }
+    case "court-vote": {
+      if (!state.court || state.court.status !== "open") throw new HttpError(409, "No open court to vote on.");
+      const side = String(b.side ?? "").toLowerCase();
+      if (side !== "a" && side !== "b") throw new HttpError(422, "Vote side must be a or b.");
+      patch = { court: { ...state.court, votes: { ...state.court.votes, [side]: (state.court.votes[side] ?? 0) + 1 } } };
+      break;
+    }
+    case "court-verdict": {
+      if (!state.court) throw new HttpError(409, "No court segment open.");
+      if (!VERDICTS.includes(b.value)) throw new HttpError(422, "A verdict is 0 or 1.");
+      patch = { court: { ...state.court, status: "closed", verdict: b.value } };
+      break;
+    }
+    case "court-close": {
+      patch = { court: null };
+      break;
+    }
+    // ---------- Music Desk ----------
+    case "music-add": {
+      const title = text(b.title, LIMITS.headline, "title");
+      if (!title) throw new HttpError(422, "A track title is required.");
+      const artist = text(b.artist, LIMITS.headline, "artist");
+      const audioUrl = typeof b.audioUrl === "string" && b.audioUrl.trim() ? clip(b.audioUrl.trim(), LIMITS.cridAudioUrl) : null;
+      const music = state.music || { queue: [], current: null, playing: false, volume: 1, muted: false };
+      const track = { id: cryptoRandomId(), title, artist, audioUrl };
+      patch = { music: { ...music, queue: [...music.queue, track] } };
+      break;
+    }
+    case "music-play": {
+      const music = state.music || { queue: [], current: null, playing: false, volume: 1, muted: false };
+      if (!music.current && music.queue.length) {
+        patch = { music: { ...music, current: music.queue[0], playing: true } };
+      } else {
+        patch = { music: { ...music, playing: true } };
+      }
+      break;
+    }
+    case "music-pause": {
+      patch = { music: { ...(state.music || { queue: [], current: null, playing: false, volume: 1, muted: false }), playing: false } };
+      break;
+    }
+    case "music-next": {
+      const music = state.music || { queue: [], current: null, playing: false, volume: 1, muted: false };
+      if (!music.queue.length) break;
+      const currentIndex = music.current ? music.queue.findIndex((t) => t.id === music.current.id) : -1;
+      const next = music.queue[currentIndex + 1] ?? music.queue[0];
+      patch = { music: { ...music, current: next, playing: true } };
+      break;
+    }
+    case "music-stop": {
+      patch = { music: { ...(state.music || { queue: [], current: null, playing: false, volume: 1, muted: false }), current: null, playing: false } };
+      break;
+    }
+    case "music-volume": {
+      const volume = Number(b.volume);
+      if (!Number.isFinite(volume) || volume < 0 || volume > 1) throw new HttpError(422, "Volume must be 0 to 1.");
+      patch = { music: { ...(state.music || { queue: [], current: null, playing: false, volume: 1, muted: false }), volume, muted: volume === 0 } };
+      break;
+    }
+    case "music-mute": {
+      const muted = typeof b.muted === "boolean" ? b.muted : !(state.music?.muted ?? false);
+      patch = { music: { ...(state.music || { queue: [], current: null, playing: false, volume: 1, muted: false }), muted } };
+      break;
+    }
+    case "music-clear": {
+      patch = { music: { queue: [], current: null, playing: false, volume: 1, muted: false } };
+      break;
+    }
+    // ---------- X Space Radar ----------
+    case "space-add": {
+      const title = text(b.title, LIMITS.headline, "title");
+      if (!title) throw new HttpError(422, "A space title is required.");
+      const host = text(b.host, LIMITS.headline, "host");
+      const topic = text(b.topic, LIMITS.headline, "topic");
+      const url = text(b.url, 2000, "url");
+      if (url && !/^https?:\/\//i.test(url)) throw new HttpError(422, "space.url must start with http:// or https://.");
+      patch = { spaces: [...(state.spaces ?? []), { id: cryptoRandomId(), title, host, topic, status: "live", url }] };
+      break;
+    }
+    case "space-remove": {
+      const id = String(b.id ?? "");
+      if (!id) throw new HttpError(422, "A space id is required.");
+      patch = { spaces: (state.spaces ?? []).filter((s) => s.id !== id) };
+      break;
+    }
+    // ---------- STRANGERS Ledger ----------
+    case "ledger-add": {
+      const type = text(b.type, 32, "type");
+      const title = text(b.title, LIMITS.headline, "title");
+      if (!type || !title) throw new HttpError(422, "Ledger entry needs a type and title.");
+      const description = text(b.description, LIMITS.summary, "description");
+      patch = { ledger: [...(state.ledger ?? []), { id: cryptoRandomId(), type, title, description: description || null, createdAt: now }] };
+      break;
+    }
+    // ---------- RIAD ----------
+    case "riad-trigger": {
+      const channel = typeof b.channel === "string" && b.channel.trim() ? clip(b.channel.trim(), 32) : null;
+      patch = { riad: { active: true, announcedAt: now, channel } };
+      break;
+    }
+    case "riad-clear": {
+      patch = { riad: null };
+      break;
     }
     default:
       throw new HttpError(422, "Unknown action.");
   }
 
   return { state: await commitState(store, state, patch, now), queueLength: queue.length };
+}
+
+// ---------- Twitch clipping ----------
+// Creates a clip on the broadcaster's channel and verifies it with Get Clips.
+// All OAuth credentials stay server-side. Nothing about clip creation is ever sent to the
+// browser except the final edit URL and status.
+const TWITCH_API = "https://api.twitch.tv/helix";
+const CLIP_CREATE_TIMEOUT_MS = 20000;
+const CLIP_POLL_INTERVAL_MS = 1500;
+const CLIP_POLL_MAX_ATTEMPTS = 10;
+
+function twitchClipEnv(env = process.env) {
+  return {
+    clientId: String(env?.TWITCH_CLIENT_ID ?? "").trim(),
+    accessToken: String(env?.TWITCH_CLIP_ACCESS_TOKEN ?? "").trim(),
+    broadcasterId: String(env?.TWITCH_BROADCASTER_USER_ID ?? "").trim(),
+  };
+}
+
+async function twitchClipRequest(path, { method = "GET", body, env = process.env, fetchFn = globalThis.fetch, signal } = {}) {
+  const cfg = twitchClipEnv(env);
+  if (!cfg.clientId || !cfg.accessToken) {
+    const err = new Error("Twitch clipping is not configured: TWITCH_CLIENT_ID and TWITCH_CLIP_ACCESS_TOKEN are required.");
+    err.status = 503;
+    throw err;
+  }
+  const r = await fetchFn(`${TWITCH_API}${path}`, {
+    method,
+    headers: {
+      "Client-Id": cfg.clientId,
+      Authorization: `Bearer ${cfg.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+    ...(signal ? { signal } : {}),
+  });
+  if (!r.ok) {
+    const err = new Error(`Twitch API ${r.status}`);
+    err.status = r.status;
+    err.body = await r.text().catch(() => "");
+    throw err;
+  }
+  const text = await r.text();
+  if (!text) return null;
+  return JSON.parse(text);
+}
+
+export async function createTwitchClip(
+  store,
+  b = {},
+  state,
+  now = Date.now(),
+  { fetchFn = globalThis.fetch, env = process.env } = {}
+) {
+  const cfg = twitchClipEnv(env);
+  if (!cfg.broadcasterId) {
+    throw new HttpError(503, "Twitch clipping is not configured: TWITCH_BROADCASTER_USER_ID is required.");
+  }
+
+  // Create the clip.
+  let created;
+  try {
+    created = await twitchClipRequest("/clips", {
+      method: "POST",
+      body: { broadcaster_id: cfg.broadcasterId, has_delay: false },
+      env,
+      fetchFn,
+    });
+  } catch (err) {
+    throw new HttpError(err.status ?? 502, `Failed to create Twitch clip: ${err.message}`);
+  }
+
+  const clipId = created?.data?.[0]?.id;
+  const editUrl = created?.data?.[0]?.edit_url ?? null;
+  if (!clipId) {
+    throw new HttpError(502, "Twitch clip creation returned no clip id.");
+  }
+
+  // Poll Get Clips until the clip is available or we run out of attempts. A successful create
+  // response is not proof the clip is actually viewable; verify it before reporting success.
+  let clip;
+  for (let attempt = 0; attempt < CLIP_POLL_MAX_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      await new Promise((resolve) => setTimeout(resolve, CLIP_POLL_INTERVAL_MS));
+    }
+    try {
+      const data = await twitchClipRequest(`/clips?id=${encodeURIComponent(clipId)}`, { env, fetchFn });
+      if (data?.data?.[0]) {
+        clip = data.data[0];
+        break;
+      }
+    } catch {
+      // Keep polling; the clip may not be indexed yet.
+    }
+  }
+
+  if (!clip) {
+    // We have a clip id but could not confirm it is viewable. Return pending status rather
+    // than fabricating success.
+    return {
+      clip: {
+        id: clipId,
+        editUrl,
+        status: "pending",
+        createdAt: new Date(now).toISOString(),
+        broadcasterId: cfg.broadcasterId,
+        note: "Clip created but not yet confirmed viewable.",
+      },
+    };
+  }
+
+  return {
+    clip: {
+      id: clip.id,
+      editUrl: clip.edit_url ?? editUrl,
+      url: clip.url ?? null,
+      status: "available",
+      createdAt: clip.created_at ?? new Date(now).toISOString(),
+      broadcasterId: clip.broadcaster_id ?? cfg.broadcasterId,
+      gameId: clip.game_id ?? null,
+      language: clip.language ?? null,
+      title: clip.title ?? null,
+      viewCount: clip.view_count ?? null,
+      duration: clip.duration ?? null,
+    },
+  };
 }
 
 // ---------- research: Nigerian + US headline importer ----------
@@ -959,6 +1224,10 @@ const approvalForFeed = (feed, state) => {
 
 export const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 export const sameTopic = (a, b) => a === b || (Math.min(a.length, b.length) >= 5 && (a.includes(b) || b.includes(a)));
+
+// W/L visual mapping: 1 = W, 0 = L. Used in poll results, challenges, community decisions,
+// jumbotron graphics, scoreboards and CRID verdicts.
+export const wl = (value) => value === 1 ? "W" : value === 0 ? "L" : null;
 
 // Manual button and scheduled run both call this. Approval is read from the persisted state
 // here, not from the caller, so a scheduled run can never bypass the mode the operator chose.

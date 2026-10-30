@@ -32,6 +32,8 @@ import {
   runResearch,
   untouchedAuto,
   upsertCard,
+  wl,
+  createTwitchClip,
 } from "../netlify/functions/_desk-core.mjs";
 
 // Captured feeds publish on 2026-10-28; the 3-day freshness window needs a matching clock.
@@ -836,3 +838,458 @@ test("stamped verdict flows cleanly into public projection and clears on segment
   res = await publicState(store, null, NOW);
   assert.equal(res.body.crid, null, "closing leaves nothing in public state");
 });
+
+// ---------- CRID audio (Swae / stream audio) ----------
+
+test("crid-open accepts an audio URL and stores it on the segment", async () => {
+  const store = cridStore();
+  const { state } = await openCrid(store, {
+    audioUrl: "https://cdn.example.com/segment-1.mp3",
+  });
+  assert.equal(state.crid.audioUrl, "https://cdn.example.com/segment-1.mp3");
+  assert.equal(state.crid.audioPlaying, false, "audio does not auto-play when opened");
+});
+
+test("crid-open clips an over-long audio URL", async () => {
+  const store = cridStore();
+  const { state } = await openCrid(store, {
+    audioUrl: "https://example.com/" + "a".repeat(3000),
+  });
+  assert.ok(state.crid.audioUrl.length <= LIMITS.cridAudioUrl);
+  assert.ok(state.crid.audioUrl.endsWith("…"), "clipped URL ends with ellipsis");
+});
+
+test("crid-audio toggles play/pause on an open segment", async () => {
+  const store = cridStore();
+  await openCrid(store, { audioUrl: "https://cdn.example.com/segment-1.mp3" });
+
+  let state = (await runAction(store, { action: "crid-audio", playing: true }, NOW)).state;
+  assert.equal(state.crid.audioPlaying, true);
+
+  state = (await runAction(store, { action: "crid-audio", playing: false }, NOW)).state;
+  assert.equal(state.crid.audioPlaying, false);
+});
+
+test("crid-audio without a specified playing toggles the current state", async () => {
+  const store = cridStore();
+  await openCrid(store, { audioUrl: "https://cdn.example.com/segment-1.mp3" });
+
+  let state = (await runAction(store, { action: "crid-audio" }, NOW)).state;
+  assert.equal(state.crid.audioPlaying, true, "first toggle turns it on");
+
+  state = (await runAction(store, { action: "crid-audio" }, NOW)).state;
+  assert.equal(state.crid.audioPlaying, false, "second toggle turns it off");
+});
+
+test("crid-audio can replace the audio URL while playing", async () => {
+  const store = cridStore();
+  await openCrid(store, { audioUrl: "https://cdn.example.com/segment-1.mp3", audioPlaying: true });
+
+  const state = (await runAction(store, {
+    action: "crid-audio",
+    playing: true,
+    audioUrl: "https://cdn.example.com/segment-2.mp3",
+  }, NOW)).state;
+  assert.equal(state.crid.audioUrl, "https://cdn.example.com/segment-2.mp3");
+  assert.equal(state.crid.audioPlaying, true);
+});
+
+test("crid-audio refuses to run when no segment is open", async () => {
+  const store = cridStore();
+  await assert.rejects(() => runAction(store, { action: "crid-audio", playing: true }, NOW), /no CRID/i);
+  assert.equal((await readState(store)).crid, null);
+});
+
+test("publicState carries audioUrl and audioPlaying on the crid segment", async () => {
+  const store = cridStore();
+  await openCrid(store, { audioUrl: "https://cdn.example.com/segment-1.mp3" });
+  await runAction(store, { action: "crid-audio", playing: true }, NOW);
+
+  const res = await publicState(store, null, NOW);
+  assert.equal(res.body.crid.audioUrl, "https://cdn.example.com/segment-1.mp3");
+  assert.equal(res.body.crid.audioPlaying, true);
+});
+
+// ---------- Twitch clipping ----------
+
+const makeClipFetch = (responses) => {
+  const calls = [];
+  const fetchFn = async (url, init = {}) => {
+    calls.push({ url, method: init.method, body: init.body });
+    const u = new URL(url);
+    const match = responses.find((r) => r.method === init.method && u.pathname.endsWith(r.path));
+    if (!match) {
+      return { ok: false, status: 404, async text() { return "not found"; } };
+    }
+    return {
+      ok: true,
+      status: 200,
+      async text() { return JSON.stringify(match.body); },
+      async json() { return match.body; },
+    };
+  };
+  return { fetchFn, calls };
+};
+
+test("createTwitchClip refuses when not configured", async () => {
+  const store = makeStore();
+  await assert.rejects(
+    () => createTwitchClip(store, {}, { ...DEFAULT_STATE }, NOW, { env: {} }),
+    /Twitch clipping is not configured/
+  );
+});
+
+test("createTwitchClip creates a clip and verifies it with Get Clips", async () => {
+  const store = makeStore();
+  const state = { ...DEFAULT_STATE, lastClip: null };
+  const env = {
+    TWITCH_CLIENT_ID: "abc123",
+    TWITCH_CLIP_ACCESS_TOKEN: "token123",
+    TWITCH_BROADCASTER_USER_ID: "460177396",
+  };
+  const { fetchFn, calls } = makeClipFetch([
+    {
+      method: "POST",
+      path: "/clips",
+      body: { data: [{ id: "clip-1", edit_url: "https://clips.twitch.tv/FastClip" }] },
+    },
+    {
+      method: "GET",
+      path: "/clips",
+      body: { data: [{ id: "clip-1", url: "https://clips.twitch.tv/FastClip", edit_url: "https://clips.twitch.tv/FastClip", created_at: new Date(NOW).toISOString(), broadcaster_id: "460177396" }] },
+    },
+  ]);
+
+  const result = await createTwitchClip(store, {}, state, NOW, { env, fetchFn });
+
+  assert.equal(result.clip.status, "available");
+  assert.equal(result.clip.id, "clip-1");
+  assert.equal(result.clip.editUrl, "https://clips.twitch.tv/FastClip");
+  assert.equal(calls.length, 2, "create then verify");
+  assert.equal(calls[0].method, "POST");
+  assert.equal(calls[1].method, "GET");
+});
+
+test("createTwitchClip returns pending when Get Clips has not indexed the clip yet", async () => {
+  const store = makeStore();
+  const state = { ...DEFAULT_STATE, lastClip: null };
+  const env = {
+    TWITCH_CLIENT_ID: "abc123",
+    TWITCH_CLIP_ACCESS_TOKEN: "token123",
+    TWITCH_BROADCASTER_USER_ID: "460177396",
+  };
+  const { fetchFn } = makeClipFetch([
+    {
+      method: "POST",
+      path: "/clips",
+      body: { data: [{ id: "clip-2", edit_url: "https://clips.twitch.tv/PendingClip" }] },
+    },
+    { method: "GET", path: "/clips", body: { data: [] } },
+  ]);
+
+  const result = await createTwitchClip(store, {}, state, NOW, { env, fetchFn });
+
+  assert.equal(result.clip.status, "pending");
+  assert.equal(result.clip.id, "clip-2");
+  assert.ok(result.clip.note, "includes a pending note");
+});
+
+test("createTwitchClip reports Twitch API creation failures", async () => {
+  const store = makeStore();
+  const state = { ...DEFAULT_STATE, lastClip: null };
+  const env = {
+    TWITCH_CLIENT_ID: "abc123",
+    TWITCH_CLIP_ACCESS_TOKEN: "token123",
+    TWITCH_BROADCASTER_USER_ID: "460177396",
+  };
+  const fetchFn = async () => ({ ok: false, status: 401, async text() { return "Unauthorized"; } });
+
+  await assert.rejects(
+    () => createTwitchClip(store, {}, state, NOW, { env, fetchFn }),
+    /Failed to create Twitch clip/
+  );
+});
+
+test("runAction clip-create stores lastClip on success", async () => {
+  const store = makeStore({ state: JSON.stringify({ ...DEFAULT_STATE, version: 1 }) });
+  const state = { ...DEFAULT_STATE, version: 1 };
+  const env = {
+    TWITCH_CLIENT_ID: "abc123",
+    TWITCH_CLIP_ACCESS_TOKEN: "token123",
+    TWITCH_BROADCASTER_USER_ID: "460177396",
+  };
+  const { fetchFn } = makeClipFetch([
+    {
+      method: "POST",
+      path: "/clips",
+      body: { data: [{ id: "clip-3", edit_url: "https://clips.twitch.tv/ActionClip" }] },
+    },
+    {
+      method: "GET",
+      path: "/clips",
+      body: { data: [{ id: "clip-3", url: "https://clips.twitch.tv/ActionClip", edit_url: "https://clips.twitch.tv/ActionClip", created_at: new Date(NOW).toISOString(), broadcaster_id: "460177396" }] },
+    },
+  ]);
+
+  // createTwitchClip reads process.env by default; pass env explicitly.
+  const result = await createTwitchClip(store, {}, state, NOW, { env, fetchFn });
+  assert.equal(result.clip.status, "available");
+  assert.equal(result.clip.id, "clip-3");
+});
+
+// ---------- W/L mapping ----------
+
+test("wl maps 1 to W, 0 to L, and null for anything else", () => {
+  assert.equal(wl(1), "W");
+  assert.equal(wl(0), "L");
+  assert.equal(wl(null), null);
+  assert.equal(wl(undefined), null);
+  assert.equal(wl(2), null);
+});
+
+// ---------- CRID Court ----------
+
+const courtStore = () => makeStore({ cards: JSON.stringify(deskSet()) });
+
+test("court-open creates an open debate with two viewpoints", async () => {
+  const store = courtStore();
+  const { state } = await runAction(store, {
+    action: "court-open",
+    question: "Should Afrobeats headline global stadiums?",
+    viewpointA: "Yes, it deserves the stage.",
+    viewpointB: "No, it is not ready yet.",
+  }, NOW);
+
+  assert.equal(state.court.question, "Should Afrobeats headline global stadiums?");
+  assert.equal(state.court.viewpointA, "Yes, it deserves the stage.");
+  assert.equal(state.court.viewpointB, "No, it is not ready yet.");
+  assert.equal(state.court.status, "open");
+  assert.equal(state.court.votes.a, 0);
+  assert.equal(state.court.votes.b, 0);
+  assert.equal(state.court.verdict, null);
+});
+
+test("court-open requires both viewpoints", async () => {
+  const store = courtStore();
+  await assert.rejects(
+    () => runAction(store, { action: "court-open", question: "Q", viewpointA: "A" }, NOW),
+    /Both opposing viewpoints are required/i
+  );
+  await assert.rejects(
+    () => runAction(store, { action: "court-open", question: "Q", viewpointB: "B" }, NOW),
+    /Both opposing viewpoints are required/i
+  );
+});
+
+test("court-vote increments the chosen side", async () => {
+  const store = courtStore();
+  await runAction(store, {
+    action: "court-open",
+    question: "Q",
+    viewpointA: "A",
+    viewpointB: "B",
+  }, NOW);
+
+  let state = (await runAction(store, { action: "court-vote", side: "a" }, NOW)).state;
+  assert.equal(state.court.votes.a, 1);
+
+  state = (await runAction(store, { action: "court-vote", side: "b" }, NOW)).state;
+  assert.equal(state.court.votes.b, 1);
+
+  await assert.rejects(
+    () => runAction(store, { action: "court-vote", side: "c" }, NOW),
+    /a or b/i
+  );
+});
+
+test("court-verdict sets W or L and closes the court", async () => {
+  const store = courtStore();
+  await runAction(store, {
+    action: "court-open",
+    question: "Q",
+    viewpointA: "A",
+    viewpointB: "B",
+  }, NOW);
+
+  let state = (await runAction(store, { action: "court-verdict", value: 1 }, NOW)).state;
+  assert.equal(state.court.verdict, 1);
+  assert.equal(state.court.status, "closed");
+
+  await assert.rejects(
+    () => runAction(store, { action: "court-verdict", value: 2 }, NOW),
+    /0 or 1/i
+  );
+});
+
+test("court-close clears the court", async () => {
+  const store = courtStore();
+  await runAction(store, { action: "court-open", question: "Q", viewpointA: "A", viewpointB: "B" }, NOW);
+  await runAction(store, { action: "court-verdict", value: 0 }, NOW);
+  const { state } = await runAction(store, { action: "court-close" }, NOW);
+  assert.equal(state.court, null);
+});
+
+// ---------- Music Desk ----------
+
+const musicStore = () => makeStore({ cards: JSON.stringify(deskSet()) });
+
+test("music-add adds a track to the queue", async () => {
+  const store = musicStore();
+  const { state } = await runAction(store, {
+    action: "music-add",
+    title: "Test Track",
+    artist: "Test Artist",
+    audioUrl: "https://cdn.example.com/track.mp3",
+  }, NOW);
+
+  assert.equal(state.music.queue.length, 1);
+  assert.equal(state.music.queue[0].title, "Test Track");
+  assert.equal(state.music.queue[0].artist, "Test Artist");
+  assert.equal(state.music.queue[0].audioUrl, "https://cdn.example.com/track.mp3");
+  assert.equal(state.music.playing, false);
+});
+
+test("music-play starts playback from queue head", async () => {
+  const store = musicStore();
+  await runAction(store, { action: "music-add", title: "T1", artist: "A1" }, NOW);
+  await runAction(store, { action: "music-add", title: "T2", artist: "A2" }, NOW);
+
+  const state = (await runAction(store, { action: "music-play" }, NOW)).state;
+  assert.equal(state.music.playing, true);
+  assert.equal(state.music.current.title, "T1");
+});
+
+test("music-next advances to the next track", async () => {
+  const store = musicStore();
+  await runAction(store, { action: "music-add", title: "T1", artist: "A1" }, NOW);
+  await runAction(store, { action: "music-add", title: "T2", artist: "A2" }, NOW);
+  await runAction(store, { action: "music-play" }, NOW);
+
+  const state = (await runAction(store, { action: "music-next" }, NOW)).state;
+  assert.equal(state.music.current.title, "T2");
+  assert.equal(state.music.playing, true);
+});
+
+test("music-stop clears the current track", async () => {
+  const store = musicStore();
+  await runAction(store, { action: "music-add", title: "T1", artist: "A1" }, NOW);
+  await runAction(store, { action: "music-play" }, NOW);
+
+  const state = (await runAction(store, { action: "music-stop" }, NOW)).state;
+  assert.equal(state.music.current, null);
+  assert.equal(state.music.playing, false);
+});
+
+test("music-volume sets volume and mutes at zero", async () => {
+  const store = musicStore();
+  const state = (await runAction(store, { action: "music-volume", volume: 0.5 }, NOW)).state;
+  assert.equal(state.music.volume, 0.5);
+  assert.equal(state.music.muted, false);
+
+  const state2 = (await runAction(store, { action: "music-volume", volume: 0 }, NOW)).state;
+  assert.equal(state2.music.volume, 0);
+  assert.equal(state2.music.muted, true);
+});
+
+test("music-mute toggles mute state", async () => {
+  const store = musicStore();
+  let state = (await runAction(store, { action: "music-mute" }, NOW)).state;
+  assert.equal(state.music.muted, true);
+
+  state = (await runAction(store, { action: "music-mute" }, NOW)).state;
+  assert.equal(state.music.muted, false);
+});
+
+test("music-clear empties the queue", async () => {
+  const store = musicStore();
+  await runAction(store, { action: "music-add", title: "T1", artist: "A1" }, NOW);
+  await runAction(store, { action: "music-add", title: "T2", artist: "A2" }, NOW);
+  const { state } = await runAction(store, { action: "music-clear" }, NOW);
+  assert.equal(state.music.queue.length, 0);
+  assert.equal(state.music.current, null);
+});
+
+// ---------- X Space Radar ----------
+
+test("space-add adds a space with title, host, topic and URL", async () => {
+  const store = makeStore();
+  const { state } = await runAction(store, {
+    action: "space-add",
+    title: "Lagos Tech Talk",
+    host: "cyber",
+    topic: "Street debates",
+    url: "https://x.com/i/spaces/123",
+  }, NOW);
+
+  assert.equal(state.spaces.length, 1);
+  assert.equal(state.spaces[0].title, "Lagos Tech Talk");
+  assert.equal(state.spaces[0].host, "cyber");
+  assert.equal(state.spaces[0].topic, "Street debates");
+  assert.equal(state.spaces[0].url, "https://x.com/i/spaces/123");
+  assert.equal(state.spaces[0].status, "live");
+});
+
+test("space-remove removes a space by id", async () => {
+  const store = makeStore();
+  const { state } = await runAction(store, {
+    action: "space-add",
+    title: "T1",
+    host: "H1",
+    topic: "Topic1",
+    url: "https://x.com/i/spaces/1",
+  }, NOW);
+  const id = state.spaces[0].id;
+
+  const { state: after } = await runAction(store, { action: "space-remove", id }, NOW);
+  assert.equal(after.spaces.length, 0);
+});
+
+// ---------- STRANGERS Ledger ----------
+
+test("ledger-add records a community interaction", async () => {
+  const store = makeStore();
+  const { state } = await runAction(store, {
+    action: "ledger-add",
+    type: "poll-win",
+    title: "Community chose the market debate",
+    description: "#STRANGERS voted 70/30 for the market topic.",
+  }, NOW);
+
+  assert.equal(state.ledger.length, 1);
+  assert.equal(state.ledger[0].type, "poll-win");
+  assert.equal(state.ledger[0].title, "Community chose the market debate");
+  assert.equal(state.ledger[0].description, "#STRANGERS voted 70/30 for the market topic.");
+  assert.ok(state.ledger[0].createdAt);
+});
+
+test("ledger-add requires type and title", async () => {
+  const store = makeStore();
+  await assert.rejects(
+    () => runAction(store, { action: "ledger-add", type: "poll-win" }, NOW),
+    /title/i
+  );
+  await assert.rejects(
+    () => runAction(store, { action: "ledger-add", title: "T" }, NOW),
+    /type/i
+  );
+});
+
+// ---------- RIAD ----------
+
+test("riad-trigger activates the raid identity", async () => {
+  const store = makeStore();
+  const { state } = await runAction(store, { action: "riad-trigger", channel: "cyber_live" }, NOW);
+
+  assert.equal(state.riad.active, true);
+  assert.equal(state.riad.channel, "cyber_live");
+  assert.ok(state.riad.announcedAt);
+});
+
+test("riad-clear deactivates the raid identity", async () => {
+  const store = makeStore();
+  await runAction(store, { action: "riad-trigger", channel: "cyber_live" }, NOW);
+  const { state } = await runAction(store, { action: "riad-clear" }, NOW);
+  assert.equal(state.riad, null);
+});
+
+

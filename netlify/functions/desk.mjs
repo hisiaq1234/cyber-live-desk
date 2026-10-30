@@ -44,6 +44,7 @@ import {
   upsertCard,
 } from "./_desk-core.mjs";
 import { twitchStatus } from "./_twitch-core.mjs";
+import { parseDeskCommand, commandBody, commandText } from "./_commands.mjs";
 
 export const config = { path: ["/api/desk/*", "/desk", "/control"] };
 
@@ -115,6 +116,25 @@ export default async (req) => {
     }
     if (req.method === "GET" && route === "/api/desk/twitch") {
       return json(await twitchStatus(s, await readState(s), { origin: url.origin }));
+    }
+    // Public voice endpoint: maps recognized speech to a safe subset of desk actions.
+    // No operator token is required; only non-destructive actions are permitted.
+    if (req.method === "POST" && route === "/api/desk/voice") {
+      const body = await readBody(req);
+      const text = typeof body.text === "string" ? body.text : "";
+      if (!text) throw new HttpError(422, "Voice text is required.");
+      const cmd = parseDeskCommand(text);
+      if (!cmd) throw new HttpError(422, "Not a recognized desk command.");
+      let actionBody = commandBody(cmd);
+      if (!actionBody) throw new HttpError(422, "Command cannot be executed by voice.");
+      const safeActions = new Set(["next", "previous", "hold", "hide", "desk", "start-poll", "end-poll", "auto-play", "clip-create", "crid-open"]);
+      if (!safeActions.has(actionBody.action)) throw new HttpError(403, "This command is not available by voice.");
+      // Voice-opened CRID segments use a default title so the streamer can speak to open one.
+      if (actionBody.action === "crid-open") {
+        actionBody = { ...actionBody, kind: "topic", title: "Voice segment", credit: "Voice" };
+      }
+      const result = await runAction(s, actionBody);
+      return json({ ok: true, ...result, command: commandText(cmd), serverNow: Date.now() });
     }
     if (req.method === "POST" && route === "/api/desk/cards") return json({ card: await upsertCard(s, await readBody(req)) });
     if (req.method === "POST" && route === "/api/desk/action") {

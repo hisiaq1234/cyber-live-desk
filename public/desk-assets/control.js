@@ -1,4 +1,5 @@
 /* CYBER LIVE DESK — private controller. Served at /control.
+   Strict iOS Broadcast Doctrine: haptic feedback, spring physics, glass compositing, zero-precision touch targets.
    Operate it from a second device. Every request carries the operator token
    (stored in this browser only); the public overlay never sees notes or the token.
    Loaded as a module so the poll validator and command help are the tested shared copy. */
@@ -31,7 +32,20 @@ import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.
   const selected = new Set(); // cards ticked for a bulk action
   const filter = { text: "", cat: "", status: "approved", desk: "", source: "" };
 
-  // ---------- helpers ----------
+  // --- UI Routing State ---
+  let currentTab = "live"; // live, topics, crid, community, studio, settings
+
+  // ---------- Engine & Helpers ----------
+  const haptic = (type = 'light') => {
+    try {
+      if (!navigator.vibrate) return;
+      if (type === 'light') navigator.vibrate(15);
+      if (type === 'heavy') navigator.vibrate([30, 50, 30]);
+      if (type === 'success') navigator.vibrate([15, 60, 20]);
+      if (type === 'error') navigator.vibrate([50, 50, 50]);
+    } catch { /* ignore */ }
+  };
+
   const h = (tag, props, ...kids) => {
     const e = document.createElement(tag);
     if (typeof props === "string") e.className = props;
@@ -46,7 +60,13 @@ import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.
     }
     return e;
   };
-  const btn = (label, onclick, cls = "") => h("button", { type: "button", class: "b " + cls, onclick }, label);
+
+  const btn = (label, onclick, cls = "", hapType = 'light') => {
+    const fn = (e) => { haptic(hapType); if (onclick) onclick(e); };
+    const c = ("btn " + (cls || "")).split(/\s+/).filter((v, i, a) => v && a.indexOf(v) === i).join(" ");
+    return h("button", { type: "button", class: c, onclick: fn }, label);
+  };
+
   const sel = (list, val) => { const s = h("select", {}, list.map((o) => h("option", { value: o }, o))); s.value = val; return s; };
   const serverNow = () => Date.now() + offset;
   const fmt = (iso) => {
@@ -58,13 +78,14 @@ import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.
     return d && !Number.isNaN(d.getTime()) ? new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : "";
   };
 
-  const toastEl = h("div", "toast");
+  const toastEl = h("div", "toast-island");
   let toastTimer;
   const toast = (msg, bad = false) => {
     toastEl.textContent = msg;
-    toastEl.className = "toast show" + (bad ? " bad" : "");
+    toastEl.className = "toast-island show" + (bad ? " bad" : "");
+    haptic(bad ? 'error' : 'success');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => (toastEl.className = "toast"), bad ? 6000 : 2200);
+    toastTimer = setTimeout(() => (toastEl.className = "toast-island"), bad ? 6000 : 2200);
   };
 
   const api = async (path, body) => {
@@ -89,6 +110,7 @@ import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.
       state = j.state;
       offset = j.serverNow - Date.now();
       renderLive();
+      renderApp();
       return j;
     } catch (e) { toast(e.message, true); return null; }
     finally { busy = false; document.body.classList.remove("busy"); }
@@ -100,6 +122,7 @@ import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.
       const i = cards.findIndex((c) => c.id === card.id);
       if (i >= 0) cards[i] = card; else cards.push(card);
       renderLive();
+      renderApp();
       await load(); // refresh counts and server-derived desk ids
       toast("Card saved.");
       return card;
@@ -117,88 +140,334 @@ import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.
       if (j.twitch) twitch = j.twitch;
       renderLive();
       drawTwitchServer();
+      drawClip();
+      renderApp();
     } catch (e) { if (token) toast(e.message, true); }
   };
 
-  // ---------- layout ----------
+  // ---------- iOS Broadcast CSS Engine & Existing Components ----------
   const CSS = `
-*{box-sizing:border-box}[hidden]{display:none!important}html{overflow-y:auto}body{margin:0;background:#0B1220;color:#E8EEF7;font:16px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow-y:auto;min-height:100dvh}
-#app{max-width:1200px;margin:0 auto;padding:12px 12px 90px;display:grid;gap:12px}
-@media (min-width: 960px){
-  #app{grid-template-columns: 460px 1fr; align-items: start;}
-  .col-left{display:grid;gap:12px;position:sticky;top:12px;}
-  .col-right{display:grid;gap:12px;}
-}
-.col-left,.col-right{display:grid;gap:12px}
-.panel{background:#121C2E;border-radius:14px;padding:12px;overscroll-behavior:contain}
-h2{margin:0 0 8px;font-size:1rem;display:flex;align-items:center;justify-content:space-between}
-.status{position:sticky;top:0;z-index:5;border:2px solid #2A3750;background:#121C2E}.status.live{border-color:#FF5A47}
-.pill{display:inline-block;padding:.15em .7em;border-radius:99px;font-weight:800;background:#2A3750}.live .pill{background:#FF5A47;color:#fff}
-.now{font-size:1.15rem;font-weight:800;margin:.3em 0}.sub{color:#9FB0C6;font-size:.9rem}
-.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
-.b{min-height:48px;border:0;border-radius:12px;background:#24344F;color:#E8EEF7;font:inherit;font-weight:700;padding:.5em .8em;cursor:pointer}
-.b.go{background:#FFB224;color:#1A1204}.b.danger{background:#FF5A47;color:#fff}.b.on{outline:3px solid #7CC4FF}
-.b.big{min-height:54px;font-size:1.05rem;font-weight:900}
-.b.small{min-height:38px;padding:.3em .6em;font-size:.88rem}.b:disabled{opacity:.4;cursor:not-allowed}.busy .b{opacity:.6}
-input,select,textarea{width:100%;font:inherit;color:#E8EEF7;background:#0B1220;border:1px solid #2A3750;border-radius:10px;padding:.55em .7em}
-textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-size:.85rem;color:#9FB0C6}
-.row{display:flex;gap:8px;align-items:center}.row>*{flex:1}.item{background:#0F192B;border-radius:12px;padding:10px;margin-bottom:8px;border-left:6px solid #2A3750}
-.item.onair{border-left-color:#FF5A47}.item h3{margin:0 0 4px;font-size:1rem}
-.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}.chip{font-size:.78rem;padding:.05em .6em;border-radius:99px;background:#24344F}
-.chip.ok{background:#14594A;color:#2ED3A5}.chip.warn{background:#6B2E26;color:#FF7A66}.chip.hold{background:#5A4510;color:#FFD15C}
-.pv{background:#0B1220;border-radius:10px;padding:10px;margin:8px 0;border-left:6px solid #FFB224;max-height:42dvh;overflow-y:auto;overscroll-behavior:contain}
-.pv .q{margin:8px -10px -10px;padding:8px 10px;background:#FFB224;color:#1A1204;font-weight:800;border-radius:0 0 10px 0}
-.opt{display:flex;align-items:center;gap:8px;margin-bottom:6px}.opt .name{flex:1;font-weight:700}.opt .b{min-width:64px}
-.toast{position:fixed;left:12px;right:12px;bottom:14px;max-width:560px;margin:0 auto;padding:12px;border-radius:12px;background:#14594A;opacity:0;pointer-events:none;transition:opacity .2s;z-index:9}
-.toast.show{opacity:1}.toast.bad{background:#8A2F25}a{color:#7CC4FF}
-.counts{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:8px 0}
-.count{background:#0B1220;border:1px solid #2A3750;border-radius:10px;padding:7px 8px;text-align:center}
-.count strong{display:block;font-size:1.15rem}.count span{font-size:.72rem;color:#9FB0C6}
-.count.live{border-color:#FF5A47}.count.warn{border-color:#FFB224}
-.bulk{display:grid;gap:8px;background:#0B1220;border:1px solid #2A3750;border-radius:12px;padding:10px;margin:8px 0}
-.bulk .row{flex-wrap:wrap}.bulk .row>*{flex:1 1 130px}
-.b.approve{background:#2ED3A5;color:#062017}.b.reject{background:#FF7A66;color:#2A0905}
-.warnbox{background:#3A2B10;border:1px solid #8A6418;color:#FFD15C;border-radius:10px;padding:9px 10px;font-size:.86rem}
-.selectbox{width:auto!important;flex:0 0 auto!important;accent-color:#FFB224;transform:scale(1.25);margin-right:4px}
-.item-head{display:flex;align-items:flex-start;gap:8px}.item-head h3{flex:1}
-.bulk-note{font-size:.84rem;color:#9FB0C6;margin:0}
-.bulk-note strong{color:#FFD15C}
-.feed-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 8px;margin:6px 0}
-.feed-check{display:flex;align-items:center;gap:6px;font-size:.82rem;color:#C7D4E5}
-.feed-check input{width:auto;flex:0 0 auto;accent-color:#FFB224}
-.twitch-box{background:#0B1220;border:1px solid #2A3750;border-radius:10px;padding:9px 10px;margin:8px 0;font-size:.88rem}
-.twitch-box p{margin:4px 0}
-.setup{font-size:.82rem;color:#9FB0C6;margin:6px 0 0;padding-left:1.2em}
-.setup li{margin:3px 0}
-.statusline{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.statusline .sub{flex:1 1 180px}
-.poll-error{display:none;color:#FF9A8D;background:#3A1A18;border:1px solid #8A2F25;border-radius:10px;padding:8px 10px;font-size:.9rem;margin:4px 0 8px}
-.poll-error.show{display:block}
-.twitch-state{font-weight:800}.twitch-state.ok{color:#2ED3A5}.twitch-state.bad{color:#FF9A8D}.twitch-state.wait{color:#FFD15C}
+    :root {
+      --bg-root: #000000;
+      --bg-glass: rgba(30, 30, 30, 0.65);
+      --bg-glass-deep: rgba(15, 15, 15, 0.85);
+      --glass-filter: blur(50px) saturate(200%);
+      --accent: #FF453A;
+      --accent-glow: rgba(255, 69, 58, 0.35);
+      --tint-blue: #0A84FF;
+      --tint-green: #32D74B;
+      --tint-orange: #FF9F0A;
+      --text-1: #FFFFFF;
+      --text-2: rgba(255, 255, 255, 0.6);
+      --text-3: rgba(255, 255, 255, 0.3);
+      --border-soft: rgba(255, 255, 255, 0.1);
+      --brand: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+      --spring: cubic-bezier(0.25, 0.1, 0.25, 1);
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    [hidden] { display: none !important; }
+    html, body {
+      margin: 0; padding: 0; background: var(--bg-root); color: var(--text-1);
+      font-family: var(--brand); font-synthesis: none;
+      -webkit-font-smoothing: antialiased; overscroll-behavior-y: none;
+      user-select: none; min-height: 100dvh;
+    }
+    input, textarea, select { user-select: auto; font-family: inherit; }
 
-/* Preview monitor */
-.preview-wrap{position:relative;background:#050912;border-radius:12px;overflow:hidden;border:1px solid #2A3750;margin:8px 0;display:flex;justify-content:center;align-items:center;padding:12px;min-height:220px;overscroll-behavior:contain}
-.preview-frame{border:0;background:rgba(255,255,255,0.02);border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.8)}
-.preview-9-16{width:210px;height:373px}
-.preview-16-9{width:380px;height:214px}
+    #app-root {
+      display: flex; flex-direction: column; height: 100dvh; width: 100vw;
+      overflow: hidden;
+    }
+    .view-container {
+      flex: 1; overflow-y: auto; padding: calc(env(safe-area-inset-top, 0px) + 16px) 16px 120px;
+      overscroll-behavior-y: auto; scroll-behavior: smooth;
+      max-width: 860px; margin: 0 auto; width: 100%;
+    }
 
-/* CRID styling */
-.crid-card{background:#0A1220;border:2px solid #FFB224;border-radius:12px;padding:12px;margin:8px 0;box-shadow:0 0 14px rgba(255,178,36,0.18)}
-.verdict-box{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
-.v-badge{padding:.35em .7em;border-radius:6px;font-weight:800;font-size:.85rem;text-transform:uppercase;display:inline-block}
-.v-1{background:#14594A;color:#2ED3A5;border:1.5px solid #2ED3A5;box-shadow:0 0 8px rgba(46,211,165,.3)}
-.v-0{background:#6B2E26;color:#FF7A66;border:1.5px solid #FF7A66;box-shadow:0 0 8px rgba(255,122,102,.3)}
+    /* Typography */
+    h1, h2, h3 { margin: 0; font-weight: 700; letter-spacing: -0.4px; }
+    h2 { font-size: 1.15rem; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
+    .t-title { font-size: 28px; font-weight: 800; margin-bottom: 16px; }
+    .t-sub { font-size: 15px; color: var(--text-2); line-height: 1.4; letter-spacing: -0.1px; }
+    .t-micro { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-3); }
+    .now { font-size: 1.25rem; font-weight: 800; margin: .3em 0; }
+    .sub { color: var(--text-2); font-size: .9rem; line-height: 1.4; }
+    a { color: var(--tint-blue); }
 
-/* Desk chips */
-.desk-chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
-.desk-btn{min-height:36px;padding:.35em .75em;border-radius:20px;background:#1B263B;border:1px solid #2A3750;color:#B9C6D8;font-size:.85rem;font-weight:700;cursor:pointer}
-.desk-btn.active{background:#FFB224;color:#1A1204;border-color:#FFB224;font-weight:900}
-`;
+    /* Layout & Panels */
+    .stack { display: flex; flex-direction: column; gap: 16px; }
+    .row { display: flex; gap: 12px; align-items: center; }
+    .row > * { flex: 1; }
+    .row-between { display: flex; justify-content: space-between; align-items: center; }
+    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+
+    .panel {
+      background: var(--bg-glass); backdrop-filter: var(--glass-filter);
+      -webkit-backdrop-filter: var(--glass-filter);
+      border: 1px solid var(--border-soft); border-radius: 24px; padding: 18px;
+      margin-bottom: 16px; overscroll-behavior: contain;
+    }
+    .panel-live, .panel.status.live {
+      border-color: var(--accent); box-shadow: 0 0 24px var(--accent-glow);
+    }
+    .panel.status {
+      position: relative; border: 1px solid var(--border-soft);
+    }
+    .pill {
+      display: inline-block; padding: .2em .8em; border-radius: 99px;
+      font-weight: 800; font-size: 13px; background: rgba(255, 255, 255, 0.1); color: var(--text-2);
+    }
+    .status.live .pill, .live .pill {
+      background: var(--accent); color: #fff;
+    }
+
+    /* Buttons */
+    .btn, .b {
+      appearance: none; border: none; background: rgba(255, 255, 255, 0.1);
+      color: var(--text-1); font-family: inherit; font-size: 16px; font-weight: 600;
+      border-radius: 16px; padding: 14px 16px; min-height: 52px;
+      cursor: pointer; transition: transform 0.1s, opacity 0.1s, background 0.2s, box-shadow 0.2s;
+      display: inline-flex; align-items: center; justify-content: center; text-align: center;
+      user-select: none;
+    }
+    .btn:active, .b:active { transform: scale(0.96); opacity: 0.8; }
+    .btn:disabled, .b:disabled { opacity: 0.4; pointer-events: none; cursor: not-allowed; }
+    .busy .btn, .busy .b { opacity: 0.6; pointer-events: none; }
+
+    .btn.primary, .btn.go, .b.go { background: var(--text-1); color: var(--bg-root); font-weight: 700; }
+    .btn.danger, .b.danger { background: var(--accent); color: var(--text-1); }
+    .btn.blue { background: var(--tint-blue); color: var(--text-1); }
+    .btn.green { background: var(--tint-green); color: var(--bg-root); }
+    .btn.giant, .btn.big, .b.big { min-height: 68px; font-size: 19px; font-weight: 800; width: 100%; border-radius: 20px; }
+    .btn.small, .b.small { min-height: 38px; padding: 8px 12px; font-size: 14px; border-radius: 12px; }
+    .btn.active-toggle, .btn.on, .b.on { outline: 2px solid var(--text-1); background: rgba(255, 255, 255, 0.25); }
+    .btn.approve, .b.approve { background: var(--tint-green); color: #062017; font-weight: 700; }
+    .btn.reject, .b.reject { background: var(--accent); color: #fff; font-weight: 700; }
+
+    /* Inputs */
+    input, textarea, select {
+      width: 100%; background: rgba(0, 0, 0, 0.45); border: 1px solid var(--border-soft);
+      color: var(--text-1); border-radius: 12px; padding: 12px 14px; font-size: 16px;
+      transition: border-color 0.2s;
+    }
+    input:focus, textarea:focus, select:focus { outline: none; border-color: var(--tint-blue); }
+    textarea { resize: vertical; }
+    .f { display: grid; gap: 6px; margin-bottom: 12px; }
+    .f span { font-size: 13px; font-weight: 600; color: var(--text-2); }
+    .input-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+
+    /* Chips */
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+    .chip {
+      padding: 4px 10px; border-radius: 99px; font-size: 12px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.5px;
+      background: rgba(255, 255, 255, 0.1); color: var(--text-2); border: 1px solid transparent;
+    }
+    .chip.live { background: var(--accent); color: #fff; border-color: var(--accent); animation: pulse-chip 2s infinite; }
+    .chip.ok { color: var(--tint-green); border-color: var(--tint-green); background: rgba(50, 215, 75, 0.15); }
+    .chip.warn { color: var(--tint-orange); border-color: var(--tint-orange); background: rgba(255, 159, 10, 0.15); }
+    .chip.hold { background: rgba(255, 209, 92, 0.15); color: #FFD15C; border-color: rgba(255, 209, 92, 0.3); }
+
+    @keyframes pulse-chip { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,69,58,0.4); } 50% { box-shadow: 0 0 10px 2px rgba(255,69,58,0.6); } }
+
+    /* Tab Bar */
+    .tab-bar {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+      background: var(--bg-glass-deep); backdrop-filter: var(--glass-filter); -webkit-backdrop-filter: var(--glass-filter);
+      border-top: 1px solid var(--border-soft);
+      padding: 10px 16px calc(env(safe-area-inset-bottom, 0px) + 10px);
+      display: flex; justify-content: space-around;
+    }
+    .tab-item {
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      color: var(--text-2); cursor: pointer; flex: 1; padding: 6px; transition: color 0.2s;
+    }
+    .tab-item.active { color: var(--accent); font-weight: 700; }
+    .tab-icon { font-size: 20px; }
+    .tab-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    /* Bottom Sheet Modal */
+    .sheet-overlay {
+      position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.6);
+      opacity: 0; pointer-events: none; transition: opacity 0.3s var(--spring);
+    }
+    .sheet-overlay.open { opacity: 1; pointer-events: auto; }
+    .sheet-modal {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      background: #1C1C1E; border-top-left-radius: 32px; border-top-right-radius: 32px;
+      padding: 24px 20px calc(env(safe-area-inset-bottom, 0px) + 24px);
+      transform: translateY(100%); transition: transform 0.4s var(--spring);
+      max-height: 90dvh; display: flex; flex-direction: column; gap: 16px; overflow-y: auto;
+    }
+    .sheet-overlay.open .sheet-modal { transform: translateY(0); }
+    .sheet-handle { width: 40px; height: 5px; background: rgba(255,255,255,0.2); border-radius: 3px; margin: 0 auto 12px; }
+
+    /* Toast Island */
+    .toast-island, .toast {
+      position: fixed; top: calc(env(safe-area-inset-top, 0px) + 16px); left: 50%; transform: translate(-50%, -20px) scale(0.9);
+      background: var(--bg-glass-deep); backdrop-filter: var(--glass-filter); -webkit-backdrop-filter: var(--glass-filter);
+      color: var(--text-1); font-weight: 600; font-size: 14px; padding: 12px 24px; border-radius: 99px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid var(--border-soft);
+      z-index: 999; opacity: 0; pointer-events: none; transition: all 0.3s var(--spring);
+    }
+    .toast-island.show, .toast.show { opacity: 1; transform: translate(-50%, 0) scale(1); }
+    .toast-island.bad, .toast.bad { border-color: var(--accent); color: var(--accent); }
+
+    /* Counts */
+    .counts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0; }
+    .count { background: rgba(0, 0, 0, 0.4); border: 1px solid var(--border-soft); border-radius: 12px; padding: 8px; text-align: center; }
+    .count strong { display: block; font-size: 1.25rem; font-weight: 800; }
+    .count span { font-size: .75rem; color: var(--text-2); text-transform: uppercase; }
+    .count.live { border-color: var(--accent); }
+    .count.warn { border-color: var(--tint-orange); }
+
+    /* Desk Chips */
+    .desk-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+    .desk-btn {
+      min-height: 40px; padding: 8px 16px; border-radius: 99px;
+      background: rgba(255, 255, 255, 0.1); border: 1px solid var(--border-soft);
+      color: var(--text-2); font-family: inherit; font-size: 14px; font-weight: 700;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .desk-btn:active { transform: scale(0.96); }
+    .desk-btn.active { background: var(--text-1); color: var(--bg-root); border-color: var(--text-1); font-weight: 800; }
+
+    /* Preview Monitor */
+    .preview-wrap {
+      position: relative; background: rgba(0, 0, 0, 0.6); border-radius: 16px; overflow: hidden;
+      border: 1px solid var(--border-soft); margin: 12px 0; display: flex; justify-content: center; align-items: center;
+      padding: 16px; min-height: 220px; overscroll-behavior: contain;
+    }
+    .preview-frame { border: 0; background: rgba(255, 255, 255, 0.02); border-radius: 12px; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.8); }
+    .preview-9-16 { width: 220px; height: 391px; aspect-ratio: 9/16; }
+    .preview-16-9 { width: 380px; height: 214px; aspect-ratio: 16/9; }
+
+    /* Items & Queue */
+    .item, .queue-item {
+      background: rgba(255, 255, 255, 0.05); border-radius: 16px; padding: 14px; margin-bottom: 12px;
+      border: 1px solid var(--border-soft); border-left: 6px solid var(--border-soft);
+    }
+    .item.onair, .queue-item.onair { border-left-color: var(--accent); border-color: var(--accent); background: rgba(255, 69, 58, 0.08); }
+    .item h3 { margin: 0 0 6px; font-size: 1.05rem; }
+    .item-head { display: flex; align-items: flex-start; gap: 8px; }
+    .item-head h3 { flex: 1; }
+
+    /* Detail Preview & Notes */
+    .pv {
+      background: rgba(0, 0, 0, 0.45); border-radius: 12px; padding: 12px; margin: 10px 0;
+      border-left: 6px solid var(--tint-orange); max-height: 42dvh; overflow-y: auto; overscroll-behavior: contain;
+    }
+    .pv .q { margin: 10px -12px -12px; padding: 10px 12px; background: var(--tint-orange); color: #1A1204; font-weight: 800; border-radius: 0 0 10px 0; }
+
+    /* CRID */
+    .crid-card {
+      background: rgba(0, 0, 0, 0.45); border: 2px solid var(--tint-orange); border-radius: 16px;
+      padding: 14px; margin: 12px 0; box-shadow: 0 0 20px rgba(255, 159, 10, 0.2);
+    }
+    .verdict-box { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; }
+    .v-badge { padding: .4em .8em; border-radius: 8px; font-weight: 800; font-size: .88rem; text-transform: uppercase; display: inline-block; }
+    .v-1 { background: rgba(50, 215, 75, 0.15); color: var(--tint-green); border: 1.5px solid var(--tint-green); box-shadow: 0 0 10px rgba(50, 215, 75, 0.3); }
+    .v-0 { background: rgba(255, 69, 58, 0.15); color: var(--accent); border: 1.5px solid var(--accent); box-shadow: 0 0 10px rgba(255, 69, 58, 0.3); }
+
+    /* Poll */
+    .opt { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .opt .name { flex: 1; font-weight: 700; }
+    .opt .btn, .opt .b { min-width: 64px; }
+    .poll-error { display: none; color: #FF9A8D; background: rgba(138, 47, 37, 0.4); border: 1px solid var(--accent); border-radius: 12px; padding: 10px 14px; font-size: .9rem; margin: 6px 0 10px; }
+    .poll-error.show { display: block; }
+
+    /* Bulk actions */
+    .bulk { display: grid; gap: 10px; background: rgba(0, 0, 0, 0.4); border: 1px solid var(--border-soft); border-radius: 16px; padding: 14px; margin: 12px 0; }
+    .bulk .row { flex-wrap: wrap; }
+    .bulk .row > * { flex: 1 1 130px; }
+    .bulk-note { font-size: .85rem; color: var(--text-2); margin: 0; line-height: 1.4; }
+    .bulk-note strong { color: var(--tint-orange); }
+    .selectbox { width: auto !important; flex: 0 0 auto !important; accent-color: var(--accent); transform: scale(1.3); margin-right: 6px; }
+
+    /* Feeds & Twitch boxes */
+    .feed-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 10px; margin: 8px 0; }
+    .feed-check { display: flex; align-items: center; gap: 8px; font-size: .85rem; color: var(--text-2); }
+    .feed-check input { width: auto; flex: 0 0 auto; accent-color: var(--tint-blue); }
+    .twitch-box { background: rgba(0, 0, 0, 0.4); border: 1px solid var(--border-soft); border-radius: 16px; padding: 14px; margin: 10px 0; font-size: .9rem; }
+    .twitch-box p { margin: 6px 0; }
+    .setup { font-size: .85rem; color: var(--text-2); margin: 8px 0 0; padding-left: 1.2em; }
+    .setup li { margin: 4px 0; }
+    .statusline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .statusline .sub { flex: 1 1 180px; }
+    .twitch-state { font-weight: 800; }
+    .twitch-state.ok { color: var(--tint-green); }
+    .twitch-state.bad { color: var(--accent); }
+    .twitch-state.wait { color: var(--tint-orange); }
+    .warnbox { background: rgba(255, 159, 10, 0.15); border: 1px solid var(--tint-orange); color: #FFD15C; border-radius: 12px; padding: 10px 14px; font-size: .88rem; }
+
+    /* Metrics */
+    .metrics-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    .metric-box { background: rgba(255, 255, 255, 0.05); padding: 12px; border-radius: 16px; text-align: center; }
+    .metric-val { font-size: 24px; font-weight: 800; margin-bottom: 4px; }
+  `;
   const style = h("style"); style.textContent = CSS; document.head.append(style);
-  document.title = "Live desk controller";
+  document.title = "Cyber Live Desk";
 
-  const root = h("div", { id: "app" });
-  document.body.append(root, toastEl);
+  // ---------- Sheet Modal Component ----------
+  const sheetWrap = h("div", "sheet-overlay");
+  const sheetContent = h("div", "sheet-modal");
+  sheetWrap.append(sheetContent);
+  sheetWrap.onclick = (e) => { if (e.target === sheetWrap) closeSheet(); };
+
+  const closeSheet = () => {
+    sheetWrap.classList.remove("open");
+    setTimeout(() => { if (!sheetWrap.classList.contains("open")) sheetContent.innerHTML = ""; }, 400);
+  };
+
+  const openSheet = (contentNodes) => {
+    haptic('light');
+    sheetContent.replaceChildren(h("div", "sheet-handle"), ...contentNodes);
+    sheetWrap.classList.add("open");
+  };
+
+  // Replaces <select> with a massive touch-target bottom sheet
+  const SelectSheet = (title, options, onSelect) => {
+    const list = h("div", "stack", 
+      ...options.map(o => btn(o.label, () => {
+        closeSheet();
+        if (onSelect) onSelect(o.value);
+      }, "giant " + (o.active ? "primary" : "")))
+    );
+    openSheet([
+      h("h2", { style: "text-align:center; margin-bottom: 16px;" }, title),
+      list,
+      btn("Cancel", closeSheet, "giant danger", 'light')
+    ]);
+  };
+
+  // ---------- Tab Bar Router ----------
+  const TABS = [
+    { id: "live", icon: "🔴", label: "Live" },
+    { id: "topics", icon: "📋", label: "Topics" },
+    { id: "crid", icon: "🏛", label: "CRID" },
+    { id: "community", icon: "👥", label: "Community" },
+    { id: "studio", icon: "🎛", label: "Studio" },
+    { id: "settings", icon: "⚙️", label: "Settings" }
+  ];
+
+  const renderTabBar = () => {
+    return h("div", "tab-bar", 
+      ...TABS.map(t => {
+        const isActive = currentTab === t.id;
+        const fn = () => {
+          if (currentTab !== t.id) {
+            currentTab = t.id;
+            haptic('light');
+            renderApp();
+          }
+        };
+        return h("div", "tab-item" + (isActive ? " active" : ""), { onclick: fn },
+          h("span", "tab-icon", t.icon),
+          h("span", "tab-label", t.label)
+        );
+      })
+    );
+  };
 
   const statusEl = h("section", "panel status");
   const holdBtn = btn("Hold card", () => act("hold"));
@@ -207,12 +476,14 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
   // ---------- Live Overlay Preview (Swae / OBS Monitor) ----------
   let previewRatio = "9-16"; // "9-16" | "16-9"
   const previewFrame = h("iframe", { class: "preview-frame preview-9-16", src: "/desk?debug=0", title: "Viewer Overlay Preview" });
-  const btnRatio916 = btn("Swae (9:16)", () => setPreviewRatio("9-16"), "b small go");
-  const btnRatio169 = btn("Landscape (16:9)", () => setPreviewRatio("16-9"), "b small");
+  const btnRatio916 = btn("Swae (9:16)", () => setPreviewRatio("9-16"), "small primary");
+  const btnRatio169 = btn("Landscape (16:9)", () => setPreviewRatio("16-9"), "small");
   const setPreviewRatio = (r) => {
     previewRatio = r;
     previewFrame.className = `preview-frame preview-${r}`;
+    btnRatio916.classList.toggle("primary", r === "9-16");
     btnRatio916.classList.toggle("go", r === "9-16");
+    btnRatio169.classList.toggle("primary", r === "16-9");
     btnRatio169.classList.toggle("go", r === "16-9");
   };
   const copySwaeUrl = () => {
@@ -232,8 +503,8 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
       h("h2", { style: "margin:0" }, "Live Stream Monitor"),
       h("div", { class: "row", style: "flex:0 0 auto;gap:4px" },
         btnRatio916, btnRatio169,
-        btn("↻", reloadPreview, "b small"),
-        btn("Copy Swae URL", copySwaeUrl, "b small"))),
+        btn("↻", reloadPreview, "small"),
+        btn("Copy Swae URL", copySwaeUrl, "small"))),
     h("div", "preview-wrap", previewFrame),
     h("p", "sub", "Live viewer overlay: CRID Jumbotron (top) & Cards (bottom). Scaled for Swae iPhone stream & OBS."));
 
@@ -247,6 +518,7 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
     h("option", { value: "question" }, "Question"));
   const cridTitleIn = h("input", { placeholder: "Subject / Album / Debate (e.g. Does this album survive the Jumbotron?)", maxlength: 120 });
   const cridCreditIn = h("input", { placeholder: "Stranger credit / community handle (optional)", maxlength: 30 });
+  const cridAudioIn = h("input", { placeholder: "Audio URL (MP3/AAC/WebM) — plays on the jumbotron", maxlength: 2000 });
 
   const renderCridDeck = () => {
     cridPanel.replaceChildren();
@@ -274,11 +546,14 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
           h("div", { style: "margin:8px 0" }, vBadge),
           pollInfo),
         h("div", "verdict-box",
-          btn("✔ STAMP: RENT PAID (1)", () => act("crid-verdict", { value: 1 }), "b big " + (crid.verdict === 1 ? "go on" : "go")),
-          btn("✖ STAMP: STILL OWING (0)", () => act("crid-verdict", { value: 0 }), "b big " + (crid.verdict === 0 ? "danger on" : "danger"))),
+          btn("✔ STAMP: RENT PAID (1)", () => act("crid-verdict", { value: 1 }), "giant " + (crid.verdict === 1 ? "primary active-toggle" : "primary"), "heavy"),
+          btn("✖ STAMP: STILL OWING (0)", () => act("crid-verdict", { value: 0 }), "giant " + (crid.verdict === 0 ? "danger active-toggle" : "danger"), "heavy")),
+        crid.audioUrl ? h("div", "row",
+          btn(crid.audioPlaying ? "⏸ Pause Audio" : "▶ Play Audio", () => act("crid-audio", { playing: !crid.audioPlaying }), "small " + (crid.audioPlaying ? "active-toggle" : "primary")),
+          btn("🔇 Mute", () => act("crid-audio", { playing: false }), "small")) : null,
         h("div", "row",
-          !state?.poll?.active && !crid.result ? btn("Start Rent Poll", () => act("start-poll", { question: crid.title, options: ["Rent Paid", "Still Owing"] }), "b small go") : null,
-          btn("Close CRID Segment", () => act("crid-close"), "b small danger")));
+          !state?.poll?.active && !crid.result ? btn("Start Rent Poll", () => act("start-poll", { question: crid.title, options: ["Rent Paid", "Still Owing"] }), "small primary") : null,
+          btn("Close CRID Segment", () => act("crid-close"), "small danger", "heavy")));
     } else {
       cridPanel.append(
         h("h2", {}, "CRID — Cyber's Rent Is Due", h("span", { class: "chip" }, "Jumbotron")),
@@ -286,13 +561,15 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
         h("label", "f", h("span", {}, "Segment Kind"), cridKindSel),
         h("label", "f", h("span", {}, "Segment Title / Subject (max 120 chars)"), cridTitleIn),
         h("label", "f", h("span", {}, "Stranger Credit (community member, max 30 chars)"), cridCreditIn),
+        h("label", "f", h("span", {}, "Audio URL (MP3 / AAC / WebM)"), cridAudioIn),
         btn("Open Jumbotron Segment", async () => {
           const title = cridTitleIn.value.trim();
           if (!title) return toast("Enter a segment title", true);
-          await act("crid-open", { kind: cridKindSel.value, title, credit: cridCreditIn.value.trim() || undefined });
+          await act("crid-open", { kind: cridKindSel.value, title, credit: cridCreditIn.value.trim() || undefined, audioUrl: cridAudioIn.value.trim() || undefined });
           cridTitleIn.value = "";
           cridCreditIn.value = "";
-        }, "b go big"));
+          cridAudioIn.value = "";
+        }, "primary giant", "heavy"));
     }
   };
 
@@ -321,12 +598,12 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
     h("h2", {}, "Fast Controls", h("span", { class: "sub", style: "font-weight:normal" }, "Touch targets for live stream")),
     h("label", "f", h("span", {}, "Topic Desks (click to filter on air queue)"), deskChipsEl),
     h("div", { class: "grid", style: "margin-bottom:8px" },
-      btn("Next card ▶", () => act("next"), "b go big"),
-      btn("◀ Previous", () => act("previous"), "b big")),
+      btn("Next card ▶", () => act("next"), "primary giant", "heavy"),
+      btn("◀ Previous", () => act("previous"), "giant", "light")),
     h("div", "grid",
       holdBtn, srcBtn, modeBtn,
       btn("Street question", () => streetQuestion()),
-      btn("Hide overlay", () => act("hide"), "b danger")));
+      btn("Hide overlay", () => act("hide"), "danger", "heavy")));
 
   // ---------- automation and research approval ----------
   // Auto-play and auto research only move or file what the operator has approved (or what the
@@ -351,7 +628,7 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
   const heldNote = h("p", "sub");
   const heldList = h("div");
 
-  const approvalSaveBtn = btn("Save approval mode", () => saveApproval(), "go small");
+  const approvalSaveBtn = btn("Save approval mode", () => saveApproval(), "primary small");
   const approvalWords = () => ({ manual: "Manual", trusted: "Trusted feeds", all: "All incoming" }[approvalModeSel.value] || "Manual");
   const updateApprovalNote = () => {
     const mode = approvalModeSel.value;
@@ -463,7 +740,7 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
     h("label", "f", h("span", {}, "Option 2"), p2),
     h("label", "f", h("span", {}, "Option 3 (optional)"), p3),
     pollError,
-    btn("Start poll", startPoll, "go"),
+    btn("Start poll", startPoll, "primary"),
     pollLive);
 
   // ---------- queue filters and bulk approval ----------
@@ -523,7 +800,7 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
       drawAutomation();
     }
   };
-  const researchBtn = btn("Fetch headlines now (Nigeria + US)", () => runResearchNow(), "go small");
+  const researchBtn = btn("Fetch headlines now (Nigeria + US)", () => runResearchNow(), "primary small");
   researchBtn.style.width = "100%";
   const queuePanel = h("section", "panel", h("h2", {}, "Card queue"),
     researchBtn, researchEl, h("div", { style: "height:8px" }),
@@ -567,7 +844,7 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
   };
   const slangPanel = h("section", "panel", h("h2", {}, "Naija to US slang"),
     h("label", "f", h("span", {}, "Pick a word"), slangSel),
-    h("div", "row", btn("Show now", () => useSlang(true), "go small"), btn("Add to queue", () => useSlang(false), "small")));
+    h("div", "row", btn("Show now", () => useSlang(true), "primary small"), btn("Add to queue", () => useSlang(false), "small")));
 
 
   // ---------- Twitch: server-side control + read-only chat reader ----------
@@ -582,7 +859,7 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
   const chStatus = h("p", "sub", "Not connected.");
   const chCount = h("input", { type: "checkbox", checked: true, style: "width:auto;flex:0 0 auto", onchange: () => { chat.count = chCount.checked; } });
   const chInbox = h("div");
-  const chBtn = btn("Connect to chat", () => (chat.want ? chatStop() : chatStart()), "go");
+  const chBtn = btn("Connect to chat", () => (chat.want ? chatStop() : chatStart()), "primary");
   const chatPanel = h("section", "panel", h("h2", {}, "Twitch chat reader"),
     h("div", "row", chInput, chBtn), chStatus,
     h("label", { class: "row", style: "margin:8px 0" }, chCount, h("span", {}, "Count 1, 2, 3 or !vote a as poll votes")),
@@ -677,6 +954,8 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
   const setCridFromChat = (m) => {
     cridTitleIn.value = m.text.slice(0, 120);
     cridCreditIn.value = m.name.slice(0, 30);
+    currentTab = "crid";
+    renderApp();
     cridPanel.scrollIntoView({ behavior: "smooth" });
     toast(`Loaded into CRID from Stranger @${m.name}`);
   };
@@ -687,7 +966,7 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
     chInbox.replaceChildren(...(chat.msgs.length
       ? chat.msgs.slice(-10).reverse().map((m) => h("div", "item", h("div", "sub", `Stranger @${m.name}`), h("div", {}, m.text),
           h("div", "row",
-            btn("Show now", () => useMessage(m, true), "go small"),
+            btn("Show now", () => useMessage(m, true), "primary small"),
             btn("Add to queue", () => useMessage(m, false), "small"),
             btn("Credit in CRID", () => setCridFromChat(m), "small"))))
       : [h("p", "sub", "Chat messages appear here. Nothing reaches the stream until you tap one.")]));
@@ -761,26 +1040,246 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
     if (!/^[a-z0-9_]{3,25}$/.test(name)) return toast("Enter a Twitch channel name: letters, numbers and underscores only.", true);
     try { localStorage.setItem(CHAT_KEY, name); } catch { /* ignore */ }
     Object.assign(chat, { want: true, retry: 0, name, seen: 0, hidden: 0 });
-    chBtn.textContent = "Disconnect"; chBtn.classList.remove("go");
+    chBtn.textContent = "Disconnect"; chBtn.classList.remove("go"); chBtn.classList.remove("primary");
     keepAwake();
     chatOpen(name);
   };
   const chatStop = () => {
     chat.want = false;
     const ws = chat.ws; chat.ws = null; ws?.close();
-    chBtn.textContent = "Connect to chat"; chBtn.classList.add("go");
+    chBtn.textContent = "Connect to chat"; chBtn.classList.add("go"); chBtn.classList.add("primary");
     chStatus.textContent = "Not connected.";
   };
   document.addEventListener("visibilitychange", () => { if (chat.want && document.visibilityState === "visible") keepAwake(); });
   drawInbox();
 
-  const colLeft = h("div", "col-left", statusEl, previewPanel, controlsEl, cridPanel);
-  const colRight = h("div", "col-right", autoEl, pollEl, twitchPanel, chatPanel, slangPanel, queuePanel, editorEl);
-  root.append(colLeft, colRight);
+  // ---------- Twitch clipping ----------
+  const clipStatus = h("p", "sub", "Clip status: not configured.");
+  const clipCreateBtn = btn("Clip That", async () => {
+    const j = await act("clip-create");
+    if (!j) return;
+    await load();
+    toast(j.clip ? `Clip created${j.clip.status === "available" ? " and verified." : " (pending verification)."}` : "Clip request sent.");
+    drawClip();
+  }, "small primary");
+  const clipEditLink = h("a", { target: "_blank", rel: "noopener noreferrer", style: "color:#7CC4FF;text-decoration:underline" }, "Open clip edit link");
+  const clipPanel = h("section", "panel", h("h2", {}, "Twitch Clip"),
+    h("div", "twitch-box",
+      h("p", "sub", "Create a clip of the current live moment. Requires TWITCH_CLIENT_ID, TWITCH_CLIP_ACCESS_TOKEN (clips:edit scope) and TWITCH_BROADCASTER_USER_ID in Netlify env."),
+      clipStatus,
+      h("div", "row", clipCreateBtn)),
+    h("div", "twitch-box",
+      h("p", "sub", "Last clip"), clipEditLink));
+
+  const drawClip = () => {
+    const clip = state?.lastClip ?? null;
+    const cfg = twitch ?? {};
+    const configured = Boolean(cfg.clipConfigured);
+    clipStatus.textContent = configured
+      ? "Clip status: configured."
+      : "Clip status: not configured (set TWITCH_CLIENT_ID, TWITCH_CLIP_ACCESS_TOKEN, TWITCH_BROADCASTER_USER_ID).";
+    clipCreateBtn.disabled = !configured;
+    if (clip) {
+      clipEditLink.textContent = clip.status === "available" ? "Open clip edit link" : "Clip pending verification";
+      clipEditLink.href = clip.editUrl || "";
+      clipEditLink.hidden = !clip.editUrl;
+    } else {
+      clipEditLink.textContent = "No clip yet.";
+      clipEditLink.hidden = true;
+    }
+  };
+
+  // ---------- Spotify (private, isolated from broadcast) ----------
+  // Displays the operator's personal Spotify top tracks. Never feeds Spotify audio into
+  // the Swae overlay or the Twitch broadcast. Spotify policy restricts cross-service
+  // playback and synchronization; this is a private listening-data view only.
+  const spotifyStatus = h("p", "sub", "Spotify: not configured.");
+  const spotifyRefreshBtn = btn("Refresh", async () => { await loadSpotify(); }, "small primary");
+  const spotifyTracks = h("div");
+  const spotifyPanel = h("section", "panel", h("h2", {}, "Spotify — Top Tracks (private)"),
+    h("div", "twitch-box",
+      h("p", "sub", "Requires SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET and SPOTIFY_REFRESH_TOKEN in Netlify env. Scope: user-top-read. Audio is not played through Swae or Twitch."),
+      spotifyStatus,
+      h("div", "row", spotifyRefreshBtn)),
+    spotifyTracks);
+
+  const loadSpotify = async () => {
+    const timeRange = "long_term";
+    try {
+      const r = await fetch(`/api/spotify/top?time_range=${timeRange}&limit=5`, { cache: "no-store" });
+      const j = await r.json();
+      if (!r.ok || j.error) {
+        spotifyStatus.textContent = "Spotify: " + (j.error || `HTTP ${r.status}`);
+        spotifyTracks.replaceChildren(h("p", "sub", "Could not load top tracks."));
+        return;
+      }
+      spotifyStatus.textContent = `Spotify: ${j.tracks.length} track${j.tracks.length === 1 ? "" : "s"} (${j.time_range}).`;
+      spotifyTracks.replaceChildren(
+        h("h3", { style: "margin:8px 0 4px;font-size:.9rem" }, `Your top ${j.tracks.length} (${j.time_range})`),
+        j.tracks.map((t, i) => h("div", "item",
+          h("div", "item-head", h("span", {}, `${i + 1}. ${t.name}`), h("span", "chip", `by ${t.artist}`)),
+          t.albumArt ? h("img", { src: t.albumArt, alt: "", style: "width:48px;height:48px;border-radius:6px;margin:6px 0" }) : null,
+          t.album && h("p", "sub", `Album: ${t.album}`),
+          t.url && h("a", { href: t.url, target: "_blank", rel: "noopener noreferrer", style: "color:#7CC4FF" }, "Open on Spotify")
+        ))
+      );
+    } catch (e) {
+      spotifyStatus.textContent = "Spotify: request failed.";
+      spotifyTracks.replaceChildren(h("p", "sub", "Could not load top tracks."));
+    }
+  };
+
+  // ---------- CRID Court ----------
+  const courtQuestion = h("input", { placeholder: "Debate question", maxlength: 140 });
+  const courtVA = h("input", { placeholder: "Viewpoint A", maxlength: 120 });
+  const courtVB = h("input", { placeholder: "Viewpoint B", maxlength: 120 });
+  const courtStatus = h("p", "sub", "Court: not in session.");
+  const courtPanel = h("section", "panel", h("h2", {}, "CRID Court"),
+    h("div", "twitch-box",
+      h("label", "f", h("span", {}, "Question"), courtQuestion),
+      h("div", "row", courtVA, courtVB),
+      h("div", "row",
+        btn("Open Court", async () => {
+          const j = await act("court-open", { question: courtQuestion.value.trim(), viewpointA: courtVA.value.trim(), viewpointB: courtVB.value.trim() });
+          if (j) { courtQuestion.value = ""; courtVA.value = ""; courtVB.value = ""; await load(); toast("Court opened."); }
+        }, "primary small"),
+        btn("Vote A", () => act("court-vote", { side: "a" }), "small"),
+        btn("Vote B", () => act("court-vote", { side: "b" }), "small"),
+        btn("Verdict W (1)", () => act("court-verdict", { value: 1 }), "small primary"),
+        btn("Verdict L (0)", () => act("court-verdict", { value: 0 }), "small danger")),
+      courtStatus,
+      btn("Close Court", () => act("court-close"), "danger small")));
+
+  // ---------- Music Desk ----------
+  const musicTitle = h("input", { placeholder: "Track title", maxlength: 120 });
+  const musicArtist = h("input", { placeholder: "Artist", maxlength: 120 });
+  const musicUrl = h("input", { placeholder: "Audio URL (MP3/AAC/WebM)", maxlength: 2000 });
+  const musicStatus = h("p", "sub", "Music: idle.");
+  const musicPanel = h("section", "panel", h("h2", {}, "Music Desk"),
+    h("div", "twitch-box",
+      h("label", "f", h("span", {}, "Title"), musicTitle),
+      h("label", "f", h("span", {}, "Artist"), musicArtist),
+      h("label", "f", h("span", {}, "Audio URL"), musicUrl),
+      h("div", "row",
+        btn("Add to Queue", async () => {
+          const j = await act("music-add", { title: musicTitle.value.trim(), artist: musicArtist.value.trim(), audioUrl: musicUrl.value.trim() || undefined });
+          if (j) { musicTitle.value = ""; musicArtist.value = ""; musicUrl.value = ""; await load(); toast("Added to music queue."); }
+        }, "primary small"),
+        btn("Play", () => act("music-play"), "small primary"),
+        btn("Pause", () => act("music-pause"), "small"),
+        btn("Next", () => act("music-next"), "small"),
+        btn("Stop", () => act("music-stop"), "small danger"),
+        btn("Clear", () => act("music-clear"), "small danger")),
+      musicStatus));
+
+  // ---------- X Space Radar ----------
+  const spaceTitle = h("input", { placeholder: "Space title", maxlength: 120 });
+  const spaceHost = h("input", { placeholder: "Host", maxlength: 120 });
+  const spaceTopic = h("input", { placeholder: "Topic", maxlength: 120 });
+  const spaceUrl = h("input", { placeholder: "Space URL (https://...)", maxlength: 2000 });
+  const spacePanel = h("section", "panel", h("h2", {}, "X Space Radar"),
+    h("div", "twitch-box",
+      h("p", "sub", "Info card + external link only. Does not embed or rebroadcast X Spaces."),
+      h("label", "f", h("span", {}, "Title"), spaceTitle),
+      h("label", "f", h("span", {}, "Host"), spaceHost),
+      h("label", "f", h("span", {}, "Topic"), spaceTopic),
+      h("label", "f", h("span", {}, "URL"), spaceUrl),
+      h("div", "row",
+        btn("Add Space", async () => {
+          const j = await act("space-add", { title: spaceTitle.value.trim(), host: spaceHost.value.trim(), topic: spaceTopic.value.trim(), url: spaceUrl.value.trim() || undefined });
+          if (j) { spaceTitle.value = ""; spaceHost.value = ""; spaceTopic.value = ""; spaceUrl.value = ""; await load(); toast("Space added."); }
+        }, "primary small"))));
+
+  // ---------- STRANGERS Ledger ----------
+  const ledgerType = h("input", { placeholder: "Type (e.g. poll-win, topic-submit, challenge)", maxlength: 32 });
+  const ledgerTitle = h("input", { placeholder: "Entry title", maxlength: 120 });
+  const ledgerDesc = h("input", { placeholder: "Description", maxlength: 280 });
+  const ledgerPanel = h("section", "panel", h("h2", {}, "STRANGERS Ledger"),
+    h("div", "twitch-box",
+      h("p", "sub", "Records community interactions and decisions. Only retain what is necessary and appropriate."),
+      h("label", "f", h("span", {}, "Type"), ledgerType),
+      h("label", "f", h("span", {}, "Title"), ledgerTitle),
+      h("label", "f", h("span", {}, "Description"), ledgerDesc),
+      h("div", "row",
+        btn("Add Entry", async () => {
+          const j = await act("ledger-add", { type: ledgerType.value.trim(), title: ledgerTitle.value.trim(), description: ledgerDesc.value.trim() || undefined });
+          if (j) { ledgerType.value = ""; ledgerTitle.value = ""; ledgerDesc.value = ""; await load(); toast("Ledger entry added."); }
+        }, "primary small"))));
+
+  // ---------- RIAD ----------
+  const riadChannel = h("input", { placeholder: "Raid channel (optional)", maxlength: 32 });
+  const riadPanel = h("section", "panel", h("h2", {}, "RIAD — Rent Is Always Due"),
+    h("div", "twitch-box",
+      h("p", "sub", "Raid identity and ritual. Triggers the RIAD graphic; actual Twitch raid action stays separate and requires explicit authorization."),
+      h("label", "f", h("span", {}, "Channel"), riadChannel),
+      h("div", "row",
+        btn("Trigger RIAD", async () => {
+          const j = await act("riad-trigger", { channel: riadChannel.value.trim() || undefined });
+          if (j) { riadChannel.value = ""; await load(); toast("RIAD triggered."); }
+        }, "primary small"),
+        btn("Clear RIAD", () => act("riad-clear"), "small danger"))));
+
+  // ---------- Settings Extras (Swae Overlay & Session) ----------
+  const settingsExtrasEl = h("section", "panel stack",
+    h("h2", {}, "Overlay & Session"),
+    h("div", "twitch-box",
+      h("p", "sub", "Swae viewer overlay link for OBS or browser source:"),
+      btn("Copy Swae URL", copySwaeUrl, "primary")),
+    h("div", "twitch-box",
+      h("p", "sub", "Disconnect operator session on this device:"),
+      btn("Logout / Change Token", () => {
+        try { localStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ }
+        location.reload();
+      }, "danger")));
+
+  // ---------- App Root & Layout ----------
+  const appRoot = h("div", { id: "app-root" });
+  document.body.append(appRoot, toastEl, sheetWrap);
+
+  // ---------- Tab Router & View Assembly ----------
+  const renderApp = () => {
+    const root = document.getElementById("app-root");
+    if (!root) return;
+    // Build a scroll container with the current tab's panels
+    let panels;
+    switch(currentTab) {
+      case "live": panels = [statusEl, controlsEl, previewPanel]; break;
+      case "topics": panels = [queuePanel, editorEl]; break;
+      case "crid": panels = [cridPanel]; break;
+      case "community": panels = [riadPanel, ledgerPanel, spacePanel, chatPanel, slangPanel]; break;
+      case "studio": panels = [clipPanel, musicPanel, courtPanel, spotifyPanel]; break;
+      case "settings": panels = [autoEl, pollEl, twitchPanel, settingsExtrasEl]; break;
+      default: panels = [statusEl, controlsEl, previewPanel];
+    }
+    // Show/hide panels based on active tab
+    const allPanels = [statusEl, controlsEl, previewPanel, queuePanel, editorEl, cridPanel,
+      riadPanel, ledgerPanel, spacePanel, chatPanel, slangPanel,
+      clipPanel, musicPanel, courtPanel, spotifyPanel, autoEl, pollEl, twitchPanel, settingsExtrasEl];
+    for (const p of allPanels) {
+      if (p === editorEl) {
+        p.hidden = !panels.includes(p) || !editing;
+      } else {
+        p.hidden = !panels.includes(p);
+      }
+    }
+
+    const container = root.querySelector(".view-container") || (() => {
+      root.innerHTML = "";
+      const vc = h("div", "view-container");
+      root.append(vc, renderTabBar());
+      return vc;
+    })();
+    // Re-render tab bar
+    const oldTabBar = root.querySelector(".tab-bar");
+    if (oldTabBar) oldTabBar.replaceWith(renderTabBar());
+    
+    container.replaceChildren(...panels);
+  };
 
   // ---------- login ----------
   const showLogin = (msg = "") => {
-    root.hidden = true;
+    const root = document.getElementById("app-root");
+    if (root) root.hidden = true;
     let box = document.getElementById("login");
     if (box) box.remove();
     const t = h("input", { type: "password", placeholder: "Operator token", autocomplete: "current-password" });
@@ -788,11 +1287,16 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
       token = t.value.trim();
       if (!token) return;
       try { localStorage.setItem(TOKEN_KEY, token); } catch { /* ignore */ }
-      box.remove(); root.hidden = false; load();
+      box.remove();
+      if (root) root.hidden = false;
+      load();
     };
     t.onkeydown = (e) => { if (e.key === "Enter") go(); };
-    box = h("section", { id: "login", class: "panel", style: "max-width:420px;margin:12vh auto;" },
-      h("h2", {}, "Live desk controller"), msg && h("p", "sub", msg), h("label", "f", h("span", {}, "Operator token"), t), btn("Connect", go, "go"));
+    box = h("section", { id: "login", class: "panel stack", style: "max-width:420px;margin:12vh auto;" },
+      h("h2", { class: "t-title", style: "margin-bottom:8px" }, "Cyber Live Desk"),
+      msg && h("p", "sub", msg),
+      h("label", "f", h("span", {}, "Operator token"), t),
+      btn("Connect", go, "primary giant", 'heavy'));
     document.body.append(box);
   };
 
@@ -864,7 +1368,7 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
         btn("Clear poll results", () => act("clear-poll")))));
   };
   const voteBtn = (o, delta, label) => {
-    const b = btn(label, () => act("vote", { option: o.id, delta }), delta > 0 ? "go" : "");
+    const b = btn(label, () => act("vote", { option: o.id, delta }), delta > 0 ? "primary" : "");
     b.disabled = !state?.poll?.active;
     return b;
   };
@@ -979,7 +1483,7 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
   const renderItem = (c, isNext) => {
     const onAir = state?.visible && state.mode === "cards" && state.activeCardId === c.id;
     const open = expanded === c.id;
-    const show = btn("Show on stream", () => act("show", { cardId: c.id }), "go small");
+    const show = btn("Show on stream", () => act("show", { cardId: c.id }), "primary small");
     show.disabled = c.approval !== "approved";
     const tick = h("input", {
       type: "checkbox", class: "selectbox", checked: selected.has(c.id),
@@ -1018,12 +1522,12 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
         btn("Save notes", async () => { if (await saveCard({ id: c.id, presenterNotes: notes.value })) delete drafts[c.id]; }, "small"),
         c.approval === "approved"
           ? btn("Move to pending", () => saveCard({ id: c.id, approval: "pending" }), "small")
-          : btn("Approve", () => saveCard({ id: c.id, approval: "approved" }), "go small"),
+          : btn("Approve", () => saveCard({ id: c.id, approval: "approved" }), "primary small"),
         c.approval !== "rejected" ? btn("Reject", () => saveCard({ id: c.id, approval: "rejected" }), "small") : null));
   };
 
   // ---------- card editor ----------
-  const openEditor = (c) => { editing = c || {}; renderEditor(); editorEl.scrollIntoView({ behavior: "smooth" }); };
+  const openEditor = (c) => { editing = c || {}; currentTab = "topics"; renderEditor(); renderApp(); editorEl.scrollIntoView({ behavior: "smooth" }); };
 
   const renderEditor = () => {
     editorEl.replaceChildren();
@@ -1061,9 +1565,9 @@ textarea{resize:vertical}.f{display:grid;gap:4px;margin-bottom:8px}.f span{font-
             eventDate: f.eventDate.value, ttlSec: f.ttlSec.value ? Number(f.ttlSec.value) : null,
             witty: f.witty.checked === true,
           });
-          if (ok) { editing = null; renderEditor(); }
-        }, "go"),
-        btn("Cancel", () => { editing = null; renderEditor(); })));
+          if (ok) { editing = null; renderEditor(); renderApp(); }
+        }, "primary"),
+        btn("Cancel", () => { editing = null; renderEditor(); renderApp(); })));
   };
 
   // ---------- boot ----------

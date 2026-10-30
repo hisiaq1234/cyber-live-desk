@@ -13,45 +13,21 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { HttpError, readState, runAction } from "./_desk-core.mjs";
+import {
+  parseDeskCommand,
+  parsePollSpec,
+  parseAllowIds,
+  commandBody,
+  commandText,
+} from "./_commands.mjs";
+
+export { parseDeskCommand };
 
 export const TWITCH_STATUS_KEY = "twitch-status";
 export const TWITCH_SIGNATURE_TOLERANCE_MS = 10 * 60 * 1000;
 export const TWITCH_EVENT_PATH = "/api/twitch/eventsub";
 
 const SIGNATURE_PREFIX = "sha256=";
-const COMMAND = /^[!/]?\s*desk[-_ ]*([a-z]+)\b(.*)$/i;
-const NO_ARG = new Set(["next", "prev", "previous", "hold", "hide", "stop"]);
-const LEAVE_DESK = new Set(["all", "clear"]);
-
-// Kept equivalent to public/desk-assets/desk-commands.js. The parity test feeds both parsers
-// the same lines, because a command that works in the controller must work in the webhook.
-export function parseDeskCommand(line) {
-  const m = String(line ?? "").trim().match(COMMAND);
-  if (!m) return null;
-  const verb = m[1].toLowerCase();
-  const rest = m[2].trim();
-
-  if (NO_ARG.has(verb)) return rest ? null : { verb: verb === "previous" ? "prev" : verb };
-  if (LEAVE_DESK.has(verb)) return rest ? null : { verb: "desk", desk: "all" };
-  if (verb === "poll") return { verb: "poll", ...parsePollSpec(rest) };
-  if (verb === "auto") {
-    const value = /^(on|off)$/i.test(rest) ? rest.toLowerCase() : null;
-    return value ? { verb: "auto", value } : null;
-  }
-  if (verb === "desk" || rest) return null;
-  return { verb: "desk", desk: verb };
-}
-
-export function parsePollSpec(rest) {
-  const raw = String(rest ?? "").trim();
-  if (!raw.includes("|")) return { question: raw.slice(0, 140), options: ["Yes", "No"] };
-  const [question, ...options] = raw.split("|").map((s) => s.trim()).filter(Boolean);
-  const opts = options.slice(0, 3);
-  if (!question || opts.length < 2) return { question: raw.slice(0, 140), options: ["Yes", "No"] };
-  return { question: question.slice(0, 140), options: opts.map((o) => o.slice(0, 40)) };
-}
-
-export const parseAllowIds = (text) => String(text ?? "").split(/[^0-9]+/).filter(Boolean);
 
 const allowedIds = (state, env) => [...new Set([
   ...(Array.isArray(state?.twitchAllowedUserIds) ? state.twitchAllowedUserIds : []),
@@ -68,18 +44,6 @@ export function twitchMayCommand(event, { broadcasterId = "", allowIds = [], ena
   if (allowIds.includes(id)) return { ok: true, as: "allowlist" };
   return { ok: false, reason: `${id} is not the broadcaster or on the allowlist` };
 }
-
-export const commandBody = (cmd) =>
-  cmd.verb === "poll" ? { action: "start-poll", question: cmd.question, options: cmd.options }
-    : cmd.verb === "auto" ? { action: "auto-play", value: cmd.value === "on" }
-    : cmd.verb === "desk" ? { action: "desk", desk: cmd.desk }
-    : { action: { next: "next", prev: "previous", hold: "hold", hide: "hide", stop: "end-poll" }[cmd.verb] };
-
-export const commandText = (cmd) =>
-  cmd.verb === "poll" ? `desk poll ${cmd.question || "(card question)"}`
-    : cmd.verb === "auto" ? `desk auto ${cmd.value}`
-    : cmd.verb === "desk" ? `desk ${cmd.desk}`
-    : `desk ${cmd.verb}`;
 
 const header = (req, name) => req.headers.get(name) ?? "";
 
@@ -110,6 +74,11 @@ export function twitchEnv(env = process.env) {
     broadcasterId: String(env?.TWITCH_BROADCASTER_USER_ID ?? "").trim(),
     callbackUrl: String(env?.TWITCH_EVENTSUB_CALLBACK ?? "").trim() || null,
     appConfigured: Boolean(String(env?.TWITCH_CLIENT_ID ?? "").trim() && String(env?.TWITCH_CLIENT_SECRET ?? "").trim()),
+    clipConfigured: Boolean(
+      String(env?.TWITCH_CLIENT_ID ?? "").trim() &&
+      String(env?.TWITCH_CLIP_ACCESS_TOKEN ?? "").trim() &&
+      String(env?.TWITCH_BROADCASTER_USER_ID ?? "").trim()
+    ),
     allowedEnvIds: parseAllowIds(env?.TWITCH_ALLOWED_USER_IDS ?? ""),
   };
 }
@@ -135,6 +104,7 @@ export async function twitchStatus(store, state, { env = process.env, origin = "
     configured: cfg.configured,
     missing: cfg.missing,
     appConfigured: cfg.appConfigured,
+    clipConfigured: cfg.clipConfigured,
     callbackUrl,
     enabled: Boolean(state?.twitchChatEnabled),
     allowedUserIds: allowedIds(state, env),

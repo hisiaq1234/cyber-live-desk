@@ -72,10 +72,10 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
   .pos-top-left .slot::before,.pos-top-right .slot::before{display:none}
   .pos-bottom-left .slot{left:var(--m);bottom:calc(var(--m) + env(safe-area-inset-bottom,0px))}
   .pos-bottom-right .slot{right:var(--m);bottom:calc(var(--m) + env(safe-area-inset-bottom,0px))}
-  .pos-top-left .slot{left:var(--m);top:calc(var(--m) + env(safe-area-inset-top,0px))}
+  .pos-top-left .slot{left:var(--m);top:calc(var(--m) + env(safe-area-inset-top,0px));transition:top .35s cubic-bezier(.16,1,.3,1)}
   .pos-top-right .slot{right:var(--m);top:calc(var(--m) + env(safe-area-inset-top,0px))}
-  #crid-jumbotron{width:min(calc(100vw - 2*var(--m)),60em);padding:1.1em 1.5em;border-radius:1.8em}
-  .crid-title{font-size:1.2em}
+  /* When CRID Bug is active in top-left, topic cards sit right below it forming one unified desk */
+  .has-crid.pos-top-left .slot{top:calc(var(--m) + env(safe-area-inset-top,0px) + 4.8em)}
 
 @media (max-aspect-ratio:1/1){
   .slot{width:min(calc(100vw - 2*var(--m)),42em)}
@@ -175,62 +175,37 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 .dot.loading{background:#ff453a}
 @keyframes pulse-dot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.55;transform:scale(1.15)}}
 
-/* ---------- CRID Jumbotron — one built body, full panel, alive ---------- */
-.crid-pos-top #crid-jumbotron{top:calc(var(--m) + env(safe-area-inset-top,0px));bottom:auto}
-.crid-pos-bottom #crid-jumbotron{bottom:calc(var(--m) + env(safe-area-inset-bottom,0px));top:auto}
-#crid-jumbotron{position:absolute;left:50%;transform:translate(-50%,-14px);
-  width:min(calc(100vw - 2*var(--m)),46em);max-width:96vw;box-sizing:border-box;pointer-events:none;z-index:10;
-  background:#111214f0;backdrop-filter:blur(20px) saturate(190%);
+/* ---------- CRID Broadcast Bug (Persistent Dynamic Network Bug) ---------- */
+.crid-pos-bottom #crid-jumbotron{top:auto;bottom:calc(var(--m) + env(safe-area-inset-bottom,0px));transform:translateX(-20px) scale(.96)}
+#crid-jumbotron{position:absolute;top:calc(var(--m) + env(safe-area-inset-top,0px));left:var(--m);right:auto;bottom:auto;
+  width:auto;max-width:min(calc(100vw - 2*var(--m)),34em);box-sizing:border-box;pointer-events:none;z-index:20;
+  background:var(--glass);backdrop-filter:blur(20px) saturate(190%);
   -webkit-backdrop-filter:blur(20px) saturate(190%);
-  border:.10em solid var(--surface-line);border-radius:1.6em;padding:1.1em 1.3em;
-  box-shadow:0 24px 48px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.12);
-  opacity:0;transform:translate(-50%,-14px) scale(.96);
-  transition:opacity .5s cubic-bezier(.16,1,.3,1),
-              transform .5s cubic-bezier(.16,1,.3,1),
-              filter .5s ease}
-.crid-pos-bottom #crid-jumbotron{transform:translate(-50%,14px) scale(.96)}
-#crid-jumbotron.in{opacity:1;transform:translate(-50%,0) scale(1)}
-#crid-jumbotron.out{opacity:0;transform:translate(-50%,-14px) scale(.95)}
-.crid-pos-bottom #crid-jumbotron.out{transform:translate(-50%,14px) scale(.95)}
-.crid-body{display:flex;flex-direction:column;gap:.7em}
-.crid-head{display:flex;align-items:center;justify-content:space-between;gap:.5em;
-  font-size:.62em;font-weight:800;font-family:var(--brand);
-  text-transform:uppercase;letter-spacing:.08em}
-.crid-tag-wrap{display:flex;align-items:center;gap:.4em;flex-wrap:wrap}
-.crid-brand{background:var(--accent);color:#111214;padding:.2em .7em;border-radius:.9em;font-weight:800;
-  animation:brand-glow 3s ease-in-out infinite alternate,badge-blink 2s ease-in-out infinite}
-.crid-kind{background:rgba(255,255,255,.08);color:#f3f2f0;border:.09em solid rgba(255,255,255,.25);
-  padding:.2em .65em;border-radius:.9em;text-transform:uppercase;font-weight:800;font-size:.72em}
-.crid-stranger{color:#c7c7cc;font-size:.82em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.02em}
-.crid-stranger strong{color:#f3f2f0}
-.crid-title{margin:0;font-size:1.35em;font-weight:800;line-height:1.25;letter-spacing:-.015em;
-  color:#f3f2f0;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4}
-.crid-foot{display:flex;align-items:center;justify-content:space-between;gap:.6em;padding-top:.7em;
-  border-top:.08em solid rgba(255,255,255,.16)}
-.crid-verdict{display:inline-flex;align-items:center;gap:.45em;padding:.32em .9em;border-radius:.9em;
-  font-weight:800;text-transform:uppercase;letter-spacing:.05em;font-size:.78em}
-/* filled tint = rent paid, outlined = still owing */
-.crid-v-1{background:var(--accent);color:#111214;border:.09em solid var(--accent);
-  box-shadow:0 0 20px var(--accent-glow)}
-.crid-v-0{background:transparent;color:var(--accent);border:.09em solid var(--accent);
-  box-shadow:0 0 20px var(--accent-glow)}
-.crid-v-none{color:#8E8E93;font-size:.88em;font-weight:600;letter-spacing:.03em}
-.crid-tally{color:var(--accent);font-size:.88em;font-weight:800}
-.crid-result{font-size:.82em;font-weight:700;letter-spacing:.04em;color:#f3f2f0}
+  border:1px solid var(--surface-line);border-radius:99px;padding:.55em 1.1em .55em .6em;
+  box-shadow:0 10px 30px rgba(0,0,0,.45),inset 0 1px rgba(255,255,255,.12);
+  display:flex;align-items:center;gap:.85em;
+  opacity:0;transform:translateX(-20px) scale(.96);
+  transition:opacity .5s cubic-bezier(.16,1,.3,1),transform .5s cubic-bezier(.16,1,.3,1)}
+.crid-pos-bottom #crid-jumbotron.in{transform:translateX(0) scale(1)}
+#crid-jumbotron.in{opacity:1;transform:translateX(0) scale(1);animation:bug-breathe 4s ease-in-out infinite}
+#crid-jumbotron.out{opacity:0;transform:translateX(-20px) scale(.96)}
+.crid-pos-bottom #crid-jumbotron.out{transform:translateX(-20px) scale(.96)}
 
-/* alive motions on the full body */
-@keyframes brand-glow{0%{box-shadow:0 0 0 rgba(255,69,58,.4);filter:brightness(1)}
-  100%{box-shadow:0 0 16px rgba(255,69,58,.6);filter:brightness(1.1)}}
-@keyframes breathe{0%,100%{transform:translate(-50%,0) scale(1);filter:brightness(1)}
-  50%{transform:translate(-50%,-1px) scale(1.007);filter:brightness(1.035)}}
-#crid-jumbotron.in{animation:breathe 5s ease-in-out infinite}
-@keyframes drift{0%,100%{transform:translate(-50%,0) scale(1)}
-  33%{transform:translate(-50%,-2px) scale(1.005)}
-  66%{transform:translate(-50%,1px) scale(1.003)}}
-.crid-pos-bottom #crid-jumbotron.in{animation:drift 6s ease-in-out infinite}
-@keyframes badge-blink{0%,100%{opacity:1}50%{opacity:.4}}
-@keyframes verdict-pulse{0%,100%{box-shadow:0 0 0 rgba(255,69,58,.45)}70%{box-shadow:0 0 10px rgba(255,69,58,0)}100%{box-shadow:0 0 0 rgba(255,69,58,.45)}}
-.crid-v-1{animation:verdict-pulse 1.6s ease-in-out infinite}
+/* Logo / Authentic Branding Integration */
+.crid-logo{width:3em;height:3em;border-radius:50%;object-fit:cover;background:#000;border:2px solid var(--surface-line);flex-shrink:0;box-shadow:0 0 12px rgba(255,69,58,.25)}
+.crid-logo-badge{width:3em;height:3em;border-radius:50%;background:radial-gradient(circle at 35% 35%,#2a0808 0%,#0d0d10 80%);border:2px solid var(--accent);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:.78em;font-weight:900;color:#fff;letter-spacing:.05em;box-shadow:0 0 14px var(--accent-glow)}
+.crid-body{display:flex;flex-direction:column;gap:.25em;flex:1;overflow:hidden;min-width:0}
+.crid-head{display:flex;align-items:center;gap:.5em;font-size:.65em;font-weight:800;text-transform:uppercase;letter-spacing:.08em}
+.crid-brand{color:var(--accent);font-weight:900}
+.crid-kind{background:rgba(255,255,255,.08);color:#f3f2f0;padding:.1em .6em;border-radius:99px;font-size:.9em}
+.crid-title{margin:0;font-size:1.05em;font-weight:800;line-height:1.2;letter-spacing:-.015em;color:#f3f2f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crid-foot{display:flex;align-items:center;justify-content:space-between;gap:.6em;font-size:.75em}
+.crid-verdict{display:inline-flex;align-items:center;padding:.15em .6em;border-radius:99px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;font-size:.85em}
+.crid-v-1{background:var(--accent);color:#111214}
+.crid-v-0{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+.crid-v-none{color:#8E8E93;font-size:.9em;font-weight:600;text-transform:uppercase}
+
+@keyframes bug-breathe{0%,100%{filter:brightness(1)}50%{filter:brightness(1.05)}}
 
 /* X jumbotron — a live bar of X content at the top or bottom of the desk,
    like the CRID segment: always visible, always readable, never in the card slot. */
@@ -352,18 +327,39 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 
 @media (prefers-reduced-motion:reduce){
   .card{transform:none;transition:none}
-  #crid-jumbotron{transform:translate(-50%,0);transition:none;animation:none}
+  #crid-jumbotron{transform:none;transition:none;animation:none}
   .fill{transition:none}
   .dot{animation:none}
   .crid-brand{animation:none}
   .scale-wrap input::-webkit-slider-thumb{animation:none}}
 `;
 
-  // ---------- tiny DOM helper (text nodes only: nothing is parsed as HTML) ----------
-  const h = (tag, cls, ...kids) => {
+  // ---------- upgraded DOM helper (handles attributes, classes, and kids) ----------
+  const h = (tag, props, ...kids) => {
     const e = document.createElement(tag);
-    if (cls) e.className = cls;
-    for (const k of kids.flat()) {
+    const applyProps = (obj) => {
+      for (const [k, v] of Object.entries(obj || {})) {
+        if (v == null || v === false) continue;
+        if (k === "class" || k === "className") {
+          e.className = (e.className ? e.className + " " : "") + v;
+        } else if (k.startsWith("on") || k in e) {
+          e[k] = v;
+        } else {
+          e.setAttribute(k, v);
+        }
+      }
+    };
+
+    let flatKids = kids.flat();
+    if (typeof props === "string") {
+      if (props) e.className = props;
+      if (flatKids.length > 0 && flatKids[0] && typeof flatKids[0] === "object" && !(flatKids[0] instanceof Node)) {
+        applyProps(flatKids.shift());
+      }
+    } else if (props && typeof props === "object") {
+      applyProps(props);
+    }
+    for (const k of flatKids) {
       if (k == null || k === false) continue;
       e.append(k instanceof Node ? k : document.createTextNode(String(k)));
     }
@@ -641,12 +637,16 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
       moduleEl = h("div", "module-wrap", ...parts);
       moduleEl.id = "modules";
       moduleEl.style.position = "absolute";
-      moduleEl.style.inset = "0";
+      moduleEl.style.top = "calc(var(--m) + env(safe-area-inset-top, 0px))";
+      moduleEl.style.right = "var(--m)";
+      moduleEl.style.bottom = "auto";
+      moduleEl.style.left = "auto";
       moduleEl.style.pointerEvents = "none";
       moduleEl.style.display = "flex";
       moduleEl.style.flexDirection = "column";
-      moduleEl.style.alignItems = "center";
-      moduleEl.style.justifyContent = "center";
+      moduleEl.style.alignItems = "flex-end";
+      moduleEl.style.gap = "8px";
+      moduleEl.style.maxWidth = "min(calc(100vw - 2*var(--m)), 26em)";
       moduleEl.style.zIndex = "15";
       root.append(moduleEl);
     }
@@ -822,8 +822,14 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
         cridEl = null;
         cridKey = null;
       }
+      root.classList.remove("has-crid");
       return;
     }
+
+    root.classList.add("has-crid");
+
+    // Authentic Logo / Asset handling
+    const logoUrl = P.get("logo") || P.get("logourl") || crid.logo || state?.logo || "";
 
     const key = [
       crid.id,
@@ -836,14 +842,27 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
       crid.result?.percent,
       crid.result?.total,
       crid.result?.tie,
+      logoUrl,
     ].join("|");
 
     if (key === cridKey && cridEl) return;
 
+    // 1. Authentic Logo / Circular Monogram Badge
+    let logoEl = null;
+    if (logoUrl) {
+      logoEl = h("img", "crid-logo", { src: logoUrl, alt: "CRID Logo" });
+      logoEl.onerror = () => {
+        const badge = h("div", "crid-logo-badge", "CRID");
+        if (logoEl && logoEl.parentNode) logoEl.replaceWith(badge);
+      };
+    } else {
+      logoEl = h("div", "crid-logo-badge", "CRID");
+    }
+
+    // 2. Text Assembly
     const brand = h("span", "crid-brand", `CRID #${crid.entry}`);
     const kind = h("span", "crid-kind", crid.kind || "topic");
-    const stranger = crid.credit ? h("span", "crid-stranger", "Suggested by ", h("strong", "", crid.credit)) : null;
-    const head = h("div", "crid-head", h("div", "crid-tag-wrap", brand, kind), stranger);
+    const head = h("div", "crid-head", brand, kind);
     const title = h("div", "crid-title", crid.title);
 
     let vEl = null;
@@ -852,19 +871,21 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
     } else if (crid.verdict === 0) {
       vEl = h("span", "crid-verdict crid-v-0", "✖ STILL OWING");
     } else if (crid.result) {
-      vEl = h("div", "crid-result",
-        crid.result.tie ? "STRANGERS: TIE (50/50)" : `STRANGERS: ${crid.result.winner} (${crid.result.percent}%)`);
+      vEl = h("div", "crid-v-none",
+        crid.result.tie ? "TIE (50/50)" : `${crid.result.winner} (${crid.result.percent}%)`);
     } else {
-      vEl = h("span", "crid-v-none", "Live Segment · Awaiting Verdict");
+      vEl = h("span", "crid-v-none", "LIVE SEGMENT");
     }
 
-    const foot = h("div", "crid-foot", vEl);
-    const body = h("div", "crid-body", head, title, foot);
+    const foot = h("div", "crid-foot", vEl, crid.credit ? h("span", "crid-v-none", `BY @${crid.credit.toUpperCase()}`) : null);
+
+    // 3. Compact Horizontal Assembly
+    const textBody = h("div", "crid-body", head, title, foot);
 
     if (cridEl) {
-      cridEl.replaceChildren(body);
+      cridEl.replaceChildren(logoEl, textBody);
     } else {
-      cridEl = h("div", "", body);
+      cridEl = h("div", "", logoEl, textBody);
       cridEl.id = "crid-jumbotron";
       root.append(cridEl);
       requestAnimationFrame(() => requestAnimationFrame(() => cridEl?.classList.add("in")));

@@ -476,10 +476,10 @@ import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.
   const srcBtn = btn("Show source", () => act("source"));
   const modeBtn = btn("X feed", () => act("mode", { mode: state?.mode === "x-following" ? "cards" : "x-following" }));
   // ---------- Live Overlay Preview (Swae / OBS Monitor) ----------
-  let previewRatio = "9-16"; // "9-16" | "16-9"
-  const previewFrame = h("iframe", { class: "preview-frame preview-9-16", src: "/desk?debug=0", title: "Viewer Overlay Preview" });
-  const btnRatio916 = btn("Swae (9:16)", () => setPreviewRatio("9-16"), "small primary");
-  const btnRatio169 = btn("Landscape (16:9)", () => setPreviewRatio("16-9"), "small");
+  let previewRatio = "16-9"; // Default to 16:9 Landscape for live stream frames
+  const previewFrame = h("iframe", { class: "preview-frame preview-16-9", src: "/desk?debug=0", title: "Viewer Overlay Preview" });
+  const btnRatio916 = btn("Vertical (9:16)", () => setPreviewRatio("9-16"), "small");
+  const btnRatio169 = btn("Landscape (16:9)", () => setPreviewRatio("16-9"), "small primary");
   const setPreviewRatio = (r) => {
     previewRatio = r;
     previewFrame.className = `preview-frame preview-${r}`;

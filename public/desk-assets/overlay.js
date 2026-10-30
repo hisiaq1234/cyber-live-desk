@@ -77,6 +77,14 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
   /* When CRID Bug is active in top-left, topic cards sit right below it forming one unified desk */
   .has-crid.pos-top-left .slot{top:calc(var(--m) + env(safe-area-inset-top,0px) + 4.8em)}
 
+  /* Landscape 16:9 Widescreen Stream Frame Optimization:
+     Bounds corner cards to ~30em so the center 65%+ of widescreen camera remains unobstructed. */
+  @media (min-aspect-ratio: 16/10) {
+    .slot { width: min(calc(100vw - 2*var(--m)), 30em); }
+    .pos-bottom-left .slot, .pos-top-left .slot { right: auto; }
+    .pos-bottom-right .slot, .pos-top-right .slot { left: auto; }
+  }
+
 @media (max-aspect-ratio:1/1){
   .slot{width:min(calc(100vw - 2*var(--m)),42em)}
   .card{padding:13px 14px 12px;border-radius:19px}

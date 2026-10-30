@@ -461,7 +461,9 @@ import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.
             renderApp();
           }
         };
-        return h("div", "tab-item" + (isActive ? " active" : ""), { onclick: fn },
+        // FIX: merge class and onclick into one props object so h() never
+        // treats { onclick } as a child and serialises it as "[object Object]"
+        return h("div", { class: "tab-item" + (isActive ? " active" : ""), onclick: fn },
           h("span", "tab-icon", t.icon),
           h("span", "tab-label", t.label)
         );

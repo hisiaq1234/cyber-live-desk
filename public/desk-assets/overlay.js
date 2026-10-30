@@ -66,11 +66,10 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
   font-size:calc(var(--scale)*clamp(15px,3.5vmin,26px));line-height:1.4}
   .slot{position:absolute;display:grid;width:min(calc(100vw - 2*var(--m)),56em)}
   .slot>*{grid-area:1/1;justify-self:center}
-  .slot::before{content:"";grid-area:1/1;align-self:end;pointer-events:none;opacity:0;
-    border:.10em solid var(--accent);box-shadow:0 0 20px var(--accent-glow);
-    transition:opacity .35s ease}
-  .slot:not(:empty)::before{opacity:1}
-  .pos-top-left .slot::before,.pos-top-right .slot::before{align-self:start}
+  /* slot::before glow border removed — was injecting a red neon outline
+     around every card bounding box, clashing with the glass card design */
+  .slot::before{content:"";grid-area:1/1;pointer-events:none;display:none}
+  .pos-top-left .slot::before,.pos-top-right .slot::before{display:none}
   .pos-bottom-left .slot{left:var(--m);bottom:calc(var(--m) + env(safe-area-inset-bottom,0px))}
   .pos-bottom-right .slot{right:var(--m);bottom:calc(var(--m) + env(safe-area-inset-bottom,0px))}
   .pos-top-left .slot{left:var(--m);top:calc(var(--m) + env(safe-area-inset-top,0px))}

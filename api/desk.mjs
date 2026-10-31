@@ -61,7 +61,7 @@ const json = (data, status = 200) =>
     headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" },
   });
 
-export default async (req) => {
+const handler = async (req) => {
   const url = new URL(req.url.startsWith("http") ? req.url : `https://cyber-live-desk.vercel.app${req.url}`);
   const route = url.pathname.replace(/\/+$/, "") || "/";
   try {
@@ -136,6 +136,7 @@ export default async (req) => {
     return json({ error: "Server error." }, 500);
   }
 };
+export default { fetch: handler };
 
 function requireOperator(req) {
   const want = process.env.DESK_OPERATOR_TOKEN;

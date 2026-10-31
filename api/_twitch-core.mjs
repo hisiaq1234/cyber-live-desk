@@ -306,8 +306,8 @@ export const TWITCH_SETUP_HELP = [
 
 // Netlify makes a function out of every file in netlify/functions. This module is imported by
 // twitch-eventsub.mjs, so it refuses a direct request instead of half-working.
-export default () =>
+export default { fetch: () =>
   new Response(JSON.stringify({ error: "Internal module. Use /api/twitch/eventsub." }), {
     status: 501,
     headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
-  });
+  }) };

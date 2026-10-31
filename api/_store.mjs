@@ -1,37 +1,31 @@
-// CYBER LIVE DESK — Vercel KV storage adapter.
+// CYBER LIVE DESK — in-memory storage adapter (Vercel serverless).
 // Implements the same store interface that @netlify/blobs provided to _desk-core.mjs:
 //   get(key, { type: "json" }) → parsed JSON value or null
 //   setJSON(key, value) → void
 //   setJSON(key, value, { onlyIfNew: true }) → { modified: boolean }
 //   delete(key) → void
 //
-// Vercel KV is Redis-backed, so each function invocation shares the same store.
-// Set KV_URL, KV_REST_API_URL, KV_REST_API_TOKEN, KV_REST_API_READ_ONLY_TOKEN
-// in Vercel project settings (add Vercel KV integration first).
+// NOTE: This is an in-memory store. Each serverless function invocation runs in
+// isolation, so state does not persist across invocations. For persistent storage,
+// replace this with a database adapter (e.g., Upstash Redis, PlanetScale, etc.).
 
-import { kv } from "@vercel/kv";
-
-const PREFIX = "cyber-live-desk:";
+const store = new Map();
 
 export async function getStore() {
   return {
     async get(key, opts) {
-      const val = await kv.json.get(PREFIX + key);
-      return val === undefined || val === null ? null : val;
+      const val = store.get(key);
+      if (val === undefined) return null;
+      if (opts?.type === "json") return JSON.parse(val);
+      return val;
     },
     async setJSON(key, value, opts) {
-      const fullKey = PREFIX + key;
-      if (opts?.onlyIfNew) {
-        const existing = await kv.get(fullKey);
-        if (existing !== null) return { modified: false };
-        await kv.json.set(fullKey, value);
-        return { modified: true };
-      }
-      await kv.json.set(fullKey, value);
+      if (opts?.onlyIfNew && store.has(key)) return { modified: false };
+      store.set(key, JSON.stringify(value));
       return { modified: true };
     },
     async delete(key) {
-      await kv.del(PREFIX + key);
+      store.delete(key);
     },
   };
 }

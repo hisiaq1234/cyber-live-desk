@@ -45,7 +45,7 @@ import {
 import { twitchStatus } from "./_twitch-core.mjs";
 import { parseDeskCommand, commandBody, commandText } from "./_commands.mjs";
 
-export const config = { runtime: "edge" };
+export const config = { runtime: "nodejs" };
 
 const PAGE = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
   "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\">" +

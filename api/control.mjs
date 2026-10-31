@@ -6,7 +6,7 @@ const CONTROL_PAGE = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf
   "<meta name=\"robots\" content=\"noindex\"><title>Live desk controller</title></head>" +
   "<body><script type=\"module\" src=\"/desk-assets/control.js\"></script></body></html>";
 
-export const config = { runtime: "edge" };
+export const config = { runtime: "nodejs" };
 
 export default async (req) => {
   if (req.method === "GET") {

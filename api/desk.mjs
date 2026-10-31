@@ -47,11 +47,11 @@ import { parseDeskCommand, commandBody, commandText } from "./_commands.mjs";
 
 export const config = { runtime: "edge" };
 
-const PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Cyber Live Desk overlay</title>
-<style>html,body{margin:0;background:transparent}</style></head>
-<body><script src="/desk-assets/overlay.js"></script></body></html>`;
+const PAGE = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
+  "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\">" +
+  "<title>Cyber Live Desk overlay</title>" +
+  "<style>html,body{margin:0;background:transparent}</style></head>" +
+  "<body><script src=\"/desk-assets/overlay.js\"></script></body></html>";
 
 const store = () => getStore();
 

@@ -2,6 +2,8 @@
   "version": 2,
   "rewrites": [
     { "source": "/desk", "destination": "/api/desk" },
-    { "source": "/control", "destination": "/api/control" }
+    { "source": "/control", "destination": "/api/control" },
+    { "source": "/api/desk/:path*", "destination": "/api/desk" },
+    { "source": "/api/twitch/eventsub", "destination": "/api/twitch-eventsub" }
   ]
 }

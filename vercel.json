@@ -1,5 +1,8 @@
 {
   "version": 2,
+  "functions": {
+    "api/*.mjs": { "runtime": "edge" }
+  },
   "rewrites": [
     { "source": "/desk", "destination": "/api/desk" },
     { "source": "/control", "destination": "/api/control" },

@@ -63,6 +63,52 @@ export const DEFAULT_STATE = {
 
 export const RESEARCH_APPROVAL_MODES = ["manual", "trusted", "all"];
 
+export const FEEDS = [
+  // X / X-style news feeds
+  { id: "deseret", category: "news", label: "Deseret News", url: "https://www.deseret.com/rss/" },
+  { id: "trend-ng", category: "news", label: "Nigeria Trends", url: "https://www.channelstv.com/feed/" },
+  // Social / TikTok-style viral feeds
+  { id: "tiktok-viral", label: "TikTok Viral", category: "Social", url: "https://www.reddit.com/r/tiktokgossip/hot.rss?limit=8" },
+  { id: "ng-social", label: "Naija Culture", category: "Social", url: "https://www.reddit.com/r/Nigeria/hot.rss?limit=8" },
+];
+
+
+// CRID × Gemini — AI enrichment for social/trend cards
+export async function enrichWithGemini(headline, fallbackSummary = "", fetchFn = globalThis.fetch) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return { summary: fallbackSummary, question: "" };
+
+  const prompt = `You are a live broadcast producer in Nigeria. A trending topic is "${headline}". Write one sentence explaining why it's trending, and one punchy question for live chat. Return ONLY valid JSON like {"summary": "...", "question": "..."}`;
+
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(3500),
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: "application/json" }
+      })
+    });
+    const data = await res.json();
+    const text = data.candidates[0].content.parts[0].text;
+    const parsed = JSON.parse(text);
+    return { summary: parsed.summary || fallbackSummary, question: parsed.question || "" };
+  } catch (e) {
+    console.error("Gemini enrichment failed:", e.message);
+    return { summary: fallbackSummary, question: "" };
+  }
+}
+
+export const FEEDS = [
+  // X / X-style news feeds
+  { id: "bbc", kind: "news", category: "news", label: "BBC", url: "https://www.bbc.com/news/rss.xml" },
+  { id: "x-trending", category: "social", label: "X Trending", url: "https://www.reddit.com/r/todayilearned/hot.rss?limit=8" },
+  { id: "x-news", category: "news", label": "X News", url: "https://www.reddit.com/r/news/hot.rss?limit=8" },
+  // TikTok viral / social
+  { id: "tiktok-viral", label: "TikTok Viral", category: "Social", url: "https://www.reddit.com/r/tiktokgossip/hot.rss?limit=8" },
+  { id: "ng-social", label: "Naija Culture", category: "Social", url: "https://www.reddit.com/r/Nigeria/hot.rss?limit=8" },
+];
 // Clearly labelled test content only: no invented news, sources or figures.
 export const TEST_CARD = {
   id: "test-card",

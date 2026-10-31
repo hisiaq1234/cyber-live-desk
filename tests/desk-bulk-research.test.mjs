@@ -19,7 +19,7 @@ import {
   runResearch,
   untouchedAuto,
   upsertCard,
-} from "../netlify/functions/_desk-core.mjs";
+} from "../api/_desk-core.mjs";
 
 const NOW = Date.parse("2026-10-28T23:00:00Z");
 const DAY = 24 * 3600_000;

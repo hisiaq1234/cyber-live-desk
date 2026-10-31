@@ -34,7 +34,7 @@ import {
   upsertCard,
   wl,
   createTwitchClip,
-} from "../netlify/functions/_desk-core.mjs";
+} from "../api/_desk-core.mjs";
 
 // Captured feeds publish on 2026-10-28; the 3-day freshness window needs a matching clock.
 const NOW = Date.parse("2026-10-28T23:00:00Z");

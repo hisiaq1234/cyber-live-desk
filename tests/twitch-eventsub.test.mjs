@@ -4,13 +4,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 
-import { DEFAULT_STATE, commitState, readState } from "../netlify/functions/_desk-core.mjs";
+import { DEFAULT_STATE, commitState, readState } from "../api/_desk-core.mjs";
 import {
   TWITCH_EVENT_PATH,
   handleTwitchWebhook,
   parseDeskCommand,
   twitchStatus,
-} from "../netlify/functions/_twitch-core.mjs";
+} from "../api/_twitch-core.mjs";
 
 const NOW = Date.parse("2026-10-29T12:00:00Z");
 const SECRET = "test-webhook-secret-at-least-ten";

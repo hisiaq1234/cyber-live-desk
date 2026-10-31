@@ -11,7 +11,7 @@
 
 const store = new Map();
 
-export async function getStore() {
+export function getStore() {
   return {
     async get(key, opts) {
       const val = store.get(key);

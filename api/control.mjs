@@ -8,7 +8,7 @@ const CONTROL_PAGE = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf
 
 export const config = { runtime: "nodejs" };
 
-export default async (req) => {
+const handler = async (req) => {
   if (req.method === "GET") {
     return new Response(CONTROL_PAGE, {
       headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Robots-Tag": "noindex" },
@@ -16,3 +16,4 @@ export default async (req) => {
   }
   return new Response("Method not allowed.", { status: 405 });
 };
+export default { fetch: handler };

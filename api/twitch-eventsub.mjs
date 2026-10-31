@@ -22,7 +22,8 @@ export const config = {
   path: "/api/twitch/eventsub",
 };
 
-export default async (req) => {
+const handler = async (req) => {
   const store = getStore({ name: STORE_NAME, consistency: "strong" });
   return handleTwitchWebhook(store, req);
 };
+export default { fetch: handler };

@@ -10,7 +10,7 @@
 // secret is ever sent to the browser. This module stays dependency-free so tests can exercise it
 // with a plain in-memory Blob store.
 
-import { createHmac, timingSafeEqual } from "node:crypto";
+import crypto from "node:crypto";
 
 import { HttpError, readState, runAction } from "./_desk-core.mjs";
 import {
@@ -54,12 +54,12 @@ export function verifyTwitchSignature({ messageId, timestamp, signature, rawBody
   if (!Number.isFinite(sent) || Math.abs(now - sent) > toleranceMs) {
     return { ok: false, status: 403, error: "Twitch signature timestamp is outside the replay window." };
   }
-  const expected = SIGNATURE_PREFIX + createHmac("sha256", secret)
+  const expected = SIGNATURE_PREFIX + crypto.createHmac("sha256", secret)
     .update(messageId + timestamp + rawBody)
     .digest("hex");
   const a = Buffer.from(expected);
   const b = Buffer.from(String(signature));
-  if (a.length !== b.length || !timingSafeEqual(a, b)) {
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
     return { ok: false, status: 403, error: "Twitch signature does not match." };
   }
   return { ok: true };

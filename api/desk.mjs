@@ -24,7 +24,7 @@
 // advance, which re-checks the version it read so a race cannot skip a card.
 
 import { getStore } from "./_store.mjs";
-import { timingSafeEqual } from "node:crypto";
+import crypto from "node:crypto";
 import {
   DESKS,
   FEEDS,
@@ -143,7 +143,7 @@ function requireOperator(req) {
   const got = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
   const a = Buffer.from(got);
   const b = Buffer.from(want);
-  if (a.length !== b.length || !timingSafeEqual(a, b)) throw new HttpError(401, "Operator token required.");
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) throw new HttpError(401, "Operator token required.");
 }
 
 async function readBody(req) {

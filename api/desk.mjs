@@ -62,7 +62,7 @@ const json = (data, status = 200) =>
   });
 
 export default async (req) => {
-  const url = new URL(req.url);
+  const url = new URL(req.url.startsWith("http") ? req.url : `https://cyber-live-desk.vercel.app${req.url}`);
   const route = url.pathname.replace(/\/+$/, "") || "/";
   try {
     if (req.method === "GET" && (route === "/desk" || route === "/api/desk")) {

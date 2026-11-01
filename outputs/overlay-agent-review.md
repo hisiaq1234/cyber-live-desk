@@ -1,42 +1,47 @@
-# Cyber Live Desk — Swae overlay and private operator review
+# Cyber Live Desk — Swae overlay handoff
 
 **Updated:** 1 November 2026
-**Target:** Landscape 16:9 Twitch stream through Swae; `/control` is the private operator surface and `/desk` is the public viewer overlay.
 
-## Yes — this is being built for Swae
+**Target:** 16:9 landscape Twitch stream through Swae. `/desk` is the public viewer overlay; `/control` is the operator surface.
 
-The live production deployment defaults to **16:9 landscape** for Twitch through Swae, and the controller describes `/desk` as a Swae Browser Widget/Web Page layer. The same public `/desk` route remains distinct from `/control`; the private research brief, microphone controls, and operator notes are not rendered on the public overlay.
+## The reported 401
 
-## What is implemented
+The public Swae widget URL is [https://cyber-live-desk.vercel.app/desk](https://cyber-live-desk.vercel.app/desk). I added unauthenticated `HEAD` support as well as `GET` because Swae's Web Address check can probe a page without loading it normally. On the corrected live deployment, both requests return **200**, and the HEAD response is empty. The operator APIs were not opened: a live unauthenticated request to `/api/desk/cards` still returns the expected **401**.
 
-- **Fresh, on-demand research:** A requested topic is checked against dated Google News RSS material and Gemini Google Search grounding. The controller displays evidence links, dates, grounding links, the freshness window, balanced analysis, counterpoint, and what could change the assessment. It refuses to present output as verified when dated evidence or actual Search grounding is missing.
-- **Personalized expansion:** A topic can have an optional angle, such as local creator impact, who benefits, or what is disputed. The operator can say `desk research <topic>` and then `desk deeper <angle>`, or enter both in `/control`. Expansion is bounded and avoids repeating covered points.
-- **Private read-aloud:** `desk read` uses speech synthesis on the controller device; `desk quiet` stops it. It is never sent to Swae chat or the viewer overlay.
-- **Push-to-talk, not stream listening:** Voice recognition starts only after the operator presses Listen and is one-shot. It listens to the controller device’s microphone, not the broadcast audio from Swae. Use a separate device while streaming or type the topic; the app does not run an always-on microphone.
-- **Optional X, off by default:** X trend lookup happens only when explicitly enabled for that individual brief request. TikTok is not scraped or claimed as a live feed; TikTok Creative Center remains a manual check.
-- **Official YouTube playlist player:** Music Desk accepts a public YouTube/YouTube Music playlist link and generates a standard visible YouTube player URL for a Swae web-page layer. It keeps player controls, does not request autoplay, and does not extract raw audio. The creator must still ensure rights for any music broadcast.
-- **Earlier overlay reliability changes:** CRID audio state/mute behavior, reduced-motion-aware transitions, polling timeout/latency status, and opt-in keyboard shortcuts remain covered by the existing regression suite.
-- **Animated sound orb:** A compact orb sits mid-left in the landscape overlay. Red and black lead, with a faint blue-black sheen. It expands and pulses during actual CRID audio playback, then contracts when muted, waiting, ended, or stopped. It follows audio-player events—not microphone input or waveform amplitude—and respects reduced-motion preferences.
+The Swae app itself is not available for me to press its widget Save/Test control, so please reload or reselect the `/desk` URL once in Swae. The route-side cause is fixed and verified; that final phone-side confirmation is still outstanding.
 
-## Cost and source limits
+## What changed in the visual layout
 
-Google News RSS is a public dated input. Gemini Search grounding is **not guaranteed free**: Google requires a paid-tier project for grounding; quota may apply and additional use can be billed. The app discloses this before use. X requires an available API credential and may have access costs, so it is opt-in. No unlimited-free live data source is promised.
+The red orb is now a **31 px decorative `DIV`**, not a button: it has no button ancestor or role, is `aria-hidden`, cannot receive pointer events, and is not keyboard-focusable. In the live preview it sits beside the compact bottom-right news strip; the strip measured **238 × 37 px** in the inspected viewport and displayed a fresh headline, publisher, age and RSS label. The 16:9 camera area stays clear.
 
-Undated Search results can help with context but do not count as proof of freshness. A live X snapshot is only a platform conversation signal, not evidence of why a term is trending or that it is trending on TikTok. The brief is a research aid, not a substitute for checking linked sources before repeating a claim.
+When music is marked as playing, the same small identity capsule is designed to show the current track title and artist while the news row remains visible. Only that now-playing identity metadata and a boolean playing state are sent to the public overlay; the queue, audio URLs, volume and mute controls are not. No music was active during the live DOM check, so the playing-state animation/display still needs a quick real-playback check.
 
-## How to use it in Swae
+This is an identity/now-playing display, **not** a miniature YouTube player or a new play/pause control. The existing official YouTube/YouTube Music playlist-player workflow stays as its own visible Swae web-page layer.
 
-1. Open the authenticated `/control` page. In **Private research brief**, enter a topic and optional angle, then choose **Research topic**. For voice, press **Listen** and say `desk research <topic>`; the control device’s microphone is the one used.
-2. Ask for more detail with **Go deeper** or `desk deeper <angle>`. Review the freshness warning, dated headlines, grounding links, and counterpoint. Use **Read aloud** for private listening on the controller.
-3. Copy the public `/desk` URL and add it as a Browser Widget/Web Page layer in the Swae landscape Twitch scene. To add a playlist player, paste a public YouTube playlist URL into the YouTube section of Music Desk, copy the generated player URL, and add it as a separate visible web-page layer.
-4. Keep the YouTube player visible and interactive. Test layout/audio in Swae privately; the generated URL does not guarantee the platform captures player audio or grant music rights.
+## Automatic news versus Gemini
 
-## Verification and remaining checks
+The public strip now loads Nigeria Google News RSS automatically while `/desk` is open, refreshes periodically with a five-minute CDN cache, and shows only dated items from the last 12 hours with publisher and age. The live API returned **six** items and all six passed the freshness and HTTPS-source checks. A repeated response was served from Vercel's CDN cache. It does not require you to type headlines or manually import cards.
 
-The latest `node --test` run passed **153 / 153 runner-counted items** (152 explicit tests plus one Node file-discovery item for `api/test.mjs`). Changed JavaScript modules passed `node --check`, and `git diff --check` is clean.
+This automatic strip is RSS-based; **it does not send every headline to Gemini for verification**. The private, source-linked Gemini brief remains on-demand in `/control`; no background Gemini calls were added, so the ticker does not silently incur repeated API usage. If you want automated Gemini review of every item, that is a separate change with recurring API requests and possible charges.
 
-The initial branch-preview verification used commit `567167a` at [the deployed `/desk` preview](https://cyber-live-desk-4ats8g0yk-crid.vercel.app/desk). That branch was subsequently merged to production.
+## Deployment and checks
 
-### Production promotion (1 November 2026)
+The code is pushed to `main`. Vercel marked the corrected release (`cc0b99c`) **Ready**. A Vercel runtime warning on the first attempt showed that the headline route's default export was incompatible with the Node function contract; I corrected it to match the working `fetch` export used by `/api/desk`, redeployed, and verified the live feed returns 200.
 
-Commit `3078ec7` is merged into `main`, and Vercel reports the production deployment **Ready**. [Open the live `/desk` overlay](https://cyber-live-desk.vercel.app/desk); the orb is present. [Open the private `/control` page](https://cyber-live-desk.vercel.app/control); it requires the operator token. The actual Swae scene still needs a private on-device check for widget crop and audio capture.
+- [Open the public Swae overlay](https://cyber-live-desk.vercel.app/desk)
+- [Open the operator page](https://cyber-live-desk.vercel.app/control) — operator-only actions still require the private token
+- `HEAD /desk`: 200
+- `GET /desk`: 200
+- `GET /api/desk-headlines`: 200; six fresh RSS items; CDN returned `HIT`
+- `GET /api/desk/state?since=-1`: 200; safe public state
+- `GET /api/desk/cards` without token: 401, as intended
+- `node --test`: **159 passed, 0 failed**; `node --check`: 36 files; `git diff --check`: clean
+
+The 159 runner count includes 158 explicit test cases plus Node's file-discovery count for `api/test.mjs`. The detailed [test report](comprehensive-test-report.md) and updated [test-suite chart](test-suite-counts.svg) are included beside this handoff.
+
+## Use it
+
+1. In Swae, set the Browser Widget/Web Page URL to `/desk` above, then reload the saved widget to clear the earlier 401 check.
+2. Keep that page open during the stream for automatic headlines. The ticker is intentionally source/date-aware and fails visibly rather than falling back to old news.
+3. Add the official YouTube playlist player separately if you want playback. The compact capsule reports the now-playing state; it is not a full player.
+4. Use `/control` for the private Gemini brief and operator controls. Keep its token private.

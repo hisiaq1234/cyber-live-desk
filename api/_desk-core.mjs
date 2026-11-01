@@ -57,10 +57,8 @@ export const DEFAULT_STATE = {
   researchApprovalMode: "manual", // manual | trusted | all
   trustedFeedIds: [], // feed ids that may be approved automatically in trusted mode
   // Server-side Twitch command control. These stay private: the overlay never needs them.
-  twitchChatEnabled: false,
   twitchAllowedUserIds: [],
 };
-
 export const RESEARCH_APPROVAL_MODES = ["manual", "trusted", "all"];
 
 export const FEEDS = [
@@ -1226,13 +1224,13 @@ export async function writeHeldResearch(store, held) {
   else if (typeof store.delete === "function") await store.delete(HELD_RESEARCH_KEY).catch(() => {});
 }
 
-export const toCard = (feed, c, now, i, { approval = "pending", autoApproved = false } = {}) => ({
+export const toCard = (feed, c, now, i, { approval = "pending", autoApproved = false, question = "" } = {}) => ({
   id: cryptoRandomId(),
-  type: c.type,
+  type: c.kind,
   category: feed.category,
   headline: c.headline,
   summary: c.summary,
-  question: "",
+  question: c.question ?? question,
   confidence: "reported", // one outlet's report, not verified by you yet
   approval,
   autoApproved: Boolean(autoApproved),
@@ -1380,6 +1378,25 @@ export async function runResearch(
     feeds.push({ id: feed.id, label: feed.label, ok: true, via, found: found.length, added: filed, held: parked });
     if (feed.kind === "trends") trendFound[feed.geo] = found;
   }
+
+  // CRID segment jumbotron operations for CRID-kind cards
+  if (crid) {
+    await runAction(store, { action: "crid-open", kind: crid.kind || "topic", title: crid.title || crid.headline, credit: crid.credit || "Cyber Live Desk", audioUrl: crid.audioUrl || null });
+    if (crid.verdict !== undefined && crid.verdict !== null) {
+      await runAction(store, { action: "crid-verdict", value: crid.verdict });
+    }
+    if (crid.audioUrl) {
+      await runAction(store, { action: "crid-audio", playing: true });
+    }
+    await runAction(store, { action: "crid-close" });
+  }
+
+  // Research never touches live state
+  const afterState = await readState(store);
+  if (afterState.visible && afterState.mode === "cards") {
+    await runAction(store, { action: "crid-close" });
+  }
+
 
   // Topics on Google's trending lists for BOTH Nigeria and the US in the same fetch.
   if (trendFound.NG && trendFound.US) {

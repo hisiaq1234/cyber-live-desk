@@ -1,3 +1,5 @@
+import { createCridAudioSync } from "./crid-audio.js";
+
 /* CYBER LIVE DESK — public overlay, Apple feel reskin (Swae Safe Top-Docked Layout).
    Transparent, no dependencies, no build step. Loaded by the /desk page.
    - Topic cards forced top-left under CRID bug.
@@ -28,11 +30,6 @@
     crid: P.get("crid") !== "0",
     cridPos: "top",
   };
-  const xBaseRaw = P.get("xbase") || "";
-  const xBase = /^https:\/\/[a-z0-9.-]+$/i.test(xBaseRaw) ? xBaseRaw : "";
-  const xQuery = new URLSearchParams(
-    [...P].filter(([k]) => k.startsWith("x.")).map(([k, v]) => [k.slice(2), v])
-  ).toString();
   const xMode = P.get("x.mode") || "";
   const xJPos = "top";
   const xJPollMs = num("x.jpoll", 60, 10, 3600) * 1000;
@@ -106,8 +103,8 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 .opt{position:relative;overflow:hidden;border-radius:1em;background:rgba(255,255,255,.06);
   border:.09em solid rgba(255,255,255,.16);padding:.5em .7em;font-weight:600;font-size:.92em;
   font-family:var(--brand)}
-.opt .fill{position:absolute;inset:0 auto 0 0;width:0;background:var(--accent);opacity:.9;
-  transition:width .7s cubic-bezier(.22,1,.36,1),opacity .3s}
+.opt .fill{position:absolute;inset:0 auto 0 0;width:100%;transform:scaleX(0);transform-origin:left center;background:var(--accent);opacity:.9;
+  transition:transform .7s cubic-bezier(.22,1,.36,1),opacity .3s}
 .opt .row{position:relative;display:flex;justify-content:space-between;gap:.6em}
 .opt .label{position:relative;z-index:1}
 .opt .pct{position:relative;z-index:1;font-variant-numeric:tabular-nums}
@@ -233,11 +230,50 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 .riad-title{font-size:1.2em;font-weight:900;color:#ff453a;text-transform:uppercase;letter-spacing:.1em;margin:0 0 .3em}
 .riad-text{font-size:.95em;color:#f3f2f0;margin:0}
 
+/* Distinct, state-driven motion: slide has weight, fade stays truly still, none stays still. */
+.anim-fade .card{transform:none}
+.anim-fade .card.out{transform:none}
+.anim-slide .card.in{animation:stage-arrive .44s cubic-bezier(.2,1.12,.32,1) both}
+.anim-slide .card.out{animation:stage-leave .24s cubic-bezier(.4,0,.8,.4) both}
+.anim-none .card{animation:none}
+#desk.anim-none .opt{animation:none!important;transition:none}
+@keyframes stage-arrive{
+  0%{opacity:0;filter:blur(2px) brightness(1.08);transform:translate3d(0,16px,0) scale(.975)}
+  72%{opacity:1;filter:blur(0) brightness(1);transform:translate3d(0,-2px,0) scale(1.006)}
+  100%{opacity:1;filter:none;transform:translate3d(0,0,0) scale(1)}
+}
+@keyframes stage-leave{
+  0%{opacity:1;transform:translate3d(0,0,0) scale(1)}
+  100%{opacity:0;filter:blur(1px);transform:translate3d(0,-9px,0) scale(.985)}
+}
+#modules>*{animation:dock-arrive .32s cubic-bezier(.2,.8,.2,1) both}
+#modules>*:nth-child(2){animation-delay:.035s}
+#modules>*:nth-child(3){animation-delay:.07s}
+#modules>*:nth-child(4){animation-delay:.105s}
+@keyframes dock-arrive{
+  from{opacity:0;transform:translate3d(0,-6px,0)}
+  to{opacity:1;transform:translate3d(0,0,0)}
+}
+
+/* The thin top signal reflects measured state-poll latency and recovery state. */
+#desk::after{content:"";position:absolute;z-index:100;top:0;left:0;right:0;height:2px;pointer-events:none;
+  opacity:0;background:linear-gradient(90deg,transparent,var(--accent),transparent);transform:scaleX(.15);transform-origin:center}
+#desk[data-connection="checking"]::after{opacity:.72;animation:poll-scan var(--poll-duration,800ms) cubic-bezier(.2,.8,.2,1) both}
+#desk[data-connection="reconnecting"]::after{opacity:.8;background:linear-gradient(90deg,transparent,#ff453a,transparent);animation:reconnect-pulse 1.3s ease-in-out infinite}
+#desk.telemetry-pulse::after{animation:state-ping .62s ease-out both}
+@keyframes poll-scan{from{transform:scaleX(.12);opacity:.2}to{transform:scaleX(1);opacity:.75}}
+@keyframes reconnect-pulse{0%,100%{opacity:.32}50%{opacity:.95}}
+@keyframes state-ping{0%{transform:scaleX(.08);opacity:0}28%{opacity:.8}100%{transform:scaleX(1);opacity:0}}
+.dot.loading{animation-duration:var(--poll-duration,800ms)}
+
 @media (prefers-reduced-motion:reduce){
-  .card{transform:none;transition:none}
-  #crid-jumbotron{transform:translate(-50%,0);transition:none;animation:none}
-  .fill{transition:none}
+  .card{transform:none;transition:none;animation:none!important}
+  #crid-jumbotron,#crid-jumbotron.in{transform:none;transition:none;animation:none!important}
+  .opt,.fill{transition:none}
+  .opt.lead{animation:none!important}
   .dot{animation:none}
+  #modules>*{animation:none}
+  #desk::after{animation:none!important}
   .scale-wrap input::-webkit-slider-thumb{animation:none}
 }
 `;
@@ -293,7 +329,7 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
         const r = rows.find((x) => x.id === o.id);
         if (!r) continue;
         const share = total ? Math.round((o.count / total) * 100) : 0;
-        r.fill.style.width = share + "%";
+        r.fill.style.transform = `scaleX(${share / 100})`;
         r.pct.textContent = `${share}% (${o.count})`;
         r.el.classList.toggle("lead", !p.active && total > 0 && o.count === top);
       }
@@ -407,6 +443,16 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
   const root = h("div", { id: "desk", class: `pos-${CFG.pos} anim-${CFG.anim} crid-pos-${CFG.cridPos} x-pos-${xJPos}${CFG.debug ? " debug" : ""}` }, slot);
   document.body.append(root);
 
+  const cridAudio = document.createElement("audio");
+  cridAudio.preload = "none";
+  cridAudio.hidden = true;
+  cridAudio.setAttribute("aria-hidden", "true");
+  cridAudio.style.display = "none";
+  root.append(cridAudio);
+  const syncCridAudio = createCridAudioSync(cridAudio, (error) => {
+    console.warn("CRID audio could not start. Browser autoplay policy or the audio URL may have blocked playback.", error);
+  });
+
   const dockRight = h("div", { id: "dock-right" });
   root.append(dockRight);
 
@@ -486,6 +532,7 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
   let state = null;
   let expiryTimer = null;
   let pollTimer = null;
+  let telemetryTimer = null;
   let failures = 0;
 
   const schedulePoll = (ms) => {
@@ -638,6 +685,7 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
     clearTimeout(expiryTimer);
     if (!state) return;
     renderCrid(state.crid);
+    syncCridAudio(state.crid);
     renderModule(state);
     if (xMode && !xStarted) {
       xStarted = true;
@@ -659,27 +707,50 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 
   const apply = (s) => {
     if (s.updatedAt < lastUpdated) return;
+    const changed = version >= 0 && s.version !== version;
     version = s.version;
     lastUpdated = s.updatedAt;
     clockOffset = s.serverNow - Date.now();
     state = s;
+    if (changed) {
+      clearTimeout(telemetryTimer);
+      root.classList.remove("telemetry-pulse");
+      requestAnimationFrame(() => root.classList.add("telemetry-pulse"));
+      telemetryTimer = setTimeout(() => root.classList.remove("telemetry-pulse"), 700);
+    }
     render();
   };
 
   const tick = async () => {
     let delay = CFG.pollMs;
+    const startedAt = performance.now();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+    root.dataset.connection = "checking";
+    const dot = document.querySelector(".dot");
+    dot?.classList.remove("off");
+    dot?.classList.add("loading");
     try {
-      const r = await fetch(`/api/desk/state?since=${version}`, { cache: "no-store" });
+      const r = await fetch(`/api/desk/state?since=${version}`, { cache: "no-store", signal: controller.signal });
       if (r.ok && r.status !== 204) apply(await r.json());
       else if (!r.ok && r.status !== 204) throw new Error("HTTP " + r.status);
       failures = 0;
-      document.querySelector('.dot')?.classList.remove("off");
+      const elapsed = Math.round(performance.now() - startedAt);
+      root.style.setProperty("--poll-duration", `${Math.min(900, 280 + elapsed)}ms`);
+      root.dataset.connection = "connected";
+      dot?.classList.remove("off", "loading");
+      if (dot) dot.title = `Connected · ${elapsed} ms poll`;
     } catch {
       failures++;
-      document.querySelector('.dot')?.classList.add("off");
+      root.dataset.connection = "reconnecting";
+      dot?.classList.remove("loading");
+      dot?.classList.add("off");
+      if (dot) dot.title = `Connection retry ${failures}`;
       delay = Math.min(15000, CFG.pollMs * 2 ** Math.min(failures, 4));
+    } finally {
+      clearTimeout(timeoutId);
+      schedulePoll(delay);
     }
-    schedulePoll(delay);
   };
 
   window.DeskOverlay = { register };

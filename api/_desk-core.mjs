@@ -314,6 +314,17 @@ function text(value, max, field, { required = false } = {}) {
   return v;
 }
 
+function audioSource(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const candidate = value.trim();
+  let parsed;
+  try { parsed = new URL(candidate); } catch { throw new HttpError(422, "audioUrl must be a valid HTTPS audio URL."); }
+  if (parsed.protocol !== "https:" || !parsed.hostname || parsed.username || parsed.password) {
+    throw new HttpError(422, "audioUrl must be a valid HTTPS audio URL without embedded credentials.");
+  }
+  return clip(candidate, LIMITS.cridAudioUrl);
+}
+
 function isoOrNull(v, field) {
   if (v == null || v === "") return null;
   if (Number.isNaN(Date.parse(v))) throw new HttpError(422, `${field} must be a valid date.`);
@@ -617,9 +628,9 @@ export async function runAction(store, b, now = Date.now()) {
       if (!rawTitle) throw new HttpError(422, "title is required.");
       const title = clip(rawTitle, LIMITS.cridTitle);
       const credit = typeof b.credit === "string" && b.credit.trim() ? clip(b.credit.trim(), LIMITS.cridCredit) : null;
-      const audioUrl = typeof b.audioUrl === "string" && b.audioUrl.trim() ? clip(b.audioUrl.trim(), LIMITS.cridAudioUrl) : null;
+      const audioUrl = audioSource(b.audioUrl);
       const entry = state.cridSeq + 1;
-      patch = { cridSeq: entry, crid: { id: cryptoRandomId(), entry, kind, title, credit, audioUrl, audioPlaying: false, verdict: null, result: null, openedAt: now } };
+      patch = { cridSeq: entry, crid: { id: cryptoRandomId(), entry, kind, title, credit, audioUrl, audioPlaying: false, audioMuted: false, verdict: null, result: null, openedAt: now } };
       break;
     }
     case "crid-close":
@@ -633,9 +644,12 @@ export async function runAction(store, b, now = Date.now()) {
     }
     case "crid-audio": {
       if (!state.crid) throw new HttpError(409, "There is no CRID segment open.");
-      const playing = typeof b.playing === "boolean" ? b.playing : !state.crid.audioPlaying;
-  const url = typeof b.audioUrl === "string" && b.audioUrl.trim() ? clip(b.audioUrl.trim(), LIMITS.cridAudioUrl) : state.crid.audioUrl;
-  patch = { crid: { ...state.crid, audioUrl: url, audioPlaying: playing } };
+      const changesAudioSetting = typeof b.muted === "boolean" || (typeof b.audioUrl === "string" && b.audioUrl.trim());
+      const playing = typeof b.playing === "boolean" ? b.playing
+        : changesAudioSetting ? Boolean(state.crid.audioPlaying) : !state.crid.audioPlaying;
+      const url = typeof b.audioUrl === "string" && b.audioUrl.trim() ? audioSource(b.audioUrl) : state.crid.audioUrl ?? null;
+      const muted = typeof b.muted === "boolean" ? b.muted : Boolean(state.crid.audioMuted);
+      patch = { crid: { ...state.crid, audioUrl: url, audioPlaying: playing, audioMuted: muted } };
       break;
     }
     case "clear-poll":

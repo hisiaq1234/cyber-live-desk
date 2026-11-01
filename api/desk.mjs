@@ -51,7 +51,7 @@ const PAGE = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
   "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\">" +
   "<title>Cyber Live Desk overlay</title>" +
   "<style>html,body{margin:0;background:transparent}</style></head>" +
-  "<body><script src=\"/desk-assets/overlay.js\"></script></body></html>";
+  "<body><script type=\"module\" src=\"/desk-assets/overlay.js\"></script></body></html>";
 
 const store = () => getStore();
 
@@ -104,8 +104,8 @@ const handler = async (req) => {
     if (req.method === "GET" && route === "/api/desk/twitch") {
       return json(await twitchStatus(s, await readState(s), { origin: url.origin }));
     }
-    // Public voice endpoint: maps recognized speech to a safe subset of desk actions.
-    // No operator token is required; only non-destructive actions are permitted.
+    // Voice endpoint: operator authentication is required above, then speech is limited to
+    // an explicit allowlist of supported desk actions.
     if (req.method === "POST" && route === "/api/desk/voice") {
       const body = await readBody(req);
       const text = typeof body.text === "string" ? body.text : "";

@@ -4,6 +4,7 @@
    (stored in this browser only); the public overlay never sees notes or the token.
    Loaded as a module so the poll validator and command help are the tested shared copy. */
 import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.js";
+import { deskHotkeyAction } from "./desk-hotkeys.js";
 
 (() => {
   "use strict";
@@ -19,6 +20,7 @@ import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.
   let state = null;
   let offset = 0; // server clock minus this device's clock
   let busy = false;
+  let keyboardEnabled = false;
   let expanded = null;
   let editing = null;
   let desks = [];
@@ -115,6 +117,20 @@ import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.
     } catch (e) { toast(e.message, true); return null; }
     finally { busy = false; document.body.classList.remove("busy"); }
   };
+
+  // Deliberate, modifier-based shortcuts avoid firing while typing or navigating the page.
+  document.addEventListener("keydown", (event) => {
+    const target = event.target;
+    const action = deskHotkeyAction(event, {
+      enabled: keyboardEnabled,
+      visible: !document.hidden,
+      editable: target instanceof Element && Boolean(target.closest("input, textarea, select, [contenteditable]:not([contenteditable='false']), [role='textbox']")),
+      sheetOpen: Boolean(document.querySelector(".sheet-overlay.open")),
+    });
+    if (!action) return;
+    event.preventDefault();
+    void act(action);
+  });
 
   const saveCard = async (payload) => {
     try {
@@ -478,6 +494,115 @@ import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.
   const holdBtn = btn("Hold card", () => act("hold"));
   const srcBtn = btn("Show source", () => act("source"));
   const modeBtn = btn("X feed", () => act("mode", { mode: state?.mode === "x-following" ? "cards" : "x-following" }));
+
+  // Voice runs only after an explicit button press and captures one utterance per press.
+  const keyboardStatus = h("p", "sub", "Keyboard shortcuts are off.");
+  const keyboardButton = btn("Enable shortcuts", () => {
+    keyboardEnabled = !keyboardEnabled;
+    keyboardButton.textContent = keyboardEnabled ? "Disable shortcuts" : "Enable shortcuts";
+    keyboardButton.classList.toggle("primary", keyboardEnabled);
+    keyboardStatus.textContent = keyboardEnabled ? "Shortcuts are enabled for this tab only." : "Keyboard shortcuts are off.";
+  }, "small");
+  const voiceStatus = h("p", "sub", "Voice is off. Press the button to capture one command.");
+  const voiceButton = btn("Listen for one command", () => listenForVoiceCommand(), "small primary");
+  let voiceRecognition = null;
+  let voiceListening = false;
+  let voiceCancelled = false;
+  const setVoiceStatus = (message, status) => {
+    voiceStatus.textContent = message;
+    voiceStatus.dataset.voiceState = status;
+  };
+  const listenForVoiceCommand = () => {
+    if (voiceListening && voiceRecognition) {
+      voiceListening = false;
+      voiceCancelled = true;
+      voiceRecognition.abort();
+      voiceButton.textContent = "Listen for one command";
+      setVoiceStatus("Voice listening cancelled.", "ready");
+      return;
+    }
+    const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognitionClass) {
+      const message = "Voice commands are not supported by this browser. Try a current Chromium browser, or use the keyboard shortcuts.";
+      setVoiceStatus(message, "error");
+      toast(message, true);
+      return;
+    }
+    voiceRecognition = new SpeechRecognitionClass();
+    voiceCancelled = false;
+    voiceRecognition.lang = "en-NG";
+    voiceRecognition.continuous = false;
+    voiceRecognition.interimResults = false;
+    voiceRecognition.maxAlternatives = 1;
+    voiceRecognition.onstart = () => {
+      voiceListening = true;
+      voiceButton.textContent = "Cancel listening";
+      setVoiceStatus("Listening once — say a command beginning with ‘desk’.", "listening");
+    };
+    voiceRecognition.onresult = async (event) => {
+      const phrase = event.results?.[0]?.[0]?.transcript?.trim();
+      if (!phrase) {
+        setVoiceStatus("No speech was recognized. Press again to retry.", "error");
+        return;
+      }
+      setVoiceStatus(`Heard: “${phrase}” — checking command…`, "processing");
+      try {
+        const result = await api("/api/desk/voice", { text: phrase });
+        state = result.state;
+        offset = result.serverNow - Date.now();
+        renderLive();
+        renderApp();
+        setVoiceStatus(`Executed: ${result.command}`, "success");
+        toast(`Voice command: ${result.command}`);
+      } catch (error) {
+        setVoiceStatus(`Not executed: ${error.message}`, "error");
+        toast(error.message, true);
+      }
+    };
+    voiceRecognition.onerror = (event) => {
+      if (voiceCancelled && event.error === "aborted") { voiceCancelled = false; return; }
+      const detail = event.error === "not-allowed" ? "Microphone permission was denied." : `Voice recognition error: ${event.error || "unknown error"}.`;
+      setVoiceStatus(detail, "error");
+    };
+    voiceRecognition.onend = () => {
+      voiceListening = false;
+      voiceCancelled = false;
+      voiceButton.textContent = "Listen for one command";
+      if (voiceStatus.dataset.voiceState === "listening") setVoiceStatus("Listening ended. Press again for another command.", "ready");
+    };
+    try {
+      voiceRecognition.start();
+      voiceListening = true;
+      voiceButton.textContent = "Cancel listening";
+      setVoiceStatus("Starting microphone…", "listening");
+    } catch (error) {
+      voiceListening = false;
+      voiceButton.textContent = "Listen for one command";
+      setVoiceStatus(`Could not start voice recognition: ${error.message}`, "error");
+    }
+  };
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden || !voiceListening) return;
+    voiceListening = false;
+    voiceCancelled = true;
+    voiceRecognition?.abort();
+    voiceButton.textContent = "Listen for one command";
+    setVoiceStatus("Voice listening stopped because this page was hidden.", "ready");
+  });
+  window.addEventListener("pagehide", () => voiceRecognition?.abort(), { once: true });
+  const voicePanel = h("section", "panel voice-panel",
+    h("h2", {}, "Voice & keyboard controls"),
+    h("p", "sub", "Voice is opt-in and one-shot. Browser speech recognition may process microphone audio using its own provider; the controller sends only the recognized text to the authenticated server after you press listen."),
+    voiceStatus,
+    h("div", "row", voiceButton),
+    h("p", "sub", "Say a supported command with the ‘desk’ prefix, for example “desk next” or “desk hold”. Only actions allowed by the server’s voice safety list execute."),
+    h("div", "twitch-box",
+      h("strong", {}, "Keyboard shortcuts (Ctrl + Shift)"),
+      h("p", "sub", "Shortcuts start off. Enable them for this tab; they are ignored while typing, composing text, or when a sheet is open."),
+      keyboardStatus,
+      h("div", "row", keyboardButton),
+      h("p", "sub", "→ Next card · ← Previous card · Space Toggle hold.")));
+
   // ---------- Live Overlay Preview (Swae / OBS Monitor) ----------
   let previewRatio = "16-9"; // Default to 16:9 Landscape for live stream frames
   const previewFrame = h("iframe", { class: "preview-frame preview-16-9", src: "/desk?debug=0", title: "Viewer Overlay Preview" });
@@ -555,7 +680,7 @@ import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.
           btn("✖ STAMP: STILL OWING (0)", () => act("crid-verdict", { value: 0 }), "giant " + (crid.verdict === 0 ? "danger active-toggle" : "danger"), "heavy")),
         crid.audioUrl ? h("div", "row",
           btn(crid.audioPlaying ? "⏸ Pause Audio" : "▶ Play Audio", () => act("crid-audio", { playing: !crid.audioPlaying }), "small " + (crid.audioPlaying ? "active-toggle" : "primary")),
-          btn("🔇 Mute", () => act("crid-audio", { playing: false }), "small")) : null,
+          btn(crid.audioMuted ? "🔊 Unmute" : "🔇 Mute", () => act("crid-audio", { muted: !crid.audioMuted }), "small " + (crid.audioMuted ? "active-toggle" : ""))) : null,
         h("div", "row",
           !state?.poll?.active && !crid.result ? btn("Start Rent Poll", () => act("start-poll", { question: crid.title, options: ["Rent Paid", "Still Owing"] }), "small primary") : null,
           btn("Close CRID Segment", () => act("crid-close"), "small danger", "heavy")));
@@ -1289,16 +1414,16 @@ import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.
     // Build a scroll container with the current tab's panels
     let panels;
     switch(currentTab) {
-      case "live": panels = [statusEl, controlsEl, previewPanel]; break;
+      case "live": panels = [statusEl, controlsEl, voicePanel, previewPanel]; break;
       case "topics": panels = [queuePanel, editorEl]; break;
       case "crid": panels = [cridPanel]; break;
       case "community": panels = [riadPanel, ledgerPanel, spacePanel, chatPanel, slangPanel]; break;
       case "studio": panels = [clipPanel, musicPanel, courtPanel, audiomackPanel]; break;
       case "settings": panels = [autoEl, pollEl, twitchPanel, settingsExtrasEl]; break;
-      default: panels = [statusEl, controlsEl, previewPanel];
+      default: panels = [statusEl, controlsEl, voicePanel, previewPanel];
     }
     // Show/hide panels based on active tab
-    const allPanels = [statusEl, controlsEl, previewPanel, queuePanel, editorEl, cridPanel,
+    const allPanels = [statusEl, controlsEl, voicePanel, previewPanel, queuePanel, editorEl, cridPanel,
       riadPanel, ledgerPanel, spacePanel, chatPanel, slangPanel,
       clipPanel, musicPanel, courtPanel, audiomackPanel, autoEl, pollEl, twitchPanel, settingsExtrasEl];
     for (const p of allPanels) {

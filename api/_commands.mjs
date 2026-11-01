@@ -22,6 +22,7 @@ export function parseDeskCommand(line) {
 
   if (NO_ARG.has(verb)) return rest ? null : { verb: verb === "previous" ? "prev" : verb };
   if (LEAVE_DESK.has(verb)) return rest ? null : { verb: "desk", desk: "all" };
+  if (verb === "research" || verb === "refresh") return rest ? null : { verb: "research" };
   if (verb === "poll") return { verb: "poll", ...parsePollSpec(rest) };
   if (verb === "auto") {
     const value = /^(on|off)$/i.test(rest) ? rest.toLowerCase() : null;
@@ -85,12 +86,15 @@ export const COMMAND_HELP =
   "desk next · desk prev · desk hold · desk hide · desk stop · desk poll <question>|<a>|<b> · " +
   "desk auto on|off · desk music · desk streamers · desk movies · desk politics · desk business · desk trends · desk all";
 
-// Maps a parsed command to the runAction body the backend executes.
-export const commandBody = (cmd) =>
-  cmd.verb === "poll" ? { action: "start-poll", question: cmd.question, options: cmd.options }
-    : cmd.verb === "auto" ? { action: "auto-play", value: cmd.value === "on" }
-    : cmd.verb === "desk" ? { action: "desk", desk: cmd.desk }
-    : { action: { next: "next", prev: "previous", hold: "hold", hide: "hide", stop: "end-poll" }[cmd.verb] };
+// Maps only implemented commands. Recognized-but-unimplemented verbs must never become
+// `{ action: undefined }`, which obscures rejection at the voice and EventSub boundaries.
+export const commandBody = (cmd) => {
+  if (cmd.verb === "poll") return { action: "start-poll", question: cmd.question, options: cmd.options };
+  if (cmd.verb === "auto") return { action: "auto-play", value: cmd.value === "on" };
+  if (cmd.verb === "desk") return { action: "desk", desk: cmd.desk };
+  const action = { next: "next", prev: "previous", hold: "hold", hide: "hide", stop: "end-poll" }[cmd.verb];
+  return action ? { action } : null;
+};
 
 // Human-readable form of a command, for logs and status displays.
 export const commandText = (cmd) =>

@@ -266,7 +266,9 @@ export async function handleTwitchWebhook(store, req, { env = process.env, now =
   if (!claim.ok) return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
 
   try {
-    const result = await action(store, commandBody(cmd), now);
+    const body = commandBody(cmd);
+    if (!body) throw new HttpError(422, "This recognized command does not have a supported action yet.");
+    const result = await action(store, body, now);
     // The command already ran. A failure to record its status must not make Twitch redeliver
     // and run it a second time; log it and keep the delivery claimed.
     try {

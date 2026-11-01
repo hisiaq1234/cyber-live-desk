@@ -5,6 +5,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { COMMAND_HELP, chatMayCommand, parseAllowIds, parseDeskCommand, parsePollSpec, validatePollDraft } from "../public/desk-assets/desk-commands.js";
+import { commandBody as serverCommandBody, parseDeskCommand as parseServerDeskCommand } from "../api/_commands.mjs";
+import { commandBody as publicCommandBody, parseDeskCommand as parsePublicDeskCommand } from "../public/desk-assets/_commands.mjs";
 
 test("every shape the streamer actually types is a command", () => {
   for (const line of ["desk next", "desknext", "!desknext", "!desk next", "DESK_NEXT", "desk  next", "/desk next"]) {
@@ -75,4 +77,19 @@ test("allowlist ids survive the way a person types them", () => {
 
 test("the help line names the verbs the parser knows", () => {
   for (const verb of ["next", "prev", "hold", "hide", "poll", "auto", "all"]) assert.ok(COMMAND_HELP.includes(verb), verb);
+});
+
+test("server and browser parser copies agree, and unsupported research aliases have no action", () => {
+  const lines = [
+    "desk next", "desk previous", "desk hold", "desk hide", "desk stop", "desk all",
+    "desk poll Q|A|B", "desk auto on", "desk music", "desk research", "desk refresh", "ordinary chat",
+  ];
+  for (const line of lines) assert.deepEqual(parseServerDeskCommand(line), parsePublicDeskCommand(line), line);
+
+  for (const line of ["desk research", "desk refresh"]) {
+    const serverCommand = parseServerDeskCommand(line);
+    assert.deepEqual(serverCommand, { verb: "research" });
+    assert.equal(serverCommandBody(serverCommand), null);
+    assert.equal(publicCommandBody(parsePublicDeskCommand(line)), null);
+  }
 });

@@ -848,6 +848,7 @@ test("crid-open accepts an audio URL and stores it on the segment", async () => 
   });
   assert.equal(state.crid.audioUrl, "https://cdn.example.com/segment-1.mp3");
   assert.equal(state.crid.audioPlaying, false, "audio does not auto-play when opened");
+  assert.equal(state.crid.audioMuted, false, "new segments start unmuted");
 });
 
 test("crid-open clips an over-long audio URL", async () => {
@@ -857,6 +858,13 @@ test("crid-open clips an over-long audio URL", async () => {
   });
   assert.ok(state.crid.audioUrl.length <= LIMITS.cridAudioUrl);
   assert.ok(state.crid.audioUrl.endsWith("…"), "clipped URL ends with ellipsis");
+});
+
+test("CRID audio URLs must use HTTPS and cannot embed credentials", async () => {
+  const store = cridStore();
+  for (const audioUrl of ["http://cdn.example.com/track.mp3", "javascript:alert(1)", "https://user:pass@cdn.example.com/track.mp3"]) {
+    await assert.rejects(() => openCrid(store, { audioUrl }), /HTTPS audio URL/i, audioUrl);
+  }
 });
 
 test("crid-audio toggles play/pause on an open segment", async () => {
@@ -879,6 +887,20 @@ test("crid-audio without a specified playing toggles the current state", async (
 
   state = (await runAction(store, { action: "crid-audio" }, NOW)).state;
   assert.equal(state.crid.audioPlaying, false, "second toggle turns it off");
+});
+
+test("crid-audio mute changes do not pause playback", async () => {
+  const store = cridStore();
+  await openCrid(store, { audioUrl: "https://cdn.example.com/segment-1.mp3" });
+  await runAction(store, { action: "crid-audio", playing: true }, NOW);
+
+  let state = (await runAction(store, { action: "crid-audio", muted: true }, NOW)).state;
+  assert.equal(state.crid.audioMuted, true);
+  assert.equal(state.crid.audioPlaying, true);
+
+  state = (await runAction(store, { action: "crid-audio", muted: false }, NOW)).state;
+  assert.equal(state.crid.audioMuted, false);
+  assert.equal(state.crid.audioPlaying, true);
 });
 
 test("crid-audio can replace the audio URL while playing", async () => {
@@ -908,6 +930,7 @@ test("publicState carries audioUrl and audioPlaying on the crid segment", async 
   const res = await publicState(store, null, NOW);
   assert.equal(res.body.crid.audioUrl, "https://cdn.example.com/segment-1.mp3");
   assert.equal(res.body.crid.audioPlaying, true);
+  assert.equal(res.body.crid.audioMuted, false);
 });
 
 // ---------- Twitch clipping ----------
@@ -1291,5 +1314,3 @@ test("riad-clear deactivates the raid identity", async () => {
   const { state } = await runAction(store, { action: "riad-clear" }, NOW);
   assert.equal(state.riad, null);
 });
-
-

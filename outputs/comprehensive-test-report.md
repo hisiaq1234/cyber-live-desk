@@ -52,7 +52,7 @@ Google News RSS is used as a public dated source. **Gemini Google Search groundi
 | Diff whitespace | **PASS** | `git diff --check` reported no errors after report cleanup |
 | Swae app / iPhone runtime | **NOT RUN** | Browser-layer capture, layout, and real on-device voice behavior still need a private Swae test |
 | YouTube playback / broadcast rights | **NOT VERIFIED** | The project only generates the official player link; it does not grant music rights or guarantee Swae audio capture |
-| Current follow-up deployment | **PENDING PUSH** | This feature branch is being pushed; Vercel should create its normal Git-triggered preview deployment |
+| Vercel feature preview | **READY** | Commit `567167a`; [open the deployed overlay preview](https://cyber-live-desk-4ats8g0yk-crid.vercel.app/desk). The stable production deployment on `main` was not changed. |
 
 ## Current source changes
 

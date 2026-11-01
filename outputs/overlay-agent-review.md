@@ -35,4 +35,4 @@ Undated Search results can help with context but do not count as proof of freshn
 
 The latest `node --test` run passed **153 / 153 runner-counted items** (152 explicit tests plus one Node file-discovery item for `api/test.mjs`). Changed JavaScript modules passed `node --check`, and `git diff --check` is clean.
 
-The browser page and actual Swae scene have **not** been manually tested for widget crop, audio capture, or mobile behavior; those still need a private on-device check. This feature branch is being pushed so Vercel can create its normal Git-triggered preview deployment.
+Commit `567167a` is pushed to `feat/gemini-enrichment-auto-research`; its Vercel preview is **Ready** at [the deployed `/desk` overlay](https://cyber-live-desk-4ats8g0yk-crid.vercel.app/desk), and the orb was confirmed present in the rendered page. This is a branch preview; the stable production deployment on `main` was not changed. The actual Swae scene still needs a private on-device check for widget crop and audio capture.

@@ -1,13 +1,12 @@
-// CYBER LIVE DESK — Vercel KV storage adapter.
-// Implements the same store interface as the old in-memory stub, now backed by
-// Vercel KV (Upstash Redis under the hood) so state persists across serverless
-// function invocations.
+// CYBER LIVE DESK — Upstash Redis storage adapter.
+// Backed by @upstash/redis so state persists across serverless function invocations.
 //
-// Required environment variables (set in Vercel dashboard → Settings → Environment Variables):
-//   KV_REST_API_URL     — from your Vercel KV database page
-//   KV_REST_API_TOKEN   — from your Vercel KV database page
+// Required environment variables — set automatically when you connect an Upstash for
+// Redis database in the Vercel dashboard (Storage tab → Connect to project):
+//   KV_REST_API_URL     (labelled "Endpoint" or "REST API URL" in the Upstash dashboard)
+//   KV_REST_API_TOKEN   (labelled "REST API token" in the Upstash dashboard)
 //
-// All keys are namespaced under "cld:" so this store can share a KV database
+// All keys are namespaced under "cld:" so this store can share a Redis database
 // with other projects without collision.
 //
 // Interface matches _desk-core.mjs expectations:
@@ -16,40 +15,47 @@
 //   setJSON(key, value, { onlyIfNew: true }) → { modified: boolean }
 //   delete(key)                → void
 
-import { kv } from "@vercel/kv";
+import { Redis } from "@upstash/redis";
 
 const NS = "cld:";
+
+// Redis client is constructed once per module load (one cold start = one client).
+// @upstash/redis reads KV_REST_API_URL and KV_REST_API_TOKEN from process.env by default.
+const redis = new Redis({
+  url: process.env.KV_REST_API_URL,
+  token: process.env.KV_REST_API_TOKEN,
+});
 
 export function getStore() {
   return {
     async get(key, opts) {
-      const val = await kv.get(`${NS}${key}`);
+      const val = await redis.get(`${NS}${key}`);
       if (val === null || val === undefined) return null;
-      // Vercel KV returns parsed JSON already when you stored with set(key, value)
-      // but _desk-core uses setJSON which stringifies first, so we need to handle both.
       if (opts?.type === "json") {
+        // Upstash returns already-parsed JSON objects; if it's still a string, parse it.
         if (typeof val === "string") {
           try { return JSON.parse(val); } catch { return null; }
         }
-        return val; // already a parsed object (stored via kv.set directly)
+        return val;
       }
       return typeof val === "string" ? val : JSON.stringify(val);
     },
 
     async setJSON(key, value, opts) {
       const full = `${NS}${key}`;
+      const serialized = JSON.stringify(value);
       if (opts?.onlyIfNew) {
-        // SET NX — only set if key does not already exist
-        const result = await kv.set(full, JSON.stringify(value), { nx: true });
-        // Upstash returns "OK" when set, null when skipped (key existed)
+        // SET NX — only write if key does not already exist.
+        // Upstash returns "OK" on success, null when the key existed.
+        const result = await redis.set(full, serialized, { nx: true });
         return { modified: result !== null };
       }
-      await kv.set(full, JSON.stringify(value));
+      await redis.set(full, serialized);
       return { modified: true };
     },
 
     async delete(key) {
-      await kv.del(`${NS}${key}`);
+      await redis.del(`${NS}${key}`);
     },
   };
 }

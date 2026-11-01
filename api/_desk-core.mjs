@@ -1351,6 +1351,14 @@ export async function runResearch(
         continue;
       }
       seen.add(c.key);
+      // Enrich trend cards with Gemini context — raw trend names like "rory culkin" mean
+      // nothing on air without a one-line explanation and a chat question. News cards already
+      // carry an excerpt so we skip enrichment there to save quota and latency.
+      if (feed.kind === "trends" && process.env.GEMINI_API_KEY) {
+        const enriched = await enrichWithGemini(c.headline, c.summary ?? "", fetchFn);
+        if (enriched.summary) c = { ...c, summary: enriched.summary };
+        if (enriched.question) c = { ...c, question: enriched.question };
+      }
       added.push(toCard(feed, c, now, added.length, approval));
       filed++;
       roomLeft--;
@@ -1389,6 +1397,13 @@ export async function runResearch(
         continue;
       }
       seen.add(key);
+      // Enrich the overlap card too — "trending in both countries" is the most valuable
+      // context to explain on air and Gemini makes it genuinely useful.
+      if (process.env.GEMINI_API_KEY) {
+        const enriched = await enrichWithGemini(c.headline, c.summary, fetchFn);
+        if (enriched.summary) c = { ...c, summary: enriched.summary };
+        if (enriched.question) c = { ...c, question: enriched.question };
+      }
       added.push(toCard(overlapFeed, c, now, added.length, approval));
       filed++;
       roomLeft--;

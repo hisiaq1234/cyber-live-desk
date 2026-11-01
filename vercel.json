@@ -5,5 +5,11 @@
     { "source": "/control", "destination": "/api/control" },
     { "source": "/api/desk/:path*", "destination": "/api/desk" },
     { "source": "/api/twitch/eventsub", "destination": "/api/twitch-eventsub" }
+  ],
+  "crons": [
+    {
+      "path": "/api/desk-auto-research",
+      "schedule": "*/15 * * * *"
+    }
   ]
 }

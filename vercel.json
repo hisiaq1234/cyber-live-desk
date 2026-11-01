@@ -7,11 +7,5 @@
     { "source": "/api/twitch/eventsub", "destination": "/api/twitch-eventsub" },
     { "source": "/api/x/feed", "destination": "/api/x-feed" },
     { "source": "/api/spotify/top", "destination": "/api/spotify-top" }
-  ],
-  "crons": [
-    {
-      "path": "/api/desk-auto-research",
-      "schedule": "*/15 * * * *"
-    }
   ]
 }

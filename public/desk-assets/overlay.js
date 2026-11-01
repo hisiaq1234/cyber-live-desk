@@ -351,7 +351,7 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
       const cur = music.current;
       return h("div", "music-wrap",
         cur ? h("div", "music-current", cur.title) : null,
-        cur && cur.artist ? h("div", "music-artist", cur.artist) : null,
+        cur && cur.artist ? h("div", "music-artist", cur.artist.toUpperCase()) : null,
         h("div", "music-queue", `Queue: ${music.queue.length} · ${music.playing ? "playing" : "paused"}${music.muted ? " · muted" : ""}`),
         music.queue.map((t) => h("div", "music-track" + (t.id === cur?.id ? " current" : ""),
           h("span", "music-title", t.title),

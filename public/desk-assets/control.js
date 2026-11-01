@@ -972,9 +972,8 @@ import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
   // ---------- automation and research approval ----------
   // Auto-play and auto research only move or file what the operator has approved (or what the
   // persisted research mode explicitly auto-approves). Hold, Hide, Next and Show still win.
-  const AUTO_MIN = 15; // must match the cron in netlify/functions/desk-auto-research.mjs
   const autoPlayBtn = btn("Auto-play: off", () => act("auto-play"));
-  const autoResearchBtn = btn("Auto research: off", () => act("auto-research"));
+  const autoResearchBtn = btn("Scheduled card intake: off", () => act("auto-research"));
   const autoNote = h("p", "sub");
   const autoWarn = h("div", "warnbox");
   autoWarn.hidden = true;
@@ -998,9 +997,9 @@ import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
     const mode = approvalModeSel.value;
     const checked = trustedWrap.querySelectorAll("input[data-feed]:checked").length;
     approvalNote.textContent =
-      mode === "all" ? "Scheduled and manual research both approve every new card automatically. They can enter on-air rotation when auto-play is on; approval does not change the card on screen now."
-        : mode === "trusted" ? (checked ? `${checked} feed${checked === 1 ? "" : "s"} auto-approve their cards. Everything else stays pending. The same list is used by scheduled and manual research.` : "Tick at least one trusted feed. Until then every card stays pending.")
-          : "Nothing is approved automatically. Scheduled and manual research both file every new card as pending.";
+      mode === "all" ? "Manual and any configured scheduled card imports approve every new card automatically. They can enter on-air rotation when auto-play is on; approval does not change the card on screen now. The public RSS ticker is separate."
+        : mode === "trusted" ? (checked ? `${checked} feed${checked === 1 ? "" : "s"} auto-approve their cards. Everything else stays pending. This rule applies to manual and any configured scheduled imports; the RSS ticker is separate.` : "Tick at least one trusted feed. Until then every imported card stays pending.")
+          : "Imported research cards are not approved automatically. The public RSS ticker is separate from card approval.";
     approvalSaveBtn.textContent = approvalDirty ? "Save approval mode •" : "Save approval mode";
   };
 
@@ -1035,7 +1034,7 @@ import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
   const drawAutomation = () => {
     autoPlayBtn.textContent = state?.autoPlay ? "Auto-play: on" : "Auto-play: off";
     autoPlayBtn.classList.toggle("on", !!state?.autoPlay);
-    autoResearchBtn.textContent = state?.autoResearch ? "Auto research: on" : "Auto research: off";
+    autoResearchBtn.textContent = state?.autoResearch ? "Scheduled card intake: on" : "Scheduled card intake: off";
     autoResearchBtn.classList.toggle("on", !!state?.autoResearch);
     autoWarn.hidden = !state?.autoPlay;
     autoWarn.textContent = "Auto-play is on. Approved cards can enter on-air rotation when the current card expires. Approving a card never changes the card that is on screen now.";
@@ -1046,8 +1045,9 @@ import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
         : "On air: nothing moves unless you tap it.") +
       " " +
       (state?.autoResearch
-        ? `Research: the scheduled job fetches about every ${AUTO_MIN} min. It uses the saved approval mode below and never changes the card on air.`
-        : "Research: the scheduled job is idle. Manual fetch still works.");
+        ? "Scheduled card intake is enabled in settings, but no recurring production trigger is configured, so it will not fetch on a timer."
+        : "Scheduled card intake is off; manual card research still works.") +
+      " Public headlines are separate: free date-stamped Google News RSS, filtered to the last 12 hours, refreshed every 5 minutes while /desk is open, and rotated every 12 seconds. RSS headlines are not Gemini-verified.";
     drawApprovalMode();
     const held = Number(research.held) || 0;
     const max = Number(research.maxPending) || 60;

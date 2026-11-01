@@ -6,6 +6,7 @@
 // ships a handler that refuses to run.
 //
 // Routes
+//   GET/HEAD /desk                 public   overlay page and Swae availability check
 //   GET  /api/desk                 public   overlay page (loads /desk-assets/overlay.js)
 //   GET  /api/desk/state           public   on-air state; 204 when ?since= equals the current version
 //   GET  /api/desk/cards           operator full queue incl. presenter notes
@@ -68,8 +69,8 @@ const handler = async (req) => {
   const url = new URL(req.url.startsWith("http") ? req.url : `https://cyber-live-desk.vercel.app${req.url}`);
   const route = url.pathname.replace(/\/+$/, "") || "/";
   try {
-    if (req.method === "GET" && (route === "/desk" || route === "/api/desk")) {
-      return new Response(PAGE, {
+    if ((req.method === "GET" || req.method === "HEAD") && (route === "/desk" || route === "/api/desk")) {
+      return new Response(req.method === "HEAD" ? null : PAGE, {
         headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=300" },
       });
     }

@@ -185,6 +185,27 @@ test("the overlay's poll gets 204 until the version moves, and no private fields
   assert.equal(res.body.autoPlay, false, "autoPlay is public because the overlay needs it");
 });
 
+test("public music identity exposes only current title, artist and playing state", async () => {
+  const store = makeStore();
+  const privateAudioUrl = "https://cdn.example.com/private-stream?token=should-not-leak";
+  await commitState(store, DEFAULT_STATE, {
+    music: {
+      queue: [{ id: "queued", title: "Queued Track", artist: "Queued Artist", audioUrl: privateAudioUrl }],
+      current: { id: "current", title: "Current Track", artist: "Current Artist", audioUrl: privateAudioUrl },
+      playing: true, volume: 0.25, muted: false,
+    },
+  });
+  const res = await publicState(store, null, NOW);
+  assert.deepEqual(res.body.music, {
+    current: { title: "Current Track", artist: "Current Artist" },
+    playing: true,
+  });
+  const wire = JSON.stringify(res.body);
+  assert.ok(!wire.includes("private-stream"), "music audio URLs remain private");
+  assert.ok(!wire.includes("Queued Track"), "the private music queue remains private");
+  assert.ok(!wire.includes("volume"), "playback controls remain private");
+});
+
 test("an unapproved card cannot be served even if the state points at it", async () => {
   const store = makeStore({
     cards: JSON.stringify([card({ id: "a", approval: "pending" })]),

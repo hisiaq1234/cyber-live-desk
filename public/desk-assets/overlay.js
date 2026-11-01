@@ -1,11 +1,11 @@
 import { createCridAudioSync } from "./crid-audio.js";
 
-/* CYBER LIVE DESK — public overlay, Apple feel reskin (Swae Safe Top-Docked Layout).
+/* CYBER LIVE DESK — public landscape overlay with a compact Swae-safe identity strip.
    Transparent, no dependencies, no build step. Loaded by the /desk page.
-   - Topic cards forced top-left under CRID bug.
-   - Widgets (X, Spaces, Music, Court) forced to #dock-right (top-right).
+   - Topic cards use top-left; news cards use the lower third; CRID stays top-docked.
+   - X, Spaces and Court use #dock-right; now-playing and headlines share the lower identity strip.
    URL options (all optional)
-     pos=top-left              (forced; bottom-* mapped to top)
+     pos=top-left              (forced; news placement is fixed to the lower third)
      scale=0.6–1.4             poll=1–30 (seconds, default 3)
      anim=slide | fade | none  debug=1   (connection dot, leave off on air)
      x.mode=trends|following   x.userId=      x.jpoll=10–3600
@@ -47,7 +47,7 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
   --brand:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;
   font-family:var(--brand);
   font-synthesis:none;text-rendering:optimizelegibility;-webkit-font-smoothing:antialiased;
-  --m:clamp(12px,4vmin,32px);
+  --m:clamp(12px,4vmin,32px);--identity-w:min(36vw,32rem);
   --scale:1;
   font-size:calc(var(--scale)*clamp(15px,3.5vmin,26px));line-height:1.4}
 .slot{position:absolute;display:grid;width:min(calc(100vw - 2*var(--m)),56em)}
@@ -161,26 +161,58 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 .crid-v-none { color: #8E8E93; font-size: 0.75em; font-weight: 600; text-transform: uppercase; }
 @keyframes bug-breathe { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.05); } }
 
-/* Mid-left sound orb: compact in silence, expanding only during audible CRID playback. */
-#sound-orb{position:fixed;left:calc(var(--m) + env(safe-area-inset-left,0px));top:54%;z-index:8;
-  width:clamp(28px,4vw,72px);aspect-ratio:1;border-radius:50%;pointer-events:none;
-  display:grid;place-items:center;opacity:.76;transform:translate3d(0,-50%,0) scale(.92);
+/* Compact sound/music identity mark; always decorative and never a control. */
+#sound-orb{position:fixed;right:calc(var(--m) + var(--identity-w) + .45em);bottom:calc(var(--m) + .45em + env(safe-area-inset-bottom,0px));z-index:26;
+  width:clamp(32px,3vw,46px);aspect-ratio:1;border-radius:50%;pointer-events:none;
+  display:grid;place-items:center;opacity:.82;transform:scale(.96);
   filter:drop-shadow(0 8px 18px rgba(0,0,0,.48));
-  transition:width .42s cubic-bezier(.2,.85,.25,1),opacity .35s ease,transform .42s cubic-bezier(.2,.85,.25,1)}
+  transition:width .42s cubic-bezier(.2,.85,.25,1),bottom .35s ease,opacity .35s ease,transform .42s cubic-bezier(.2,.85,.25,1)}
 #sound-orb::before{content:"";position:absolute;inset:0;border-radius:50%;
-  background:radial-gradient(circle at 31% 24%,rgba(220,226,240,.22),transparent 18%),
+  background:radial-gradient(circle at 72% 28%,rgba(40,104,166,.5),transparent 34%),
+    radial-gradient(circle at 31% 24%,rgba(220,226,240,.26),transparent 20%),
     radial-gradient(circle at 42% 38%,#242a35 0,#11141b 45%,#07090e 78%);
-  border:1px solid rgba(112,127,153,.25);box-shadow:inset 0 2px 7px rgba(225,235,255,.12),inset 0 -7px 16px rgba(0,0,0,.64)}
+  border:1px solid rgba(112,155,196,.42);box-shadow:inset 0 2px 9px rgba(225,235,255,.17),inset 0 -7px 16px rgba(0,0,0,.64),0 0 14px rgba(30,91,148,.2)}
 #sound-orb::after{content:"";position:absolute;inset:26%;border-radius:50%;
   background:radial-gradient(circle at 35% 28%,#ff9a9e 0,#ff334d 35%,#9d102d 74%,#4b0c1e 100%);
   box-shadow:0 0 12px rgba(255,48,74,.58),0 0 26px rgba(255,48,74,.28)}
 #sound-orb .orb-ring{position:absolute;inset:-20%;border:1px solid rgba(255,65,88,.72);border-radius:50%;opacity:0;transform:scale(.78)}
-#sound-orb.is-active{width:clamp(54px,7vw,120px);opacity:1;transform:translate3d(0,-50%,0) scale(1)}
+#sound-orb:not(.is-active)::before{animation:orb-idle-sheen 4.2s ease-in-out infinite}
+#sound-orb:not(.is-active)::after{animation:orb-idle-core 3.2s ease-in-out infinite}
+#sound-orb:not(.is-active) .orb-ring{border-color:rgba(65,122,175,.6);animation:orb-idle-ring 4s ease-in-out infinite}
+#sound-orb:not(.is-active) .orb-ring:nth-child(2){animation-delay:2s}
+#sound-orb.is-active{width:clamp(50px,4.2vw,68px);opacity:1;transform:scale(1)}
 #sound-orb.is-active::after{animation:orb-core-pulse .9s ease-in-out infinite alternate}
 #sound-orb.is-active .orb-ring{animation:orb-wave 1.65s ease-out infinite}
 #sound-orb.is-active .orb-ring:nth-child(2){animation-delay:.82s}
+#sound-orb.music-playing::before{border-color:rgba(83,155,211,.72);box-shadow:inset 0 2px 9px rgba(225,235,255,.18),inset 0 -7px 16px rgba(0,0,0,.64),0 0 16px rgba(45,122,186,.38)}
+#sound-orb.music-playing{bottom:calc(var(--m) + 1.05em + env(safe-area-inset-bottom,0px))}
+#sound-orb.music-playing::after{animation:orb-core-pulse 1.2s ease-in-out infinite alternate}
+#sound-orb.music-playing .orb-ring{border-color:rgba(65,145,210,.72);animation:orb-wave 2s ease-out infinite}
+#sound-orb.music-playing .orb-ring:nth-child(2){animation-delay:1s}
+@keyframes orb-idle-sheen{0%,100%{filter:brightness(.92);transform:rotate(-5deg)}50%{filter:brightness(1.18);transform:rotate(8deg)}}
+@keyframes orb-idle-core{0%,100%{filter:brightness(.9);transform:scale(.92)}50%{filter:brightness(1.18);transform:scale(1.04)}}
+@keyframes orb-idle-ring{0%,100%{opacity:.08;transform:scale(.82)}50%{opacity:.3;transform:scale(1.12)}}
 @keyframes orb-wave{0%{opacity:.76;transform:scale(.76)}100%{opacity:0;transform:scale(1.58)}}
 @keyframes orb-core-pulse{from{filter:brightness(.92);transform:scale(.9)}to{filter:brightness(1.35);transform:scale(1.13)}}
+
+/* Timestamp-filtered RSS headlines run automatically in a compact lower-third ticker. */
+#auto-headlines{position:fixed;right:var(--m);bottom:calc(var(--m) + env(safe-area-inset-bottom,0px));z-index:25;
+  width:var(--identity-w);max-width:calc(100vw - 2*var(--m));
+  display:grid;grid-template-columns:minmax(0,1fr);align-items:center;gap:.28em;
+  padding:.42em .68em;background:rgba(7,9,14,.88);border:1px solid rgba(102,139,179,.32);
+  border-left:.28em solid #ff334d;border-radius:.9em;box-shadow:0 8px 24px rgba(0,0,0,.4);
+  font-size:clamp(13px,1.8vmin,19px);pointer-events:none;opacity:0;transform:translateY(8px);
+  transition:opacity .25s ease,transform .25s ease}
+#auto-headlines[data-status="ready"],#auto-headlines[data-status="empty"],#auto-headlines[data-status="error"]{opacity:1;transform:none}
+.headline-feed-kicker{font-size:.68em;font-weight:900;letter-spacing:.08em;color:#ff5368;text-transform:uppercase;white-space:nowrap}
+.identity-row{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:baseline;gap:.12em .5em;min-width:0}
+.identity-row .headline-feed-title{grid-column:2;min-width:0;color:#f3f2f0;font-size:.82em;font-weight:750;line-height:1.15;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+.identity-row .headline-feed-meta{grid-column:2;font-size:.6em;color:#a9bacb;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+.identity-music{padding-bottom:.25em;border-bottom:1px solid rgba(102,139,179,.26)}
+.identity-music .headline-feed-kicker{color:#75b9e8}
+.news-drop-card{position:fixed;left:calc(var(--m) + 2.2em);bottom:calc(var(--m) + 4.2em + env(safe-area-inset-bottom,0px));
+  width:min(calc(100vw - 2*var(--m) - 2.2em),32em);max-height:20dvh;z-index:30;padding:.8em 1em}
+@media(max-width:520px){#desk{--identity-w:min(58vw,32rem)}#auto-headlines{width:var(--identity-w);gap:.15em;padding:.32em .5em}.headline-feed-kicker{font-size:.58em}.identity-row .headline-feed-title{font-size:.72em}.identity-row .headline-feed-meta{font-size:.54em}}
 
 /* Right dock (Top-Right docked) — hard height cap so it never reaches Swae's
    bottom and right-edge controls. Modules cap individually; shadows are kept
@@ -292,8 +324,9 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 @media (prefers-reduced-motion:reduce){
   .card{transform:none;transition:none;animation:none!important}
   #crid-jumbotron,#crid-jumbotron.in{transform:none;transition:none;animation:none!important}
-  #sound-orb,#sound-orb.is-active{transition:none;transform:translateY(-50%)}
-  #sound-orb.is-active::after,#sound-orb.is-active .orb-ring{animation:none!important}
+  #sound-orb,#sound-orb.is-active{transition:none;transform:none}
+  #sound-orb::before,#sound-orb::after,#sound-orb .orb-ring,#sound-orb.is-active::after,#sound-orb.is-active .orb-ring{animation:none!important}
+  #auto-headlines{transition:none}
   .opt,.fill{transition:none}
   .opt.lead{animation:none!important}
   .dot{animation:none}
@@ -369,7 +402,7 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
     const ask = opts.poll ? opts.poll.question : c.question;
     const el = h(
       "article",
-      `card conf-${news && CONF_LABEL[c.confidence] ? c.confidence : "none"}`,
+      `card${news ? " news-drop-card" : ""} conf-${news && CONF_LABEL[c.confidence] ? c.confidence : "none"}`,
       h("div", "meta", c.category && h("span", "", c.category), news && h("span", "chip", CONF_LABEL[c.confidence] || "")),
       h("h1", "headline", c.headline),
       c.summary && h("p", "summary", c.summary),
@@ -467,6 +500,8 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
   const slot = h("div", "slot");
   const root = h("div", { id: "desk", class: `pos-${CFG.pos} anim-${CFG.anim} crid-pos-${CFG.cridPos} x-pos-${xJPos}${CFG.debug ? " debug" : ""}` }, slot);
   document.body.append(root);
+  const headlineShelf = h("div", { id: "auto-headlines", "aria-live": "off", "data-status": "loading" });
+  root.append(headlineShelf);
 
   const cridAudio = document.createElement("audio");
   cridAudio.preload = "none";
@@ -507,6 +542,7 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 
   let shownKey = null;
   let moduleKey = null;
+  let identityMusicKey = "";
 
   // ---------- modules (docked right) ----------
   const renderModule = (s) => {
@@ -515,13 +551,19 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
       moduleKey = null;
       return;
     }
+    const track = s.music?.current;
+    const musicKey = s.music?.playing && track?.title ? `${track.title}|${track.artist || ""}` : "";
+    if (musicKey !== identityMusicKey) {
+      identityMusicKey = musicKey;
+      soundOrb.classList.toggle("music-playing", Boolean(musicKey));
+      drawHeadlines();
+    }
     const parts = [];
     if (s.court) parts.push((renderers.get("court") || fallback)({ type: "court", ...s.court }));
-    if (s.music && (s.music.queue.length || s.music.current)) parts.push((renderers.get("music") || fallback)({ type: "music", ...s.music }));
     if (s.spaces && s.spaces.length) parts.push((renderers.get("space") || fallback)({ type: "space", spaces: s.spaces }));
     if (s.ledger && s.ledger.length) parts.push((renderers.get("ledger") || fallback)({ type: "ledger", ledger: s.ledger }));
     if (s.riad && s.riad.active) parts.push((renderers.get("riad") || fallback)({ type: "riad", ...s.riad }));
-    const key = JSON.stringify({ court: s.court, music: s.music, spaces: s.spaces, ledger: s.ledger, riad: s.riad });
+    const key = JSON.stringify({ court: s.court, spaces: s.spaces, ledger: s.ledger, riad: s.riad });
     if (key === moduleKey) return;
     modulesWrap.innerHTML = "";
     if (parts.length) parts.forEach(p => modulesWrap.append(p));
@@ -564,6 +606,63 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
   let pollTimer = null;
   let telemetryTimer = null;
   let failures = 0;
+  let headlineItems = [];
+  let headlineIndex = 0;
+  let headlinePollTimer = null;
+  let headlineRotateTimer = null;
+
+  const relativeHeadlineTime = (publishedAt) => {
+    const elapsed = Math.max(0, Date.now() - Date.parse(publishedAt));
+    if (!Number.isFinite(elapsed)) return "time unknown";
+    const mins = Math.floor(elapsed / 60000);
+    return mins < 60 ? `${mins}m ago` : `${Math.floor(mins / 60)}h ago`;
+  };
+
+  const drawHeadlines = (note = "Checking for fresh headlines…") => {
+    const track = state?.music?.playing ? state.music.current : null;
+    const rows = [];
+    if (track?.title) rows.push(h("div", "identity-row identity-music",
+      h("span", "headline-feed-kicker", "NOW PLAYING"),
+      h("span", "headline-feed-title", track.title),
+      h("span", "headline-feed-meta", track.artist || "Music desk")));
+    if (!headlineItems.length) {
+      headlineShelf.dataset.status = note.startsWith("No fresh") ? "empty" : note.startsWith("Fresh headlines unavailable") ? "error" : "loading";
+      rows.push(h("div", "identity-row identity-news",
+        h("span", "headline-feed-kicker", track?.title ? "NEWS" : "LATEST · NIGERIA"),
+        h("span", "headline-feed-title", note),
+        h("span", "headline-feed-meta", "RSS · last 12 hours")));
+      headlineShelf.replaceChildren(...rows);
+      return;
+    }
+    const item = headlineItems[headlineIndex % headlineItems.length];
+    headlineShelf.dataset.status = "ready";
+    rows.push(h("div", "identity-row identity-news",
+      h("span", "headline-feed-kicker", track?.title ? "NEWS" : "LATEST · NIGERIA"),
+      h("span", "headline-feed-title", item.title),
+      h("span", "headline-feed-meta", `${item.publisher || "Google News"} · ${relativeHeadlineTime(item.publishedAt)} · RSS`)));
+    headlineShelf.replaceChildren(...rows);
+  };
+
+  const refreshHeadlines = async () => {
+    try {
+      const response = await fetch("/api/desk-headlines", { cache: "no-store" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+      headlineItems = Array.isArray(payload.headlines) ? payload.headlines.filter((item) => item?.title && item?.publishedAt) : [];
+      headlineIndex = 0;
+      drawHeadlines(headlineItems.length ? "" : "No fresh headlines in the last 12 hours.");
+    } catch {
+      headlineItems = [];
+      drawHeadlines("Fresh headlines unavailable. Retrying automatically.");
+    } finally {
+      clearTimeout(headlinePollTimer);
+      headlinePollTimer = setTimeout(refreshHeadlines, 5 * 60 * 1000);
+    }
+  };
+  headlineRotateTimer = setInterval(() => {
+    if (headlineItems.length > 1) { headlineIndex = (headlineIndex + 1) % headlineItems.length; drawHeadlines(); }
+  }, 12 * 1000);
+  window.addEventListener("pagehide", () => { clearTimeout(headlinePollTimer); clearInterval(headlineRotateTimer); }, { once: true });
 
   const schedulePoll = (ms) => {
     clearTimeout(pollTimer);
@@ -784,5 +883,6 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
   };
 
   window.DeskOverlay = { register };
+  refreshHeadlines();
   tick();
 })();

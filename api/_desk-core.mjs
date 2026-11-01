@@ -283,9 +283,15 @@ export function publicProjection(state) {
     trustedFeedIds,
     twitchChatEnabled,
     twitchAllowedUserIds,
+    music,
     ...rest
   } = state;
-  return rest;
+  const track = music?.current;
+  const publicTrack = track ? {
+    title: typeof track.title === "string" ? track.title : "",
+    artist: typeof track.artist === "string" ? track.artist : "",
+  } : null;
+  return { ...rest, music: music ? { current: publicTrack, playing: Boolean(music.playing) } : null };
 }
 
 // Answers the overlay's poll. Auto-advance is read-driven, so the card only moves when

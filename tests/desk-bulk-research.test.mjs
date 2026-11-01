@@ -186,7 +186,7 @@ test("auto-approved research counts toward the unread cap until a person edits i
 test("trend cards with a machine-written summary count toward capacity until edited", async () => {
   const store = makeStore();
   const res = await runResearch(store, { feeds: ["gtrends-ng"] }, {
-    fetchFn: fakeFetch({ "https://trends.google.com/trending/rss": fixture("gtrends-ng.xml") }), now: NOW,
+    fetchFn: fakeFetch({ "https://trends.google.com/trending/rss?geo=NG": fixture("gtrends-ng.xml") }), now: NOW,
   });
   assert.equal(res.added, 3);
   const cards = await readCards(store);

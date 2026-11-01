@@ -1,31 +1,30 @@
-// CYBER LIVE DESK — checkpoint 3 (HTTP shell).
+// CYBER LIVE DESK — Vercel checkpoint 3 (HTTP shell).
 // Routing, auth and responses only. All behaviour lives in _desk-core.mjs so the
 // scheduled auto-research run shares one implementation with these routes.
-// The core has to sit in this directory: `netlify functions:build` fails an import from
-// outside it with "Could not resolve", and no filename prefix keeps it out of the
-// function list, so it ships a handler that refuses to run.
+// The core has to sit in this directory: Vercel resolves imports relative to the
+// function file, and no filename prefix keeps it out of the function list, so it
+// ships a handler that refuses to run.
 //
 // Routes
-//   GET  /desk                 public   overlay page (loads /desk-assets/overlay.js)
-//   GET  /api/desk/state       public   on-air state; 204 when ?since= equals the current version
-//   GET  /api/desk/cards       operator full queue incl. presenter notes
-//   POST /api/desk/cards       operator create or update one card
-//   POST /api/desk/action      operator show | next | previous | hide | hold | source | mode |
-//                              desk | poll actions | auto-play | auto-research | bulk-approval |
-//                              research-approval | twitch-chat | twitch-allow
-//   POST /api/desk/research    operator fetch headlines/trends, or held items with heldOnly
-//   GET  /api/desk/twitch      operator-only Twitch EventSub configuration status
+//   GET  /api/desk                 public   overlay page (loads /desk-assets/overlay.js)
+//   GET  /api/desk/state           public   on-air state; 204 when ?since= equals the current version
+//   GET  /api/desk/cards           operator full queue incl. presenter notes
+//   POST /api/desk/cards           operator create or update one card
+//   POST /api/desk/action          operator show | next | previous | hide | hold | source | mode |
+//                                   desk | poll actions | auto-play | auto-research | bulk-approval |
+//                                   research-approval | twitch-chat | twitch-allow
+//   POST /api/desk/research        operator fetch headlines/trends, or held items with heldOnly
+//   GET  /api/desk/twitch          operator-only Twitch EventSub configuration status
 //
-// Env: DESK_OPERATOR_TOKEN (required). Storage: Netlify Blobs, strong consistency.
+// Env: DESK_OPERATOR_TOKEN (required). Storage: Vercel KV (via _store.mjs adapter).
 // Optional for research: DESK_FEED_PROXY (a scraping API, your own worker or an RSS-Bridge
 // instance, see proxyFor in the core), DESK_FEED_TIMEOUT_MS and DESK_FEED_BUDGET_MS.
-// Twitch webhook secrets live in Netlify environment variables, never in this file; see
-// TWITCH_SETUP.md and netlify/functions/twitch-eventsub.mjs.
+// Twitch webhook secrets live in Vercel environment variables, never in this file.
 // Single operator assumed: concurrent writes are last-write-wins, except the auto-play
 // advance, which re-checks the version it read so a race cannot skip a card.
 
-import { getStore } from "@netlify/blobs";
-import { timingSafeEqual } from "node:crypto";
+import { getStore } from "./_store.mjs";
+import crypto from "node:crypto";
 import {
   DESKS,
   FEEDS,
@@ -46,20 +45,15 @@ import {
 import { twitchStatus } from "./_twitch-core.mjs";
 import { parseDeskCommand, commandBody, commandText } from "./_commands.mjs";
 
-export const config = { path: ["/api/desk/*", "/desk", "/control"] };
+export const config = { runtime: "nodejs" };
 
-const PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Cyber Live Desk overlay</title>
-<style>html,body{margin:0;background:transparent}</style></head>
-<body><script src="/desk-assets/overlay.js"></script></body></html>`;
+const PAGE = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
+  "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\">" +
+  "<title>Cyber Live Desk overlay</title>" +
+  "<style>html,body{margin:0;background:transparent}</style></head>" +
+  "<body><script src=\"/desk-assets/overlay.js\"></script></body></html>";
 
-const CONTROL_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="robots" content="noindex"><title>Live desk controller</title></head>
-<body><script type="module" src="/desk-assets/control.js"></script></body></html>`;
-
-const store = () => getStore({ name: STORE_NAME, consistency: "strong" });
+const store = () => getStore();
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -67,18 +61,13 @@ const json = (data, status = 200) =>
     headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" },
   });
 
-export default async (req) => {
-  const url = new URL(req.url);
+const handler = async (req) => {
+  const url = new URL(req.url.startsWith("http") ? req.url : `https://cyber-live-desk.vercel.app${req.url}`);
   const route = url.pathname.replace(/\/+$/, "") || "/";
   try {
-    if (req.method === "GET" && route === "/desk") {
+    if (req.method === "GET" && (route === "/desk" || route === "/api/desk")) {
       return new Response(PAGE, {
         headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=300" },
-      });
-    }
-    if (req.method === "GET" && route === "/control") {
-      return new Response(CONTROL_PAGE, {
-        headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Robots-Tag": "noindex" },
       });
     }
     if (req.method === "GET" && route === "/api/desk/state") {
@@ -94,8 +83,6 @@ export default async (req) => {
       const state = await readState(s);
       const held = await readHeldResearch(s);
       return json({
-        // deskIds are derived per card for the controller's preview. They are never stored;
-        // bulk-approval re-derives the same matchesDesk rule on the server for the action.
         cards: cs.map((c) => ({ ...c, deskIds: DESKS.filter((d) => matchesDesk(c, d.id)).map((d) => d.id) })),
         state,
         counts: queueCounts(cs, state, held.length),
@@ -149,6 +136,7 @@ export default async (req) => {
     return json({ error: "Server error." }, 500);
   }
 };
+export default { fetch: handler };
 
 function requireOperator(req) {
   const want = process.env.DESK_OPERATOR_TOKEN;
@@ -156,7 +144,7 @@ function requireOperator(req) {
   const got = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
   const a = Buffer.from(got);
   const b = Buffer.from(want);
-  if (a.length !== b.length || !timingSafeEqual(a, b)) throw new HttpError(401, "Operator token required.");
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) throw new HttpError(401, "Operator token required.");
 }
 
 async function readBody(req) {

@@ -13,7 +13,7 @@
 // The OAuth app token is not needed to receive webhooks, but Twitch requires one (and the
 // channel:bot / user:bot grants described in TWITCH_SETUP.md) when the subscription is created.
 
-import { getStore } from "@netlify/blobs";
+import { getStore } from "./_store.mjs";
 
 import { STORE_NAME } from "./_desk-core.mjs";
 import { handleTwitchWebhook } from "./_twitch-core.mjs";
@@ -22,7 +22,8 @@ export const config = {
   path: "/api/twitch/eventsub",
 };
 
-export default async (req) => {
+const handler = async (req) => {
   const store = getStore({ name: STORE_NAME, consistency: "strong" });
   return handleTwitchWebhook(store, req);
 };
+export default { fetch: handler };

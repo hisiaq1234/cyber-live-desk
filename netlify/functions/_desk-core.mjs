@@ -57,11 +57,36 @@ export const DEFAULT_STATE = {
   researchApprovalMode: "manual", // manual | trusted | all
   trustedFeedIds: [], // feed ids that may be approved automatically in trusted mode
   // Server-side Twitch command control. These stay private: the overlay never needs them.
-  twitchChatEnabled: false,
   twitchAllowedUserIds: [],
 };
-
 export const RESEARCH_APPROVAL_MODES = ["manual", "trusted", "all"];
+
+// CRID × Gemini — AI enrichment for social/trend cards
+export async function enrichWithGemini(headline, fallbackSummary = "", fetchFn = globalThis.fetch) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return { summary: fallbackSummary, question: "" };
+
+  const prompt = `You are a live broadcast producer in Nigeria. A trending topic is "${headline}". Write one sentence explaining why it's trending, and one punchy question for live chat. Return ONLY valid JSON like {"summary": "...", "question": "..."}`;
+
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(3500),
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: "application/json" }
+      })
+    });
+    const data = await res.json();
+    const text = data.candidates[0].content.parts[0].text;
+    const parsed = JSON.parse(text);
+    return { summary: parsed.summary || fallbackSummary, question: parsed.question || "" };
+  } catch (e) {
+    console.error("Gemini enrichment failed:", e.message);
+    return { summary: fallbackSummary, question: "" };
+  }
+}
 
 // Clearly labelled test content only: no invented news, sources or figures.
 export const TEST_CARD = {
@@ -1180,13 +1205,13 @@ export async function writeHeldResearch(store, held) {
   else if (typeof store.delete === "function") await store.delete(HELD_RESEARCH_KEY).catch(() => {});
 }
 
-export const toCard = (feed, c, now, i, { approval = "pending", autoApproved = false } = {}) => ({
+export const toCard = (feed, c, now, i, { approval = "pending", autoApproved = false, question = "" } = {}) => ({
   id: cryptoRandomId(),
-  type: c.type,
+  type: c.type || c.kind || "news-drop",
   category: feed.category,
   headline: c.headline,
   summary: c.summary,
-  question: "",
+  question: c.question ?? question,
   confidence: "reported", // one outlet's report, not verified by you yet
   approval,
   autoApproved: Boolean(autoApproved),

@@ -13,11 +13,11 @@
 //     stack twelve of them past the limit
 //   - it only fires on published deploys, never on deploy previews
 
-import { getStore } from "@netlify/blobs";
+import { getStore } from "./_store.mjs";
 import { RESEARCH_INTERVAL_MIN, STORE_NAME, readState, runResearch } from "./_desk-core.mjs";
 
 export const config = {
-  schedule: `*/${RESEARCH_INTERVAL_MIN} * * * *`, // UTC
+  schedule: "*/15 * * * *", // UTC
 };
 
 export default async (req) => {

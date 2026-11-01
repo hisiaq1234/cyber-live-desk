@@ -61,16 +61,6 @@ export const DEFAULT_STATE = {
 };
 export const RESEARCH_APPROVAL_MODES = ["manual", "trusted", "all"];
 
-export const FEEDS = [
-  // X / X-style news feeds
-  { id: "deseret", category: "news", label: "Deseret News", url: "https://www.deseret.com/rss/" },
-  { id: "trend-ng", category: "news", label: "Nigeria Trends", url: "https://www.channelstv.com/feed/" },
-  // Social / TikTok-style viral feeds
-  { id: "tiktok-viral", label: "TikTok Viral", category: "Social", url: "https://www.reddit.com/r/tiktokgossip/hot.rss?limit=8" },
-  { id: "ng-social", label: "Naija Culture", category: "Social", url: "https://www.reddit.com/r/Nigeria/hot.rss?limit=8" },
-];
-
-
 // CRID × Gemini — AI enrichment for social/trend cards
 export async function enrichWithGemini(headline, fallbackSummary = "", fetchFn = globalThis.fetch) {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -98,15 +88,6 @@ export async function enrichWithGemini(headline, fallbackSummary = "", fetchFn =
   }
 }
 
-export const FEEDS = [
-  // X / X-style news feeds
-  { id: "bbc", kind: "news", category: "news", label: "BBC", url: "https://www.bbc.com/news/rss.xml" },
-  { id: "x-trending", category: "social", label: "X Trending", url: "https://www.reddit.com/r/todayilearned/hot.rss?limit=8" },
-  { id: "x-news", category: "news", label": "X News", url: "https://www.reddit.com/r/news/hot.rss?limit=8" },
-  // TikTok viral / social
-  { id: "tiktok-viral", label: "TikTok Viral", category: "Social", url: "https://www.reddit.com/r/tiktokgossip/hot.rss?limit=8" },
-  { id: "ng-social", label: "Naija Culture", category: "Social", url: "https://www.reddit.com/r/Nigeria/hot.rss?limit=8" },
-];
 // Clearly labelled test content only: no invented news, sources or figures.
 export const TEST_CARD = {
   id: "test-card",
@@ -1226,7 +1207,7 @@ export async function writeHeldResearch(store, held) {
 
 export const toCard = (feed, c, now, i, { approval = "pending", autoApproved = false, question = "" } = {}) => ({
   id: cryptoRandomId(),
-  type: c.kind,
+  type: c.type || c.kind || "news-drop",
   category: feed.category,
   headline: c.headline,
   summary: c.summary,
@@ -1378,25 +1359,6 @@ export async function runResearch(
     feeds.push({ id: feed.id, label: feed.label, ok: true, via, found: found.length, added: filed, held: parked });
     if (feed.kind === "trends") trendFound[feed.geo] = found;
   }
-
-  // CRID segment jumbotron operations for CRID-kind cards
-  if (crid) {
-    await runAction(store, { action: "crid-open", kind: crid.kind || "topic", title: crid.title || crid.headline, credit: crid.credit || "Cyber Live Desk", audioUrl: crid.audioUrl || null });
-    if (crid.verdict !== undefined && crid.verdict !== null) {
-      await runAction(store, { action: "crid-verdict", value: crid.verdict });
-    }
-    if (crid.audioUrl) {
-      await runAction(store, { action: "crid-audio", playing: true });
-    }
-    await runAction(store, { action: "crid-close" });
-  }
-
-  // Research never touches live state
-  const afterState = await readState(store);
-  if (afterState.visible && afterState.mode === "cards") {
-    await runAction(store, { action: "crid-close" });
-  }
-
 
   // Topics on Google's trending lists for BOTH Nigeria and the US in the same fetch.
   if (trendFound.NG && trendFound.US) {

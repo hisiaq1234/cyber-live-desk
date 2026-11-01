@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { HEADLINE_FEED_URL, HEADLINE_WINDOW_HOURS, fetchHeadlineFeed, parseHeadlineFeed } from "../api/_headlines.mjs";
-import handler from "../api/desk-headlines.mjs";
+import headlineApi from "../api/desk-headlines.mjs";
+const handler = headlineApi.fetch;
 
 const NOW = Date.parse("2026-11-01T12:00:00.000Z");
 const item = (title, date, link = "https://news.google.com/rss/articles/example", publisher = "Example News") =>

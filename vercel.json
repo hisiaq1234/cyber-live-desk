@@ -4,6 +4,8 @@
     { "source": "/desk", "destination": "/api/desk" },
     { "source": "/control", "destination": "/api/control" },
     { "source": "/api/desk/:path*", "destination": "/api/desk" },
-    { "source": "/api/twitch/eventsub", "destination": "/api/twitch-eventsub" }
+    { "source": "/api/twitch/eventsub", "destination": "/api/twitch-eventsub" },
+    { "source": "/api/x/feed", "destination": "/api/x-feed" },
+    { "source": "/api/spotify/top", "destination": "/api/spotify-top" }
   ]
 }

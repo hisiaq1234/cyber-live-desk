@@ -3,7 +3,9 @@
    Operate it from a second device. Every request carries the operator token
    (stored in this browser only); the public overlay never sees notes or the token.
    Loaded as a module so the poll validator and command help are the tested shared copy. */
-import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.js";
+import { COMMAND_HELP, commandText, parseAllowIds, parseDeskCommand, validatePollDraft } from "./desk-commands.js";
+import { deskHotkeyAction } from "./desk-hotkeys.js";
+import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
 
 (() => {
   "use strict";
@@ -12,6 +14,7 @@ import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.
   const TYPES = ["news-drop", "trend-topic", "slang", "street-question", "viewer-question"];
   const CONF = ["confirmed", "reported", "disputed", "unverified", "test"];
   const APPROVAL = ["pending", "approved", "rejected"];
+  const BRIEF_VERBS = new Set(["research", "deeper", "refresh", "read", "quiet"]);
 
   let token = "";
   try { token = localStorage.getItem(TOKEN_KEY) || ""; } catch { /* private mode */ }
@@ -19,12 +22,17 @@ import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.
   let state = null;
   let offset = 0; // server clock minus this device's clock
   let busy = false;
+  let keyboardEnabled = false;
   let expanded = null;
   let editing = null;
   let desks = [];
   let feeds = [];
   let research = { approvalMode: "manual", trustedFeedIds: [], maxPending: 60, held: 0, heldItems: [] };
   let counts = { pending: 0, approved: 0, held: 0, onAir: 0, unreadResearch: 0, researchCapacity: 60 };
+  let brief = null;
+  let briefBusy = false;
+  let briefLastError = "";
+  let briefUtterance = null;
   let twitch = { configured: false, enabled: false, verified: false, tested: false, ready: false, missing: [], allowedUserIds: [] };
   let approvalDirty = false;
   let twitchDirty = false;
@@ -116,6 +124,20 @@ import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.
     finally { busy = false; document.body.classList.remove("busy"); }
   };
 
+  // Deliberate, modifier-based shortcuts avoid firing while typing or navigating the page.
+  document.addEventListener("keydown", (event) => {
+    const target = event.target;
+    const action = deskHotkeyAction(event, {
+      enabled: keyboardEnabled,
+      visible: !document.hidden,
+      editable: target instanceof Element && Boolean(target.closest("input, textarea, select, [contenteditable]:not([contenteditable='false']), [role='textbox']")),
+      sheetOpen: Boolean(document.querySelector(".sheet-overlay.open")),
+    });
+    if (!action) return;
+    event.preventDefault();
+    void act(action);
+  });
+
   const saveCard = async (payload) => {
     try {
       const { card } = await api("/api/desk/cards", payload);
@@ -138,6 +160,8 @@ import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.
       if (j.research) research = j.research;
       if (j.counts) counts = j.counts;
       if (j.twitch) twitch = j.twitch;
+      if ("brief" in j) brief = j.brief;
+      drawBrief();
       renderLive();
       drawTwitchServer();
       drawClip();
@@ -267,6 +291,14 @@ import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.
     .chip.ok { color: var(--tint-green); border-color: var(--tint-green); background: rgba(50, 215, 75, 0.15); }
     .chip.warn { color: var(--tint-orange); border-color: var(--tint-orange); background: rgba(255, 159, 10, 0.15); }
     .chip.hold { background: rgba(255, 209, 92, 0.15); color: #FFD15C; border-color: rgba(255, 209, 92, 0.3); }
+    .brief-body { display: grid; gap: 10px; margin-top: 12px; }
+    .brief-card { background: rgba(0, 0, 0, 0.28); border: 1px solid var(--border-soft); border-radius: 16px; padding: 12px 14px; }
+    .brief-card p { line-height: 1.5; margin: 8px 0 0; overflow-wrap: anywhere; }
+    .brief-card ul, .brief-card ol { margin: 8px 0 0; padding-left: 24px; }
+    .brief-card li + li { margin-top: 8px; }
+    .brief-card summary { cursor: pointer; font-weight: 700; }
+    .brief-warning { color: var(--tint-orange); background: rgba(255, 159, 10, 0.12); border-radius: 12px; padding: 10px 12px; line-height: 1.45; }
+    .brief-search-entry { width: 100%; min-height: 150px; border: 0; border-radius: 10px; background: #fff; margin-top: 10px; }
 
     @keyframes pulse-chip { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,69,58,0.4); } 50% { box-shadow: 0 0 10px 2px rgba(255,69,58,0.6); } }
 
@@ -478,9 +510,336 @@ import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.
   const holdBtn = btn("Hold card", () => act("hold"));
   const srcBtn = btn("Show source", () => act("source"));
   const modeBtn = btn("X feed", () => act("mode", { mode: state?.mode === "x-following" ? "cards" : "x-following" }));
-  // ---------- Live Overlay Preview (Swae / OBS Monitor) ----------
-  let previewRatio = "16-9"; // Default to 16:9 Landscape for live stream frames
-  const previewFrame = h("iframe", { class: "preview-frame preview-16-9", src: "/desk?debug=0", title: "Viewer Overlay Preview" });
+
+  // Voice runs only after an explicit button press and captures one utterance per press.
+  const keyboardStatus = h("p", "sub", "Keyboard shortcuts are off.");
+  const keyboardButton = btn("Enable shortcuts", () => {
+    keyboardEnabled = !keyboardEnabled;
+    keyboardButton.textContent = keyboardEnabled ? "Disable shortcuts" : "Enable shortcuts";
+    keyboardButton.classList.toggle("primary", keyboardEnabled);
+    keyboardStatus.textContent = keyboardEnabled ? "Shortcuts are enabled for this tab only." : "Keyboard shortcuts are off.";
+  }, "small");
+  const voiceStatus = h("p", "sub", "Voice is off. Press the button to capture one command.");
+  const voiceButton = btn("Listen for one command", () => listenForVoiceCommand(), "small primary");
+  let voiceRecognition = null;
+  let voiceListening = false;
+  let voiceCancelled = false;
+  const setVoiceStatus = (message, status) => {
+    voiceStatus.textContent = message;
+    voiceStatus.dataset.voiceState = status;
+  };
+  const listenForVoiceCommand = () => {
+    if (voiceListening && voiceRecognition) {
+      voiceListening = false;
+      voiceCancelled = true;
+      voiceRecognition.abort();
+      voiceButton.textContent = "Listen for one command";
+      setVoiceStatus("Voice listening cancelled.", "ready");
+      return;
+    }
+    const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognitionClass) {
+      const message = "Voice commands are not supported by this browser. Try a current Chromium browser, or use the keyboard shortcuts.";
+      setVoiceStatus(message, "error");
+      toast(message, true);
+      return;
+    }
+    voiceRecognition = new SpeechRecognitionClass();
+    voiceCancelled = false;
+    voiceRecognition.lang = "en-NG";
+    voiceRecognition.continuous = false;
+    voiceRecognition.interimResults = false;
+    voiceRecognition.maxAlternatives = 1;
+    voiceRecognition.onstart = () => {
+      voiceListening = true;
+      voiceButton.textContent = "Cancel listening";
+      setVoiceStatus("Listening once — say a command beginning with ‘desk’.", "listening");
+    };
+    voiceRecognition.onresult = async (event) => {
+      const phrase = event.results?.[0]?.[0]?.transcript?.trim();
+      if (!phrase) {
+        setVoiceStatus("No speech was recognized. Press again to retry.", "error");
+        return;
+      }
+      setVoiceStatus(`Heard: “${phrase}” — checking command…`, "processing");
+      const localCommand = parseDeskCommand(phrase);
+      if (localCommand && BRIEF_VERBS.has(localCommand.verb)) {
+        try {
+          const ok = await runBriefCommand(localCommand);
+          setVoiceStatus(ok ? `Executed: ${commandText(localCommand)}` : "Not executed. Check the private research panel.", ok ? "success" : "error");
+        } catch (error) {
+          setVoiceStatus(`Not executed: ${error.message}`, "error");
+        }
+        return;
+      }
+      try {
+        const result = await api("/api/desk/voice", { text: phrase });
+        state = result.state;
+        offset = result.serverNow - Date.now();
+        renderLive();
+        renderApp();
+        setVoiceStatus(`Executed: ${result.command}`, "success");
+        toast(`Voice command: ${result.command}`);
+      } catch (error) {
+        setVoiceStatus(`Not executed: ${error.message}`, "error");
+        toast(error.message, true);
+      }
+    };
+    voiceRecognition.onerror = (event) => {
+      if (voiceCancelled && event.error === "aborted") { voiceCancelled = false; return; }
+      const detail = event.error === "not-allowed" ? "Microphone permission was denied." : `Voice recognition error: ${event.error || "unknown error"}.`;
+      setVoiceStatus(detail, "error");
+    };
+    voiceRecognition.onend = () => {
+      voiceListening = false;
+      voiceCancelled = false;
+      voiceButton.textContent = "Listen for one command";
+      if (voiceStatus.dataset.voiceState === "listening") setVoiceStatus("Listening ended. Press again for another command.", "ready");
+    };
+    try {
+      voiceRecognition.start();
+      voiceListening = true;
+      voiceButton.textContent = "Cancel listening";
+      setVoiceStatus("Starting microphone…", "listening");
+    } catch (error) {
+      voiceListening = false;
+      voiceButton.textContent = "Listen for one command";
+      setVoiceStatus(`Could not start voice recognition: ${error.message}`, "error");
+    }
+  };
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden || !voiceListening) return;
+    voiceListening = false;
+    voiceCancelled = true;
+    voiceRecognition?.abort();
+    voiceButton.textContent = "Listen for one command";
+    setVoiceStatus("Voice listening stopped because this page was hidden.", "ready");
+  });
+  window.addEventListener("pagehide", () => voiceRecognition?.abort(), { once: true });
+  const voicePanel = h("section", "panel voice-panel",
+    h("h2", {}, "Voice & keyboard controls"),
+    h("p", "sub", "Voice is opt-in and one-shot. It listens only to the controller device after you press the button; it does not listen to Swae’s broadcast audio. Use a separate device while streaming, or type the topic. Browser speech recognition may process audio using its own provider; only recognized text is sent to the authenticated controller API."),
+    voiceStatus,
+    h("div", "row", voiceButton),
+    h("p", "sub", "For private research, say “desk research” plus a topic, then “desk deeper” and an optional angle, “desk refresh”, “desk read”, or “desk quiet”. These are not public Swae chat commands and never publish to the viewer overlay."),
+    h("p", "sub", "Other actions still use the server’s voice safety list."),
+    h("div", "twitch-box",
+      h("strong", {}, "Keyboard shortcuts (Ctrl + Shift)"),
+      h("p", "sub", "Shortcuts start off. Enable them for this tab; they are ignored while typing, composing text, or when a sheet is open."),
+      keyboardStatus,
+      h("div", "row", keyboardButton),
+      h("p", "sub", "→ Next card · ← Previous card · Space Toggle hold.")));
+
+  const briefTopicInput = h("input", { type: "text", maxLength: 120, autocomplete: "off", placeholder: "e.g. Lagos TikTok trends around a current story" });
+  const briefFocusInput = h("input", { type: "text", maxLength: 120, autocomplete: "off", placeholder: "Optional angle: local impact, who benefits, what is disputed…" });
+  const briefIncludeX = h("input", { type: "checkbox", checked: false });
+  const briefIncludeXLabel = h("label", { class: "row", style: "align-items:center;gap:8px" }, briefIncludeX, h("span", {}, "Include live X trends for this request only (optional; may be pay-per-use)"));
+  const briefStatusEl = h("p", "sub", "No private brief yet.");
+  const briefBody = h("div", "brief-body");
+  const briefResearchBtn = btn("Research topic", () => runBriefCommand({ verb: "research", topic: briefTopicInput.value.trim(), focus: briefFocusInput.value.trim() }), "small primary");
+  const briefDeeperBtn = btn("Go deeper", () => runBriefCommand({ verb: "deeper", focus: briefFocusInput.value.trim() }), "small");
+  const briefRefreshBtn = btn("Refresh", () => runBriefCommand({ verb: "refresh", focus: briefFocusInput.value.trim() }), "small");
+  const briefReadBtn = btn("Read aloud", () => runBriefCommand({ verb: "read" }), "small");
+  const briefStopBtn = btn("Stop speaking", () => runBriefCommand({ verb: "quiet" }), "small");
+  const briefClearBtn = btn("Clear", () => runBriefAction("clear"), "small danger");
+  briefTopicInput.addEventListener("input", () => drawBrief());
+  briefTopicInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void runBriefCommand({ verb: "research", topic: briefTopicInput.value.trim() });
+    }
+  });
+
+  const stopBriefSpeech = () => {
+    try { window.speechSynthesis?.cancel(); } catch { /* browser speech is optional */ }
+    briefUtterance = null;
+  };
+  const speakBrief = () => {
+    const stale = brief && serverNow() - brief.generatedAt > brief.windowHours * 3_600_000;
+    if (!brief || brief.status === "thin" || stale || !brief.readAloud) {
+      toast("There is no current, source-linked brief to read. Research or refresh first.", true);
+      return false;
+    }
+    if (!window.speechSynthesis || typeof window.SpeechSynthesisUtterance !== "function") {
+      toast("This browser does not support local read-aloud.", true);
+      return false;
+    }
+    stopBriefSpeech();
+    const utterance = new SpeechSynthesisUtterance(brief.readAloud.replace(/\[(?:R|X)\d+\]/g, "").trim());
+    utterance.lang = "en-NG";
+    utterance.rate = 1;
+    briefUtterance = utterance;
+    window.speechSynthesis.speak(utterance);
+    toast("Reading the private brief in this browser.");
+    return true;
+  };
+
+  const runBriefAction = async (action, extra = {}) => {
+    if (briefBusy) return false;
+    briefBusy = true;
+    briefLastError = "";
+    const request = { action, ...extra };
+    if (["open", "deeper", "refresh"].includes(action)) {
+      request.includeX = briefIncludeX.checked;
+      briefIncludeX.checked = false;
+    }
+    drawBrief();
+    try {
+      const result = await api("/api/desk/brief", request);
+      brief = result.brief;
+      if (action === "clear") {
+        stopBriefSpeech();
+        briefTopicInput.value = "";
+        briefFocusInput.value = "";
+        briefIncludeX.checked = false;
+        toast("Private brief cleared.");
+      } else if (brief) {
+        briefTopicInput.value = brief.topic || briefTopicInput.value;
+        briefFocusInput.value = brief.focus || briefFocusInput.value;
+        toast(brief.status === "thin" ? "Fresh evidence is limited; review sources before using." : "Brief updated. Check the evidence and counterpoint.", brief.status === "thin");
+      }
+      drawBrief();
+      return Boolean(brief) || action === "clear";
+    } catch (error) {
+      briefLastError = error.message || "Brief request failed.";
+      toast(briefLastError, true);
+      drawBrief();
+      return false;
+    } finally {
+      briefBusy = false;
+      drawBrief();
+    }
+  };
+
+  const runBriefCommand = async (command) => {
+    if (command.verb === "research") {
+      const topic = String(command.topic || briefTopicInput.value || "").trim();
+      if (!topic) {
+        toast("Say “desk research” followed by a topic, or type one above.", true);
+        return false;
+      }
+      briefTopicInput.value = topic.slice(0, 120);
+      if (command.focus != null) briefFocusInput.value = String(command.focus).slice(0, 120);
+      return runBriefAction("open", { topic: briefTopicInput.value, focus: briefFocusInput.value.trim() });
+    }
+    if (command.verb === "deeper") {
+      if (command.focus != null) briefFocusInput.value = String(command.focus).slice(0, 120);
+      return runBriefAction("deeper", { focus: briefFocusInput.value.trim() });
+    }
+    if (command.verb === "refresh") return runBriefAction("refresh", { focus: briefFocusInput.value.trim() });
+    if (command.verb === "read") return speakBrief();
+    if (command.verb === "quiet") {
+      stopBriefSpeech();
+      toast("Private read-aloud stopped.");
+      return true;
+    }
+    return false;
+  };
+
+  const briefText = (value) => {
+    const parts = String(value ?? "").split(/(\[(?:R|X)\d+\])/g);
+    return parts.map((part) => {
+      const match = part.match(/^\[(R|X)(\d+)\]$/);
+      if (!match || !brief) return part;
+      const source = match[1] === "R"
+        ? brief.sources?.find((item) => item.ref === part)
+        : brief.xTrends?.[Number(match[2]) - 1];
+      const href = source?.url;
+      if (!href || !/^https:\/\//i.test(href)) return part;
+      return h("a", { href, target: "_blank", rel: "noopener noreferrer", title: source.title || source.name || "Open evidence source" }, part);
+    });
+  };
+
+  const drawBrief = () => {
+    const stale = brief && serverNow() - brief.generatedAt > brief.windowHours * 3_600_000;
+    briefResearchBtn.disabled = briefBusy || !briefTopicInput.value.trim();
+    briefDeeperBtn.disabled = briefBusy || !brief || stale || brief.status === "thin" || brief.depth >= (brief.maxDepth || 3);
+    briefRefreshBtn.disabled = briefBusy || !brief;
+    briefReadBtn.disabled = briefBusy || !brief || brief.status === "thin" || stale;
+    briefStopBtn.disabled = !window.speechSynthesis?.speaking;
+    briefClearBtn.disabled = briefBusy || !brief;
+    briefStatusEl.textContent = briefBusy
+      ? "Searching fresh sources… this is a one-shot request."
+      : briefLastError
+        ? `Request failed: ${briefLastError}`
+        : !brief
+          ? "No private brief yet. Choose a topic and research when you want; nothing runs automatically."
+          : stale
+            ? `STALE — generated ${fmt(new Date(brief.generatedAt).toISOString())}. Refresh before reading or using it on air.`
+            : brief.status === "thin"
+              ? `THIN — ${brief.freshCount || 0} dated headlines · ${brief.searches || 0} Google Search queries · ${brief.groundedCount || 0} grounded links · ${brief.xTrendCount || 0} X terms. Do not treat this as verified.`
+              : `${brief.status === "platform-only" ? "PLATFORM SIGNAL ONLY" : "FRESH WINDOW"} · ${brief.freshCount || 0} dated headlines · ${brief.searches || 0} Google Search queries · ${brief.groundedCount || 0} grounded links · ${brief.xTrendCount || 0} X trends · ${brief.evidenceCoverage || "limited"} coverage · depth ${brief.depth}/${brief.maxDepth || 3}`;
+
+    const content = [];
+    if (brief) {
+      content.push(h("div", "brief-card",
+        h("h3", {}, brief.headline || "Fresh evidence is limited"),
+        h("p", "sub", `Topic: ${brief.topic}${brief.focus ? ` · angle: ${brief.focus}` : ""} · generated ${fmt(new Date(brief.generatedAt).toISOString())} · last ${brief.windowHours} hours`)));
+      if (brief.note) content.push(h("p", "brief-warning", brief.note));
+      if (brief.xNote) content.push(h("p", "brief-warning", brief.xNote));
+      if (brief.summary) content.push(h("div", "brief-card", h("strong", {}, "What is reported"), h("p", {}, briefText(brief.summary))));
+      if (brief.why) content.push(h("div", "brief-card", h("strong", {}, "Why it may matter (analysis, not fact)"), h("p", {}, briefText(brief.why))));
+      if (brief.counterpoint) content.push(h("div", "brief-card", h("strong", {}, "Counterpoint / what this does not prove"), h("p", {}, briefText(brief.counterpoint))));
+      if (brief.verify) content.push(h("div", "brief-card", h("strong", {}, "What would change the assessment"), h("p", {}, briefText(brief.verify))));
+      if (brief.points?.length) content.push(h("div", "brief-card", h("strong", {}, "Evidence-linked angles"), h("ul", {}, brief.points.map((point) => h("li", {}, briefText(point.text))))));
+      if (brief.chatQuestion) content.push(h("div", "brief-card", h("strong", {}, "Chat prompt"), h("p", {}, brief.chatQuestion)));
+      if (brief.xTrends?.length) {
+        content.push(h("div", "brief-card",
+          h("strong", {}, `Live X snapshot — ${brief.xRegion || "configured location"}`),
+          h("p", "sub", `Observed ${fmt(brief.xObservedAt)}. This is a live conversation signal, not proof of a trend’s cause or a TikTok ranking.`),
+          h("ol", {}, brief.xTrends.map((trend, index) => h("li", {},
+            briefText(`[X${index + 1}]`), " ", trend.name,
+            trend.tweetCount == null ? "" : ` · ${Number(trend.tweetCount).toLocaleString()} posts`)))));
+      }
+      if (brief.sources?.length) {
+        content.push(h("div", "brief-card",
+          h("strong", {}, "Sources (private controller only)"),
+          h("ol", "brief-sources", brief.sources.map((source) => h("li", {},
+            h("a", { href: source.url, target: "_blank", rel: "noopener noreferrer" }, `[${source.ref}] ${source.title}`),
+            h("span", "sub", source.publishedAt ? ` · published ${fmt(source.publishedAt)}` : " · publication time not verified"))))));
+      }
+      if (brief.supportSegments?.length) {
+        content.push(h("details", "brief-card",
+          h("summary", {}, "Grounded web claim-to-source matches"),
+          h("ol", {}, brief.supportSegments.map((segment) => h("li", {},
+            segment.text, " — ", segment.sources.map((index) => {
+              const source = brief.sources?.[index];
+              return source ? h("a", { href: source.url, target: "_blank", rel: "noopener noreferrer" }, `[${source.ref}]`) : "";
+            }))))));
+      }
+      if (brief.searchEntryPoint) {
+        const frame = h("iframe", { class: "brief-search-entry", title: "Google Search grounding suggestions", referrerPolicy: "no-referrer" });
+        frame.setAttribute("sandbox", "allow-popups");
+        frame.srcdoc = brief.searchEntryPoint;
+        content.push(h("details", "brief-card", h("summary", {}, "Search suggestions"), frame));
+      }
+      if (brief.manualSources?.length) {
+        content.push(h("div", "brief-card",
+          h("strong", {}, "Manual platform checks"),
+          h("p", "sub", "TikTok is not scraped or represented as a complete feed. Open its official trend surface and verify region/period yourself."),
+          h("div", "row", brief.manualSources.map((source) => h("a", { class: "btn small", href: source.url, target: "_blank", rel: "noopener noreferrer" }, source.title)))));
+      }
+    }
+    briefBody.replaceChildren(...content);
+  };
+
+  window.addEventListener("pagehide", stopBriefSpeech, { once: true });
+  const briefPanel = h("section", "panel brief-panel",
+    h("h2", {}, "Private research brief"),
+    h("p", "sub", "Swae-first and private: this brief is visible only in the authenticated controller. Nothing is posted to Swae chat or the public /desk overlay."),
+    h("label", { class: "f" }, h("span", {}, "Topic to research"), briefTopicInput),
+    h("label", { class: "f" }, h("span", {}, "Angle to prioritize (optional)"), briefFocusInput),
+    briefIncludeXLabel,
+    briefStatusEl,
+    h("div", "row", briefResearchBtn, briefDeeperBtn, briefRefreshBtn),
+    h("div", "row", briefReadBtn, briefStopBtn, briefClearBtn),
+    h("p", "sub", "Each request runs once: dated Google News RSS plus Gemini Google Search grounding. Search grounding requires a paid-tier project; included monthly quota may apply, and additional queries can be billed. X is off unless you opt in for that single request. Nothing polls or listens in the background. TikTok Creative Center remains a manual check."),
+    briefBody);
+  drawBrief();
+
+  // ---------- Swae / Twitch Landscape Overlay Preview ----------
+  let previewRatio = "16-9"; // Default to the user's landscape Twitch scene
+  const previewFrame = h("iframe", { class: "preview-frame preview-16-9", src: "/desk?debug=0", title: "Swae landscape Twitch overlay preview" });
   const btnRatio916 = btn("Vertical (9:16)", () => setPreviewRatio("9-16"), "small");
   const btnRatio169 = btn("Landscape (16:9)", () => setPreviewRatio("16-9"), "small primary");
   const setPreviewRatio = (r) => {
@@ -505,13 +864,13 @@ import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.
   };
   const previewPanel = h("section", "panel preview-panel",
     h("div", { class: "row", style: "justify-content:space-between;margin-bottom:8px" },
-      h("h2", { style: "margin:0" }, "Live Stream Monitor"),
+      h("h2", { style: "margin:0" }, "Swae Live Preview"),
       h("div", { class: "row", style: "flex:0 0 auto;gap:4px" },
         btnRatio916, btnRatio169,
         btn("↻", reloadPreview, "small"),
         btn("Copy Swae URL", copySwaeUrl, "small"))),
     h("div", "preview-wrap", previewFrame),
-    h("p", "sub", "Live viewer overlay: CRID Jumbotron (top) & Cards (bottom). Scaled for Swae iPhone stream & OBS."));
+    h("p", "sub", "Landscape 16:9 Twitch preview through Swae. Add the copied /desk URL as a Swae Browser Widget or Web Page layer. Private research stays in /control."));
 
   // ---------- CRID (Cyber's Rent Is Due) Segment ----------
   const cridPanel = h("section", "panel crid-panel");
@@ -555,7 +914,7 @@ import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.
           btn("✖ STAMP: STILL OWING (0)", () => act("crid-verdict", { value: 0 }), "giant " + (crid.verdict === 0 ? "danger active-toggle" : "danger"), "heavy")),
         crid.audioUrl ? h("div", "row",
           btn(crid.audioPlaying ? "⏸ Pause Audio" : "▶ Play Audio", () => act("crid-audio", { playing: !crid.audioPlaying }), "small " + (crid.audioPlaying ? "active-toggle" : "primary")),
-          btn("🔇 Mute", () => act("crid-audio", { playing: false }), "small")) : null,
+          btn(crid.audioMuted ? "🔊 Unmute" : "🔇 Mute", () => act("crid-audio", { muted: !crid.audioMuted }), "small " + (crid.audioMuted ? "active-toggle" : ""))) : null,
         h("div", "row",
           !state?.poll?.active && !crid.result ? btn("Start Rent Poll", () => act("start-poll", { question: crid.title, options: ["Rent Paid", "Still Owing"] }), "small primary") : null,
           btn("Close CRID Segment", () => act("crid-close"), "small danger", "heavy")));
@@ -1201,6 +1560,31 @@ import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.
   const musicArtist = h("input", { placeholder: "Artist", maxlength: 120 });
   const musicUrl = h("input", { placeholder: "Audio URL (MP3/AAC/WebM)", maxlength: 2000 });
   const musicStatus = h("p", "sub", "Music: idle.");
+  const youtubePlaylistInput = h("input", { type: "url", maxLength: 2000, autocomplete: "off", placeholder: "https://music.youtube.com/playlist?list=…" });
+  const youtubeEmbedOutput = h("input", { type: "url", readOnly: true, placeholder: "Official YouTube playlist-player URL appears here" });
+  const youtubeStatus = h("p", "sub", "Paste a public YouTube or YouTube Music playlist link.");
+  const updateYoutubeWidgetUrl = () => {
+    youtubeEmbedOutput.value = youtubePlaylistEmbedUrl(youtubePlaylistInput.value) || "";
+    youtubeStatus.textContent = youtubeEmbedOutput.value
+      ? "Validated. Use this visible, interactive YouTube player URL as a Swae Browser Widget/Web Page layer."
+      : "Paste a valid public YouTube or YouTube Music playlist link.";
+  };
+  youtubePlaylistInput.addEventListener("input", updateYoutubeWidgetUrl);
+  const copyYoutubeWidgetUrl = async () => {
+    const value = youtubeEmbedOutput.value;
+    if (!value) return toast("Paste a valid playlist URL first.", true);
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard is unavailable");
+      await navigator.clipboard.writeText(value);
+      toast("Copied. Add the visible player URL as a Swae web-page layer.");
+    } catch {
+      window.prompt("Copy this official YouTube player URL into a Swae web-page layer:", value);
+    }
+  };
+  const openYoutubeWidget = () => {
+    if (!youtubeEmbedOutput.value) return toast("Paste a valid playlist URL first.", true);
+    window.open(youtubeEmbedOutput.value, "_blank", "noopener,noreferrer");
+  };
   const musicPanel = h("section", "panel", h("h2", {}, "Music Desk"),
     h("div", "twitch-box",
       h("label", "f", h("span", {}, "Title"), musicTitle),
@@ -1216,7 +1600,15 @@ import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.
         btn("Next", () => act("music-next"), "small"),
         btn("Stop", () => act("music-stop"), "small danger"),
         btn("Clear", () => act("music-clear"), "small danger")),
-      musicStatus));
+      musicStatus),
+    h("div", "twitch-box",
+      h("strong", {}, "YouTube Music playlist — official player"),
+      h("p", "sub", "This makes a standard visible YouTube playlist player URL; it does not extract or rebroadcast audio by itself."),
+      h("label", "f", h("span", {}, "Public playlist URL"), youtubePlaylistInput),
+      h("label", "f", h("span", {}, "Swae web-page player URL"), youtubeEmbedOutput),
+      youtubeStatus,
+      h("div", "row", btn("Copy Swae page URL", copyYoutubeWidgetUrl, "small primary"), btn("Preview player", openYoutubeWidget, "small")),
+      h("p", "sub", "Add it as a Swae Browser Widget/Web Page layer and keep YouTube’s player visible and interactive (minimum player size applies). Do not use it as an audio extractor; test privately, and only stream music you have rights to broadcast.")));
 
   // ---------- X Space Radar ----------
   const spaceTitle = h("input", { placeholder: "Space title", maxlength: 120 });
@@ -1269,7 +1661,7 @@ import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.
   const settingsExtrasEl = h("section", "panel stack",
     h("h2", {}, "Overlay & Session"),
     h("div", "twitch-box",
-      h("p", "sub", "Swae viewer overlay link for OBS or browser source:"),
+      h("p", "sub", "Public Swae viewer overlay: add this /desk URL as a Browser Widget or Web Page layer in your scene."),
       btn("Copy Swae URL", copySwaeUrl, "primary")),
     h("div", "twitch-box",
       h("p", "sub", "Disconnect operator session on this device:"),
@@ -1289,16 +1681,16 @@ import { COMMAND_HELP, parseAllowIds, validatePollDraft } from "./desk-commands.
     // Build a scroll container with the current tab's panels
     let panels;
     switch(currentTab) {
-      case "live": panels = [statusEl, controlsEl, previewPanel]; break;
+      case "live": panels = [statusEl, controlsEl, voicePanel, briefPanel, previewPanel]; break;
       case "topics": panels = [queuePanel, editorEl]; break;
       case "crid": panels = [cridPanel]; break;
       case "community": panels = [riadPanel, ledgerPanel, spacePanel, chatPanel, slangPanel]; break;
       case "studio": panels = [clipPanel, musicPanel, courtPanel, audiomackPanel]; break;
       case "settings": panels = [autoEl, pollEl, twitchPanel, settingsExtrasEl]; break;
-      default: panels = [statusEl, controlsEl, previewPanel];
+      default: panels = [statusEl, controlsEl, voicePanel, briefPanel, previewPanel];
     }
     // Show/hide panels based on active tab
-    const allPanels = [statusEl, controlsEl, previewPanel, queuePanel, editorEl, cridPanel,
+    const allPanels = [statusEl, controlsEl, voicePanel, briefPanel, previewPanel, queuePanel, editorEl, cridPanel,
       riadPanel, ledgerPanel, spacePanel, chatPanel, slangPanel,
       clipPanel, musicPanel, courtPanel, audiomackPanel, autoEl, pollEl, twitchPanel, settingsExtrasEl];
     for (const p of allPanels) {

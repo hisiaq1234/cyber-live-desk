@@ -253,9 +253,11 @@ export async function handleTwitchWebhook(store, req, { env = process.env, now =
   }
 
   const allowIds = allowedIds(state, env);
-  const gate = twitchMayCommand(event, { broadcasterId: cfg.broadcasterId, allowIds, enabled: true });
   const cmd = parseDeskCommand(event.message?.text ?? "");
   if (!cmd) return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
+  const body = commandBody(cmd);
+  if (!body) return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
+  const gate = twitchMayCommand(event, { broadcasterId: cfg.broadcasterId, allowIds, enabled: true });
 
   if (!gate.ok) {
     await writeTwitchStatus(store, { lastEventAt: now, lastError: `${event.chatter_user_id ?? "unknown"} refused: ${gate.reason}` }, now);
@@ -266,7 +268,7 @@ export async function handleTwitchWebhook(store, req, { env = process.env, now =
   if (!claim.ok) return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
 
   try {
-    const result = await action(store, commandBody(cmd), now);
+    const result = await action(store, body, now);
     // The command already ran. A failure to record its status must not make Twitch redeliver
     // and run it a second time; log it and keep the delivery claimed.
     try {
@@ -298,10 +300,11 @@ export async function handleTwitchWebhook(store, req, { env = process.env, now =
 
 export const TWITCH_SETUP_HELP = [
   "Create a Twitch application at https://dev.twitch.tv/console/apps.",
-  "Set the OAuth redirect URL to the site that will authorize the bot, for example https://cyber-live-desk.netlify.app/.",
+  "Set the OAuth redirect URL to your Vercel deployment, e.g. https://cyber-live-desk.vercel.app/.",
   "Generate user tokens with the scopes user:read:chat user:bot channel:bot.",
-  "Add TWITCH_WEBHOOK_SECRET and TWITCH_BROADCASTER_USER_ID in Netlify environment variables. Optional: TWITCH_ALLOWED_USER_IDS, TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET, TWITCH_EVENTSUB_CALLBACK.",
-  "Create the channel.chat.message EventSub webhook subscription with callback https://cyber-live-desk.netlify.app/api/twitch/eventsub.",
+  "Add TWITCH_WEBHOOK_SECRET and TWITCH_BROADCASTER_USER_ID in Vercel environment variables. Optional: TWITCH_ALLOWED_USER_IDS, TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET, TWITCH_EVENTSUB_CALLBACK.",
+  "Create the channel.chat.message EventSub webhook subscription with callback https://cyber-live-desk.vercel.app/api/twitch/eventsub.",
+  "Enable Twitch chat control in the controller Settings tab (twitchChatEnabled must be on).",
 ];
 
 // Netlify makes a function out of every file in netlify/functions. This module is imported by

@@ -5,6 +5,7 @@
 
 export {
   parseDeskCommand,
+  commandText,
   parsePollSpec,
   validatePollDraft,
   parseAllowIds,

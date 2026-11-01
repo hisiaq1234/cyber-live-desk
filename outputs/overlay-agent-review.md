@@ -5,7 +5,7 @@
 
 ## Yes — this is being built for Swae
 
-The preview now defaults to **16:9 landscape** for Twitch through Swae, and the controller describes `/desk` as a Swae Browser Widget/Web Page layer. The same public `/desk` route remains distinct from `/control`; the private research brief, microphone controls, and operator notes are not rendered on the public overlay.
+The live production deployment defaults to **16:9 landscape** for Twitch through Swae, and the controller describes `/desk` as a Swae Browser Widget/Web Page layer. The same public `/desk` route remains distinct from `/control`; the private research brief, microphone controls, and operator notes are not rendered on the public overlay.
 
 ## What is implemented
 
@@ -35,4 +35,8 @@ Undated Search results can help with context but do not count as proof of freshn
 
 The latest `node --test` run passed **153 / 153 runner-counted items** (152 explicit tests plus one Node file-discovery item for `api/test.mjs`). Changed JavaScript modules passed `node --check`, and `git diff --check` is clean.
 
-Commit `567167a` is pushed to `feat/gemini-enrichment-auto-research`; its Vercel preview is **Ready** at [the deployed `/desk` overlay](https://cyber-live-desk-4ats8g0yk-crid.vercel.app/desk), and the orb was confirmed present in the rendered page. This is a branch preview; the stable production deployment on `main` was not changed. The actual Swae scene still needs a private on-device check for widget crop and audio capture.
+The initial branch-preview verification used commit `567167a` at [the deployed `/desk` preview](https://cyber-live-desk-4ats8g0yk-crid.vercel.app/desk). That branch was subsequently merged to production.
+
+### Production promotion (1 November 2026)
+
+Commit `3078ec7` is merged into `main`, and Vercel reports the production deployment **Ready**. [Open the live `/desk` overlay](https://cyber-live-desk.vercel.app/desk); the orb is present. [Open the private `/control` page](https://cyber-live-desk.vercel.app/control); it requires the operator token. The actual Swae scene still needs a private on-device check for widget crop and audio capture.

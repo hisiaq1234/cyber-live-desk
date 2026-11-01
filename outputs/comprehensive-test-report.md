@@ -29,7 +29,7 @@ The latest full run reported **153 passed, 0 failed, 0 cancelled, 0 skipped, and
 
 ## Swae-focused behavior
 
-The target is a **landscape 16:9 Twitch stream through Swae**. The `/control` preview now opens in landscape and labels the public `/desk` URL as a Swae Browser Widget/Web Page layer. The public viewer overlay remains separate from the private controller.
+The target is a **landscape 16:9 Twitch stream through Swae**. The `/control` controller now opens in landscape and labels the public `/desk` URL as a Swae Browser Widget/Web Page layer. The public viewer overlay remains separate from the private controller.
 
 The private research brief runs only when the operator requests it from `/control`. It combines dated Google News RSS items with Gemini Google Search grounding, exposes source links and freshness/corroboration limits, separates reporting from inference, and falls back to a “thin” warning when current dated evidence or actual grounded Search results are missing. Topic and angle are editable, including a focused `desk deeper <angle>` command. “Read aloud” uses browser speech synthesis on the controller only. Research is not sent to Swae chat or the viewer overlay.
 
@@ -47,16 +47,16 @@ Google News RSS is used as a public dated source. **Gemini Google Search groundi
 
 | Check | Result | Notes |
 |---|---|---|
-| Node test runner | **PASS** | 153 pass, 0 fail; output retained in `.work/test-output.txt` |
-| Changed-module syntax | **PASS** | `node --check` passed on the changed API, controller, parser, helper, and test modules |
-| Diff whitespace | **PASS** | `git diff --check` reported no errors after report cleanup |
+| Node test runner (post-merge) | **PASS** | Commit `3078ec7`; 153 pass, 0 fail, 0 skipped, in 15.11 seconds; run output was verified before push |
+| JavaScript syntax | **PASS** | `node --check` passed on all 32 `.js`/`.mjs` files under `api/`, `public/`, and `tests/` |
+| Git whitespace check | **PASS** | `git diff --check` reported no errors after the merge |
 | Swae app / iPhone runtime | **NOT RUN** | Browser-layer capture, layout, and real on-device voice behavior still need a private Swae test |
 | YouTube playback / broadcast rights | **NOT VERIFIED** | The project only generates the official player link; it does not grant music rights or guarantee Swae audio capture |
-| Vercel feature preview | **READY** | Commit `567167a`; [open the deployed overlay preview](https://cyber-live-desk-4ats8g0yk-crid.vercel.app/desk). The stable production deployment on `main` was not changed. |
+| Vercel production | **READY** | Feature merge `3078ec7` is on `main`; Vercel reports production Ready. [Open the production overlay](https://cyber-live-desk.vercel.app/desk). The orb is visible; `/control` loads the operator-token screen. An actual Swae device test remains outstanding. |
 
 ## Current source changes
 
-The current working delta contains **9 modified tracked source files and 8 new source/test files**, plus the three report/chart files. Local `.work` and `.manus` artifacts are excluded from the Git handoff.
+The feature work is merged into `main` as commit `3078ec7`. The production merge contains **28 changed files, 2,048 insertions, and 106 deletions**, including the report and chart deliverables.
 
 | File | Purpose |
 |---|---|
@@ -78,7 +78,7 @@ The current working delta contains **9 modified tracked source files and 8 new s
 | `tests/youtube-playlist.test.mjs` | Playlist URL and rejection tests |
 | `tests/sound-orb.test.mjs` | Regression tests for playback, mute, buffering/end, and cleanup |
 
-Earlier overlay/audio and keyboard fixes remain in the branch and are covered by their tests; they are not part of the current working-tree delta.
+Earlier overlay/audio and keyboard fixes are included in the production merge and covered by their tests.
 
 ## Operator flow
 

@@ -4,9 +4,10 @@
 //   GET /api/x/feed?mode=trends&woeid=23424908   trending topics (default WOEID = Nigeria)
 //   GET /api/x/feed?mode=following&userId=123   tweets from people the user follows
 //   GET /api/x/feed?mode=for-you&userId=123     closest available: home timeline
-// Env: X_BEARER_TOKEN (required) — set in Netlify site environment variables, never in this file.
+// Env: X_BEARER_TOKEN (required for app-only auth) — set in Vercel environment variables.
+// Also accepts X_ACCESS_TOKEN as a fallback alias (older env var name).
 
-export const config = { path: "/api/x/feed" };
+export const config = { runtime: "nodejs" };
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -14,7 +15,8 @@ const json = (data, status = 200) =>
     headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" },
   });
 
-const bearer = () => process.env.X_BEARER_TOKEN;
+// Accept either name — X_BEARER_TOKEN is the correct one for app-only auth
+const bearer = () => process.env.X_BEARER_TOKEN || process.env.X_ACCESS_TOKEN;
 
 const xFetch = async (path) => {
   const token = bearer();

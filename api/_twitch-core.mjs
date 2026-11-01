@@ -298,10 +298,11 @@ export async function handleTwitchWebhook(store, req, { env = process.env, now =
 
 export const TWITCH_SETUP_HELP = [
   "Create a Twitch application at https://dev.twitch.tv/console/apps.",
-  "Set the OAuth redirect URL to the site that will authorize the bot, for example https://cyber-live-desk.netlify.app/.",
+  "Set the OAuth redirect URL to your Vercel deployment, e.g. https://cyber-live-desk.vercel.app/.",
   "Generate user tokens with the scopes user:read:chat user:bot channel:bot.",
-  "Add TWITCH_WEBHOOK_SECRET and TWITCH_BROADCASTER_USER_ID in Netlify environment variables. Optional: TWITCH_ALLOWED_USER_IDS, TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET, TWITCH_EVENTSUB_CALLBACK.",
-  "Create the channel.chat.message EventSub webhook subscription with callback https://cyber-live-desk.netlify.app/api/twitch/eventsub.",
+  "Add TWITCH_WEBHOOK_SECRET and TWITCH_BROADCASTER_USER_ID in Vercel environment variables. Optional: TWITCH_ALLOWED_USER_IDS, TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET, TWITCH_EVENTSUB_CALLBACK.",
+  "Create the channel.chat.message EventSub webhook subscription with callback https://cyber-live-desk.vercel.app/api/twitch/eventsub.",
+  "Enable Twitch chat control in the controller Settings tab (twitchChatEnabled must be on).",
 ];
 
 // Netlify makes a function out of every file in netlify/functions. This module is imported by

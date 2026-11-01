@@ -14,11 +14,13 @@
 //                                   desk | poll actions | auto-play | auto-research | bulk-approval |
 //                                   research-approval | twitch-chat | twitch-allow
 //   POST /api/desk/research        operator fetch headlines/trends, or held items with heldOnly
+//   POST /api/desk/brief           operator-only, on-demand evidence brief; never public state
 //   GET  /api/desk/twitch          operator-only Twitch EventSub configuration status
 //
 // Env: DESK_OPERATOR_TOKEN (required). Storage: Vercel KV (via _store.mjs adapter).
 // Optional for research: DESK_FEED_PROXY (a scraping API, your own worker or an RSS-Bridge
 // instance, see proxyFor in the core), DESK_FEED_TIMEOUT_MS and DESK_FEED_BUDGET_MS.
+// Optional for private briefs: GEMINI_API_KEY, BRIEF_MODEL, BRIEF_MAX_AGE_HOURS and BRIEF_X_WOEID.
 // Twitch webhook secrets live in Vercel environment variables, never in this file.
 // Single operator assumed: concurrent writes are last-write-wins, except the auto-play
 // advance, which re-checks the version it read so a race cannot skip a card.
@@ -44,6 +46,7 @@ import {
 } from "./_desk-core.mjs";
 import { twitchStatus } from "./_twitch-core.mjs";
 import { parseDeskCommand, commandBody, commandText } from "./_commands.mjs";
+import { readBrief, runBrief } from "./_brief.mjs";
 
 export const config = { runtime: "nodejs" };
 
@@ -86,6 +89,7 @@ const handler = async (req) => {
         cards: cs.map((c) => ({ ...c, deskIds: DESKS.filter((d) => matchesDesk(c, d.id)).map((d) => d.id) })),
         state,
         counts: queueCounts(cs, state, held.length),
+        brief: await readBrief(s),
         desks: DESKS.map((d) => ({ id: d.id, label: d.label, count: queueOf(cs, d.id).length })),
         feeds: FEEDS.map((f) => ({ id: f.id, label: f.label, category: f.category })),
         research: {
@@ -103,6 +107,9 @@ const handler = async (req) => {
     }
     if (req.method === "GET" && route === "/api/desk/twitch") {
       return json(await twitchStatus(s, await readState(s), { origin: url.origin }));
+    }
+    if (req.method === "POST" && route === "/api/desk/brief") {
+      return json(await runBrief(s, await readBody(req)));
     }
     // Voice endpoint: operator authentication is required above, then speech is limited to
     // an explicit allowlist of supported desk actions.

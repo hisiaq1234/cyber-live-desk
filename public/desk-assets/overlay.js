@@ -10,7 +10,9 @@ import { createCridAudioSync } from "./crid-audio.js";
      anim=slide | fade | none  debug=1   (connection dot, leave off on air)
      x.mode=trends|following   x.userId=      x.jpoll=10–3600
      logo=                     (CRID badge logo URL, falls back to ./crid-logo.png)
-   Add a card type: DeskOverlay.register("my-type", (card, opts) => HTMLElement)  */
+     Add a card type: DeskOverlay.register("my-type", (card, opts) => HTMLElement)  */
+import { createSoundOrbSync } from "./sound-orb.js";
+
 (() => {
   "use strict";
 
@@ -159,6 +161,27 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 .crid-v-none { color: #8E8E93; font-size: 0.75em; font-weight: 600; text-transform: uppercase; }
 @keyframes bug-breathe { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.05); } }
 
+/* Mid-left sound orb: compact in silence, expanding only during audible CRID playback. */
+#sound-orb{position:fixed;left:calc(var(--m) + env(safe-area-inset-left,0px));top:54%;z-index:8;
+  width:clamp(28px,4vw,72px);aspect-ratio:1;border-radius:50%;pointer-events:none;
+  display:grid;place-items:center;opacity:.76;transform:translate3d(0,-50%,0) scale(.92);
+  filter:drop-shadow(0 8px 18px rgba(0,0,0,.48));
+  transition:width .42s cubic-bezier(.2,.85,.25,1),opacity .35s ease,transform .42s cubic-bezier(.2,.85,.25,1)}
+#sound-orb::before{content:"";position:absolute;inset:0;border-radius:50%;
+  background:radial-gradient(circle at 31% 24%,rgba(220,226,240,.22),transparent 18%),
+    radial-gradient(circle at 42% 38%,#242a35 0,#11141b 45%,#07090e 78%);
+  border:1px solid rgba(112,127,153,.25);box-shadow:inset 0 2px 7px rgba(225,235,255,.12),inset 0 -7px 16px rgba(0,0,0,.64)}
+#sound-orb::after{content:"";position:absolute;inset:26%;border-radius:50%;
+  background:radial-gradient(circle at 35% 28%,#ff9a9e 0,#ff334d 35%,#9d102d 74%,#4b0c1e 100%);
+  box-shadow:0 0 12px rgba(255,48,74,.58),0 0 26px rgba(255,48,74,.28)}
+#sound-orb .orb-ring{position:absolute;inset:-20%;border:1px solid rgba(255,65,88,.72);border-radius:50%;opacity:0;transform:scale(.78)}
+#sound-orb.is-active{width:clamp(54px,7vw,120px);opacity:1;transform:translate3d(0,-50%,0) scale(1)}
+#sound-orb.is-active::after{animation:orb-core-pulse .9s ease-in-out infinite alternate}
+#sound-orb.is-active .orb-ring{animation:orb-wave 1.65s ease-out infinite}
+#sound-orb.is-active .orb-ring:nth-child(2){animation-delay:.82s}
+@keyframes orb-wave{0%{opacity:.76;transform:scale(.76)}100%{opacity:0;transform:scale(1.58)}}
+@keyframes orb-core-pulse{from{filter:brightness(.92);transform:scale(.9)}to{filter:brightness(1.35);transform:scale(1.13)}}
+
 /* Right dock (Top-Right docked) — hard height cap so it never reaches Swae's
    bottom and right-edge controls. Modules cap individually; shadows are kept
    inside each module box. */
@@ -269,6 +292,8 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 @media (prefers-reduced-motion:reduce){
   .card{transform:none;transition:none;animation:none!important}
   #crid-jumbotron,#crid-jumbotron.in{transform:none;transition:none;animation:none!important}
+  #sound-orb,#sound-orb.is-active{transition:none;transform:translateY(-50%)}
+  #sound-orb.is-active::after,#sound-orb.is-active .orb-ring{animation:none!important}
   .opt,.fill{transition:none}
   .opt.lead{animation:none!important}
   .dot{animation:none}
@@ -452,6 +477,11 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
   const syncCridAudio = createCridAudioSync(cridAudio, (error) => {
     console.warn("CRID audio could not start. Browser autoplay policy or the audio URL may have blocked playback.", error);
   });
+  const soundOrb = h("div", { id: "sound-orb", "aria-hidden": "true" },
+    h("span", { class: "orb-ring" }), h("span", { class: "orb-ring" }), h("span", { class: "orb-core" }));
+  root.append(soundOrb);
+  const disposeSoundOrb = createSoundOrbSync(cridAudio, soundOrb);
+  window.addEventListener("pagehide", disposeSoundOrb, { once: true });
 
   const dockRight = h("div", { id: "dock-right" });
   root.append(dockRight);

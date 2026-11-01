@@ -1,28 +1,38 @@
-# Cyber Live Desk overlay/agent review
+# Cyber Live Desk — Swae overlay and private operator review
 
-**Reviewed:** 1 November 2026
-**Scope:** Compared the corrected Gemini checklist with the live project files; used five independent read-only code reviewers. Changes were applied in place, without replacing the project architecture.
+**Updated:** 1 November 2026
+**Target:** Landscape 16:9 Twitch stream through Swae; `/control` is the private operator surface and `/desk` is the public viewer overlay.
 
-## What was fixed
+## Yes — this is being built for Swae
 
-- **CRID audio:** Kept the server-authoritative state and existing audio synchronizer. Added HTTPS-only source validation and fixed a backend bug where a mute-only action also toggled playback. The public overlay uses one persistent media element, clears old sources, respects mute/play state, avoids restarting ended audio on unrelated updates, and catches autoplay failures.
-- **Overlay motion and polling:** Made `fade` truly opacity-only, added short card/dock arrival motion, changed poll fills to transforms, and added measured request-latency/reconnect feedback. A state fetch now aborts after 12 seconds so a hung request can reach the existing retry/backoff path. Reduced-motion settings now suppress the new animation plus CRID breathing and poll-leader pulses.
-- **Controller voice and keyboard:** Added one-utterance, button-initiated speech recognition with visible status, cancellation, and stop-on-hidden behavior. The UI discloses that the browser’s recognition provider may process microphone audio. Requests continue through the existing authenticated API helper; the inaccurate comment describing `/api/desk/voice` as public/tokenless was corrected. Ctrl+Shift+Right/Left/Space map to next/previous/toggle hold; shortcuts start off, can be enabled per tab, and are ignored while typing, composing, hidden, or using an open sheet.
-- **Command safety:** Aligned the API and browser parser copies. The existing `research`/`refresh` aliases are recognized but have no action mapping; Twitch now rejects unsupported parsed commands before dispatch rather than passing an undefined action. This does **not** run a research job from chat or voice.
+The preview now defaults to **16:9 landscape** for Twitch through Swae, and the controller describes `/desk` as a Swae Browser Widget/Web Page layer. The same public `/desk` route remains distinct from `/control`; the private research brief, microphone controls, and operator notes are not rendered on the public overlay.
 
-## Verification
+## What is implemented
 
-`node --test`: **134 passed, 0 failed**. Node syntax checks: **24 JavaScript files passed**. `git diff --check`: clean. No deployment or Git commit was made. A browser/OBS playback session was not available for runtime verification.
+- **Fresh, on-demand research:** A requested topic is checked against dated Google News RSS material and Gemini Google Search grounding. The controller displays evidence links, dates, grounding links, the freshness window, balanced analysis, counterpoint, and what could change the assessment. It refuses to present output as verified when dated evidence or actual Search grounding is missing.
+- **Personalized expansion:** A topic can have an optional angle, such as local creator impact, who benefits, or what is disputed. The operator can say `desk research <topic>` and then `desk deeper <angle>`, or enter both in `/control`. Expansion is bounded and avoids repeating covered points.
+- **Private read-aloud:** `desk read` uses speech synthesis on the controller device; `desk quiet` stops it. It is never sent to Swae chat or the viewer overlay.
+- **Push-to-talk, not stream listening:** Voice recognition starts only after the operator presses Listen and is one-shot. It listens to the controller device’s microphone, not the broadcast audio from Swae. Use a separate device while streaming or type the topic; the app does not run an always-on microphone.
+- **Optional X, off by default:** X trend lookup happens only when explicitly enabled for that individual brief request. TikTok is not scraped or claimed as a live feed; TikTok Creative Center remains a manual check.
+- **Official YouTube playlist player:** Music Desk accepts a public YouTube/YouTube Music playlist link and generates a standard visible YouTube player URL for a Swae web-page layer. It keeps player controls, does not request autoplay, and does not extract raw audio. The creator must still ensure rights for any music broadcast.
+- **Earlier overlay reliability changes:** CRID audio state/mute behavior, reduced-motion-aware transitions, polling timeout/latency status, and opt-in keyboard shortcuts remain covered by the existing regression suite.
+- **Animated sound orb:** A compact orb sits mid-left in the landscape overlay. Red and black lead, with a faint blue-black sheen. It expands and pulses during actual CRID audio playback, then contracts when muted, waiting, ended, or stopped. It follows audio-player events—not microphone input or waveform amplitude—and respects reduced-motion preferences.
 
-## Remaining manual checks / separate follow-ups
+## Cost and source limits
 
-Test audio in the actual OBS/browser-source target: autoplay policy depends on that browsing context, and amplitude analysis cannot be assumed because remote media may not grant CORS. No AudioContext/DSP layer or invented fallback media URL was added. The `research`/`refresh` aliases intentionally remain non-executable until their authorization, runtime budget, and desired behavior are specified.
+Google News RSS is a public dated input. Gemini Search grounding is **not guaranteed free**: Google requires a paid-tier project for grounding; quota may apply and additional use can be billed. The app discloses this before use. X requires an available API credential and may have access costs, so it is opt-in. No unlimited-free live data source is promised.
 
-The reviewers also found separate operational risks not changed in this focused pass: the controller’s chat-vote tally lacks a poll-generation ID (a delayed tally could affect a later poll), Twitch IRC has no connection-open timeout, and EventSub dedupe keys have no TTL. Review these as a separate reliability task before increasing chat volume.
+Undated Search results can help with context but do not count as proof of freshness. A live X snapshot is only a platform conversation signal, not evidence of why a term is trending or that it is trending on TikTok. The brief is a research aid, not a substitute for checking linked sources before repeating a claim.
 
-## Files changed or added
+## How to use it in Swae
 
-- Controller: `public/desk-assets/control.js`, `public/desk-assets/desk-hotkeys.js`
-- Overlay/audio: `public/desk-assets/overlay.js`, `public/desk-assets/crid-audio.js`
-- API/commands: `api/_desk-core.mjs`, `api/desk.mjs`, `api/_commands.mjs`, `api/_twitch-core.mjs`, `public/desk-assets/_commands.mjs`
-- Tests: `tests/desk-core.test.mjs`, `tests/desk-commands.test.mjs`, `tests/desk-hotkeys.test.mjs`, `tests/overlay-audio.test.mjs`
+1. Open the authenticated `/control` page. In **Private research brief**, enter a topic and optional angle, then choose **Research topic**. For voice, press **Listen** and say `desk research <topic>`; the control device’s microphone is the one used.
+2. Ask for more detail with **Go deeper** or `desk deeper <angle>`. Review the freshness warning, dated headlines, grounding links, and counterpoint. Use **Read aloud** for private listening on the controller.
+3. Copy the public `/desk` URL and add it as a Browser Widget/Web Page layer in the Swae landscape Twitch scene. To add a playlist player, paste a public YouTube playlist URL into the YouTube section of Music Desk, copy the generated player URL, and add it as a separate visible web-page layer.
+4. Keep the YouTube player visible and interactive. Test layout/audio in Swae privately; the generated URL does not guarantee the platform captures player audio or grant music rights.
+
+## Verification and remaining checks
+
+The latest `node --test` run passed **153 / 153 runner-counted items** (152 explicit tests plus one Node file-discovery item for `api/test.mjs`). Changed JavaScript modules passed `node --check`, and `git diff --check` is clean.
+
+The browser page and actual Swae scene have **not** been manually tested for widget crop, audio capture, or mobile behavior; those still need a private on-device check. This feature branch is being pushed so Vercel can create its normal Git-triggered preview deployment.

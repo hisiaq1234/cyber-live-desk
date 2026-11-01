@@ -253,9 +253,11 @@ export async function handleTwitchWebhook(store, req, { env = process.env, now =
   }
 
   const allowIds = allowedIds(state, env);
-  const gate = twitchMayCommand(event, { broadcasterId: cfg.broadcasterId, allowIds, enabled: true });
   const cmd = parseDeskCommand(event.message?.text ?? "");
   if (!cmd) return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
+  const body = commandBody(cmd);
+  if (!body) return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
+  const gate = twitchMayCommand(event, { broadcasterId: cfg.broadcasterId, allowIds, enabled: true });
 
   if (!gate.ok) {
     await writeTwitchStatus(store, { lastEventAt: now, lastError: `${event.chatter_user_id ?? "unknown"} refused: ${gate.reason}` }, now);
@@ -266,8 +268,6 @@ export async function handleTwitchWebhook(store, req, { env = process.env, now =
   if (!claim.ok) return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
 
   try {
-    const body = commandBody(cmd);
-    if (!body) throw new HttpError(422, "This recognized command does not have a supported action yet.");
     const result = await action(store, body, now);
     // The command already ran. A failure to record its status must not make Twitch redeliver
     // and run it a second time; log it and keep the delivery claimed.

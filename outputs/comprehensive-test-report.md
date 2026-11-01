@@ -1,65 +1,90 @@
-# Cyber Live Desk — Comprehensive Test & Change Report
+# Cyber Live Desk — Test, Swae Integration & Change Report
 
-**Run date:** 1 November 2026
+**Updated:** 1 November 2026
 **Project:** `cyber-live-desk`
-**Runtime:** Node.js v24.17.0 on Windows
-**Test command:** `node --test` (the repository’s `npm test` script runs the same command)
+**Test command:** `node --test` (`npm test` invokes the same command)
+**Runtime:** Node.js 24 on Windows
 
 ![Node test-run distribution by discovered file](test-suite-counts.svg)
 
 ## Executive result
 
-The final Node run reported **134 passed, 0 failed, 0 cancelled, 0 skipped, and 0 todo** in **15,068.8129 ms** (about 15.1 seconds). This is a 100% pass rate among the runner-counted items. The result includes **133 explicit `test()` cases plus one file-level discovery for `api/test.mjs`**. That API route module exports a response handler but contains no test assertion; Node counts the discovered `test.mjs` file as one passing item. The caveat is included so the 134 figure is not overstated as 134 assertions.
+The latest full run reported **153 passed, 0 failed, 0 cancelled, 0 skipped, and 0 todo** in **15.11 seconds**. That is a 100% pass rate among runner-counted items. The total consists of **152 explicit `test()` cases plus one file-level discovery for `api/test.mjs`**. That API route module contains no test assertion; Node counts it as one passing discovered file. The distinction prevents overstating the result as 153 assertions.
 
-### Test counts by file
-
-| Test file | Runner-counted items | Main coverage |
+| Test file | Runner-counted items | Coverage |
 |---|---:|---|
-| `api/test.mjs`* | 1 | Node file-load discovery; no `test()` assertion in this API route module |
-| `tests/desk-bulk-research.test.mjs` | 12 | Research approvals, feed ingestion, queue capacity, held items, and source handling |
-| `tests/desk-commands.test.mjs` | 9 | Command grammar, poll parsing/validation, authorization helper, and API/browser parser parity; unsupported research aliases map to no action |
-| `tests/desk-core.test.mjs` | 94 | Desk actions, state/version projection, auto-play, research queue, CRID behavior and audio source/mute/play semantics |
-| `tests/desk-hotkeys.test.mjs` | 2 | Explicit modifier mapping plus disabled-by-default, typing, IME, visibility, repeat and modal safeguards |
-| `tests/overlay-audio.test.mjs` | 5 | Persistent audio synchronization, source cleanup, mute/play updates, ended behavior, and autoplay rejection handling |
-| `tests/twitch-eventsub.test.mjs` | 11 | Signature verification, broadcaster/allowlist gate, deduplication, status, and command execution path |
-| **Total reported by Node** | **134** | **133 explicit tests + 1 file-level module discovery** |
+| `api/test.mjs`* | 1 | Node file-load discovery; no assertion in this route module |
+| `tests/brief.test.mjs` | 6 | Freshness parsing, Gemini grounding metadata, private brief composition, citation/source handling |
+| `tests/brief-guards.test.mjs` | 3 | X opt-in, required actual Search grounding, focused deeper research |
+| `tests/desk-bulk-research.test.mjs` | 12 | Research approvals, ingestion, capacity, held items, source handling |
+| `tests/desk-commands.test.mjs` | 9 | Command grammar, parser parity, poll validation, private deeper-angle parsing |
+| `tests/desk-core.test.mjs` | 94 | Desk actions, state projection, research queue, CRID audio/mute/play behavior |
+| `tests/desk-hotkeys.test.mjs` | 2 | Explicit shortcut mapping and safeguards |
+| `tests/overlay-audio.test.mjs` | 5 | Audio synchronization, mute/source cleanup, ended state, autoplay rejection |
+| `tests/sound-orb.test.mjs` | 4 | Compact/active state, mute/volume, buffering/end, listener cleanup |
+| `tests/twitch-eventsub.test.mjs` | 11 | Signature, authorization, deduplication, command path |
+| `tests/x-feed.test.mjs` | 3 | Official X v2 endpoint, parameter bounds, token/input validation |
+| `tests/youtube-playlist.test.mjs` | 3 | Official playlist URL generation and unsafe-source rejection |
+| **Total reported by Node** | **153** | **152 explicit tests + 1 route-module discovery** |
 
-## Validation beyond unit tests
+## Swae-focused behavior
+
+The target is a **landscape 16:9 Twitch stream through Swae**. The `/control` preview now opens in landscape and labels the public `/desk` URL as a Swae Browser Widget/Web Page layer. The public viewer overlay remains separate from the private controller.
+
+The private research brief runs only when the operator requests it from `/control`. It combines dated Google News RSS items with Gemini Google Search grounding, exposes source links and freshness/corroboration limits, separates reporting from inference, and falls back to a “thin” warning when current dated evidence or actual grounded Search results are missing. Topic and angle are editable, including a focused `desk deeper <angle>` command. “Read aloud” uses browser speech synthesis on the controller only. Research is not sent to Swae chat or the viewer overlay.
+
+X is now **off by default** and only queried when the operator enables its one-request checkbox. TikTok is not scraped or represented as a direct feed; the official Creative Center is a manual verification link. Push-to-talk listens on the controller device only after pressing the button; it does not ingest Swae’s broadcast audio or listen continuously. For an on-phone stream, use a separate controller device or type the research topic.
+
+The Music Desk accepts a public YouTube/YouTube Music playlist URL and creates a standard official, visible playlist-player URL for a Swae web-page layer. The helper rejects non-YouTube, non-HTTPS, credentialed, unusual-port, and malformed URLs. It does not scrape YouTube or extract audio, and it does not request autoplay. Keep the YouTube player visible and interactive, privately test Swae capture, and stream only music you have rights to broadcast.
+
+The public overlay now includes a mid-left decorative orb: a red core inside a mostly black shell with a faint blue-black sheen. It expands and pulses only while CRID audio is actually playing, then contracts when muted, buffering, ended, or stopped. It follows the audio player's events, not microphone input, and does not claim to measure waveform amplitude.
+
+### Cost and access limits
+
+Google News RSS is used as a public dated source. **Gemini Google Search grounding is not guaranteed to be free:** Google requires a paid-tier project for grounding; included quota may apply, and excess usage can be billed. The controller discloses this before use. X access may also require a configured API credential and may incur provider cost, which is why X is opt-in per request. There is no honest unlimited-free guarantee for the grounded workflow.
+
+## Validation
 
 | Check | Result | Notes |
 |---|---|---|
-| Node test runner | **PASS** | 134 pass, 0 fail; exact summary retained in `.work/test-output.txt` |
-| JavaScript syntax | **PASS** | `node --check` passed across 24 `.js`/`.mjs` files in `api`, `public`, `netlify`, and `tests` |
-| Diff whitespace | **PASS** | `git diff --check` produced no errors |
-| Browser/OBS runtime | **NOT RUN** | No connected browser session was available for microphone, OBS/browser-source autoplay, or visual layout testing |
-| Deployment / commit | **NOT DONE** | Changes remain local and uncommitted |
+| Node test runner | **PASS** | 153 pass, 0 fail; output retained in `.work/test-output.txt` |
+| Changed-module syntax | **PASS** | `node --check` passed on the changed API, controller, parser, helper, and test modules |
+| Diff whitespace | **PASS** | `git diff --check` reported no errors after report cleanup |
+| Swae app / iPhone runtime | **NOT RUN** | Browser-layer capture, layout, and real on-device voice behavior still need a private Swae test |
+| YouTube playback / broadcast rights | **NOT VERIFIED** | The project only generates the official player link; it does not grant music rights or guarantee Swae audio capture |
+| Current follow-up deployment | **PENDING PUSH** | This feature branch is being pushed; Vercel should create its normal Git-triggered preview deployment |
 
-## File modifications
+## Current source changes
 
-There are **9 tracked files modified** and **4 new source/test files**. The tracked diff reports **300 insertions and 42 deletions**; this count excludes untracked additions and output artifacts. `api/_commands.mjs` already had a one-line `research`/`refresh` parser change in the working tree before this review; the change inventory below describes its final safe behavior, not an assumption that every line originated in this task.
+The current working delta contains **9 modified tracked source files and 8 new source/test files**, plus the three report/chart files. Local `.work` and `.manus` artifacts are excluded from the Git handoff.
 
-| File | Status | Change / purpose |
-|---|---|---|
-| `api/_desk-core.mjs` | Modified | Validates CRID sources as HTTPS without embedded credentials; tracks a distinct audio mute state; mute/source-only updates preserve playback while a play action still toggles explicitly. |
-| `api/desk.mjs` | Modified | Loads the overlay as a module for its audio helper; clarifies that the voice route remains behind operator authentication. |
-| `api/_commands.mjs` | Modified | Preserves the existing server-side `research`/`refresh` parse alias while making unsupported verbs map to `null`, not `{ action: undefined }`. |
-| `public/desk-assets/_commands.mjs` | Modified | Aligns the browser parser/mapping copy with the API copy and the same unsupported-command behavior. |
-| `api/_twitch-core.mjs` | Modified | Rejects a recognized command with no implemented action before invoking `runAction`. |
-| `public/desk-assets/control.js` | Modified | Adds a one-utterance push-to-talk panel with status, cancel and hidden-page stop; discloses speech-provider processing; adds opt-in per-tab keyboard shortcuts; corrects the CRID mute control to mute/unmute independently. |
-| `public/desk-assets/overlay.js` | Modified | Connects the persistent CRID audio sync, removes obsolete X iframe configuration, distinguishes fade/slide/none, animates poll fill via transform, adds request-latency/reconnect feedback, aborts hung state polls after 12 seconds, and respects reduced motion. |
-| `tests/desk-core.test.mjs` | Modified | Adds CRID audio URL/mute-state coverage and verifies public state includes the mute flag. |
-| `tests/desk-commands.test.mjs` | Modified | Adds API/browser parser parity and unsupported research-alias mapping assertions. |
-| `public/desk-assets/crid-audio.js` | Added | Small persistent media-element synchronizer for overlay CRID audio state. |
-| `public/desk-assets/desk-hotkeys.js` | Added | Testable Ctrl+Shift action mapper with explicit opt-in and focus/visibility/composition guards. |
-| `tests/desk-hotkeys.test.mjs` | Added | Two tests for valid shortcuts and safeguards. |
-| `tests/overlay-audio.test.mjs` | Added | Five tests for audio state synchronization and media errors. |
+| File | Purpose |
+|---|---|
+| `api/_brief.mjs` | Private on-demand research, dated-source filtering, Gemini Search grounding, citations, freshness guard, concurrency/cooldown, and optional one-shot X snapshot |
+| `api/desk.mjs` | Authenticated private brief route and controller-state response wiring |
+| `api/x-feed.mjs` | Official X API v2 trend host/schema with bounded parameters |
+| `api/_commands.mjs` | Local research/deeper command grammar and display labels; private verbs have no Twitch action mapping |
+| `api/_twitch-core.mjs` | Rejects non-actionable private research commands before Twitch dispatch |
+| `public/desk-assets/_commands.mjs` | Browser parser parity for the focused deeper command |
+| `public/desk-assets/desk-commands.js` | Exposes the parser to the local controller |
+| `public/desk-assets/control.js` | Private research/focus/X controls, one-shot local voice/read-aloud, Swae/Twitch landscape preview, and visible YouTube playlist workflow |
+| `public/desk-assets/overlay.js` | Mid-left animated red/black orb tied to actual CRID playback, with reduced-motion support |
+| `public/desk-assets/sound-orb.js` | Testable audio-event to compact/active orb state synchronizer |
+| `public/desk-assets/youtube-playlist.mjs` | Allowlisted HTTPS playlist-to-official-player URL helper |
+| `tests/desk-commands.test.mjs` | Command parity and deeper-angle regression coverage |
+| `tests/brief.test.mjs` | Research-service integration tests |
+| `tests/brief-guards.test.mjs` | X opt-in, Search-grounding, and deeper-focus safeguards |
+| `tests/x-feed.test.mjs` | Official X API contract and validation tests |
+| `tests/youtube-playlist.test.mjs` | Playlist URL and rejection tests |
+| `tests/sound-orb.test.mjs` | Regression tests for playback, mute, buffering/end, and cleanup |
 
-The complete feature audit is also available in [the overlay/agent review](overlay-agent-review.md).
+Earlier overlay/audio and keyboard fixes remain in the branch and are covered by their tests; they are not part of the current working-tree delta.
 
-## Interpretation and follow-up
+## Operator flow
 
-The passing tests verify server state handling, parsers, the extracted audio/hotkey helpers, and existing Twitch protections. They do **not** establish that every browser supports `SpeechRecognition`, that remote audio allows Web Audio analysis, or that OBS will permit autoplay in its source context. Audio should be tested manually in the actual OBS/browser-source configuration. No AudioContext analyser, fabricated fallback audio URL, or broad speech autocorrection was added.
+1. In `/control`, enter a topic and optionally an angle, then run research once. Say **“desk research [topic]”** only while push-to-talk is active; this uses the controller device’s microphone, not Swae’s stream audio.
+2. Enter or say **“desk deeper [angle]”** to expand one step, or use refresh. Review the date window, sources, grounded links, warnings, and counterpoint before using any claim.
+3. Use **“desk read”** to read a sufficiently current, source-linked brief privately on the controller; **“desk quiet”** stops it.
+4. For the public Swae landscape Twitch scene, copy the `/desk` URL and add it as a Browser Widget/Web Page layer. For a playlist, use the YouTube section in Music Desk, copy the generated official player URL, and add that URL as its own visible web-page layer.
 
-One test-accounting improvement remains: Node auto-discovers `api/test.mjs` as a test because of its filename, even though it is an API route module with no assertions. Consider renaming that route or narrowing the test script to `node --test tests` in a separate change; this would make future “passed tests” counts correspond only to assertion-bearing test files.
-
-Separate reliability follow-ups identified during code review (not included in this change set): tag coalesced chat-vote writes with a poll-generation ID; add a connection-open timeout for Twitch IRC; and expire EventSub deduplication claims. No deployment or commit was made.
+*Accounting note:* Node currently discovers `api/test.mjs` because of its filename. Renaming that API route or narrowing the test script to the explicit `tests` directory would make future pass totals correspond only to assertion-bearing files.

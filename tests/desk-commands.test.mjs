@@ -9,36 +9,36 @@ import { commandBody as serverCommandBody, commandText as serverCommandText, par
 import { commandBody as publicCommandBody, commandText as publicCommandText, parseDeskCommand as parsePublicDeskCommand } from "../public/desk-assets/_commands.mjs";
 
 test("every shape the streamer actually types is a command", () => {
-  for (const line of ["desk next", "desknext", "!desknext", "!desk next", "DESK_NEXT", "desk  next", "/desk next"]) {
+  for (const line of ["crid next", "cridnext", "!cridnext", "!crid next", "CRID_NEXT", "crid  next", "/crid next"]) {
     assert.deepEqual(parseDeskCommand(line), { verb: "next" }, line);
   }
-  assert.deepEqual(parseDeskCommand("desk prev"), { verb: "prev" });
-  assert.deepEqual(parseDeskCommand("deskprevious"), { verb: "prev" }, "previous folds into prev");
-  assert.deepEqual(parseDeskCommand("desk hold"), { verb: "hold" });
-  assert.deepEqual(parseDeskCommand("desk hide"), { verb: "hide" });
-  assert.deepEqual(parseDeskCommand("desk stop"), { verb: "stop" });
+  assert.deepEqual(parseDeskCommand("crid prev"), { verb: "prev" });
+  assert.deepEqual(parseDeskCommand("cridprevious"), { verb: "prev" }, "previous folds into prev");
+  assert.deepEqual(parseDeskCommand("crid hold"), { verb: "hold" });
+  assert.deepEqual(parseDeskCommand("crid hide"), { verb: "hide" });
+  assert.deepEqual(parseDeskCommand("crid stop"), { verb: "stop" });
 });
 
 test("a desk name becomes a desk command, and junk does not become one", () => {
-  assert.deepEqual(parseDeskCommand("desk music"), { verb: "desk", desk: "music" });
-  assert.deepEqual(parseDeskCommand("desk streamers"), { verb: "desk", desk: "streamers" });
-  assert.deepEqual(parseDeskCommand("deskall"), { verb: "desk", desk: "all" }, "all is how you leave a desk");
-  for (const line of ["next", "desk next after this one", "what desk next", "desk", "desk music later please", "desks next"]) {
+  assert.deepEqual(parseDeskCommand("crid music"), { verb: "desk", desk: "music" });
+  assert.deepEqual(parseDeskCommand("crid streamers"), { verb: "desk", desk: "streamers" });
+  assert.deepEqual(parseDeskCommand("cridall"), { verb: "desk", desk: "all" }, "all is how you leave a desk");
+  for (const line of ["next", "crid next after this one", "what desk next", "crid", "crid music later please", "crids next", "desk next", "desk music"]) {
     assert.equal(parseDeskCommand(line), null, `${line} is ordinary chat`);
   }
 });
 
 test("auto is only ever on or off", () => {
-  assert.deepEqual(parseDeskCommand("desk auto on"), { verb: "auto", value: "on" });
-  assert.deepEqual(parseDeskCommand("desk AUTO off"), { verb: "auto", value: "off" });
-  assert.equal(parseDeskCommand("desk auto"), null);
-  assert.equal(parseDeskCommand("desk auto maybe"), null);
+  assert.deepEqual(parseDeskCommand("crid auto on"), { verb: "auto", value: "on" });
+  assert.deepEqual(parseDeskCommand("crid AUTO off"), { verb: "auto", value: "off" });
+  assert.equal(parseDeskCommand("crid auto"), null);
+  assert.equal(parseDeskCommand("crid auto maybe"), null);
 });
 
 test("a poll command takes a question and up to three options", () => {
-  assert.deepEqual(parseDeskCommand("desk poll"), { verb: "poll", question: "", options: ["Yes", "No"] });
-  assert.deepEqual(parseDeskCommand("desk poll Do you stream daily?"), { verb: "poll", question: "Do you stream daily?", options: ["Yes", "No"] });
-  assert.deepEqual(parseDeskCommand("desk poll Which desk?|Music|Creators"), { verb: "poll", question: "Which desk?", options: ["Music", "Creators"] });
+  assert.deepEqual(parseDeskCommand("crid poll"), { verb: "poll", question: "", options: ["Yes", "No"] });
+  assert.deepEqual(parseDeskCommand("crid poll Do you stream daily?"), { verb: "poll", question: "Do you stream daily?", options: ["Yes", "No"] });
+  assert.deepEqual(parseDeskCommand("crid poll Which desk?|Music|Creators"), { verb: "poll", question: "Which desk?", options: ["Music", "Creators"] });
   assert.deepEqual(parsePollSpec("Pick|A|B|C|D").options, ["A", "B", "C"], "never more than three");
   assert.deepEqual(parsePollSpec("One option only|Maybe"), { question: "One option only|Maybe", options: ["Yes", "No"] }, "one option is not a poll");
 });
@@ -77,17 +77,20 @@ test("allowlist ids survive the way a person types them", () => {
 
 test("the help line names the verbs the parser knows", () => {
   for (const verb of ["next", "prev", "hold", "hide", "poll", "auto", "all"]) assert.ok(COMMAND_HELP.includes(verb), verb);
+  assert.ok(COMMAND_HELP.includes("crid "));
+  assert.ok(COMMAND_HELP.includes("queued track"));
 });
 
 test("server and browser parser copies agree; private research verbs never map to a chat action", () => {
   const lines = [
-    "desk next", "desk previous", "desk hold", "desk hide", "desk stop", "desk all",
-    "desk poll Q|A|B", "desk auto on", "desk music", "desk research", "desk research Lagos TikTok trends",
-    "desk deeper", "desk deeper local impact", "desk refresh", "desk read", "desk quiet", "ordinary chat",
+    "crid next", "crid previous", "crid hold", "crid hide", "crid stop", "crid all",
+    "crid poll Q|A|B", "crid auto on", "crid music", "crid music play", "crid music play Burna Boy",
+    "crid music pause", "crid music next", "crid music stop", "crid research", "crid research Lagos TikTok trends",
+    "crid deeper", "crid deeper local impact", "crid refresh", "crid read", "crid quiet", "ordinary chat", "desk next",
   ];
   for (const line of lines) assert.deepEqual(parseServerDeskCommand(line), parsePublicDeskCommand(line), line);
 
-  for (const line of ["desk research", "desk research Lagos TikTok trends", "desk deeper", "desk deeper local impact", "desk refresh", "desk read", "desk quiet"]) {
+  for (const line of ["crid research", "crid research Lagos TikTok trends", "crid deeper", "crid deeper local impact", "crid refresh", "crid read", "crid quiet"]) {
     const serverCommand = parseServerDeskCommand(line);
     assert.ok(serverCommand);
     assert.equal(serverCommandBody(serverCommand), null);
@@ -95,8 +98,13 @@ test("server and browser parser copies agree; private research verbs never map t
     assert.equal(commandText(serverCommand), serverCommandText(serverCommand));
     assert.equal(commandText(serverCommand), publicCommandText(parsePublicDeskCommand(line)));
   }
-  assert.deepEqual(parseServerDeskCommand("desk research Lagos TikTok trends"), { verb: "research", topic: "Lagos TikTok trends" });
-  assert.deepEqual(parseServerDeskCommand("desk deeper local creator impact"), { verb: "deeper", focus: "local creator impact" });
-  assert.equal(parseServerDeskCommand(`desk research ${"x".repeat(121)}`), null, "overlong voice topics are refused, not silently truncated");
-  assert.equal(parseServerDeskCommand(`desk deeper ${"x".repeat(121)}`), null, "overlong focus angles are refused");
+  assert.deepEqual(parseServerDeskCommand("crid research Lagos TikTok trends"), { verb: "research", topic: "Lagos TikTok trends" });
+  assert.deepEqual(parseServerDeskCommand("crid deeper local creator impact"), { verb: "deeper", focus: "local creator impact" });
+  assert.deepEqual(parseServerDeskCommand("crid music play Burna Boy"), { verb: "music", action: "play", query: "Burna Boy" });
+  assert.deepEqual(serverCommandBody(parseServerDeskCommand("crid music play Burna Boy")), { action: "music-play", query: "Burna Boy" });
+  assert.deepEqual(serverCommandBody(parseServerDeskCommand("crid music next")), { action: "music-next" });
+  assert.equal(commandText(parseServerDeskCommand("crid music play Burna Boy")), "crid music play Burna Boy");
+  assert.equal(parseServerDeskCommand(`crid music play ${"x".repeat(121)}`), null, "overlong music queries are refused");
+  assert.equal(parseServerDeskCommand(`crid research ${"x".repeat(121)}`), null, "overlong voice topics are refused, not silently truncated");
+  assert.equal(parseServerDeskCommand(`crid deeper ${"x".repeat(121)}`), null, "overlong focus angles are refused");
 });

@@ -316,12 +316,12 @@ export async function runBrief(store, body = {}, { env = process.env, fetchFn = 
   let covered;
   if (action === "open") {
     topic = clean(body.topic, 120);
-    if (topic.length < 2) throw new HttpError(422, "Say what to research, for example: desk research Lagos TikTok trends.");
+    if (topic.length < 2) throw new HttpError(422, "Say what to research, for example: crid research Lagos TikTok trends.");
     focus = clean(body.focus, 120);
     depth = 1;
     covered = [];
   } else {
-    if (!previous) throw new HttpError(409, "No brief yet. Start one with: desk research <topic>.");
+    if (!previous) throw new HttpError(409, "No brief yet. Start one with: crid research <topic>.");
     topic = clean(previous.topic, 120);
     if (action === "deeper") {
       if (previous.depth >= MAX_DEPTH) throw new HttpError(409, `Already at the deepest level (${MAX_DEPTH}). Start a new topic or refresh.`);

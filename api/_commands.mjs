@@ -4,14 +4,14 @@
 // (netlify/functions/_twitch-core.mjs). Pure JS: no Node imports, no DOM, so the
 // same file runs in both environments.
 
-// "desk" then the verb, glued, spaced, dashed or underscored: desknext, desk next, !desk_next.
+// "crid" then the verb, glued, spaced, dashed or underscored: cridnext, crid next, !crid_next.
 // A message must start with it, so nobody's ordinary chat line becomes a command by accident.
-const COMMAND = /^[!/]?\s*desk[-_ ]*([a-z]+)\b(.*)$/i;
+const COMMAND = /^[!/]?\s*crid[-_ ]*([a-z]+)\b(.*)$/i;
 const NO_ARG = new Set(["next", "prev", "previous", "hold", "hide", "stop", "refresh", "read", "quiet"]);
 const LEAVE_DESK = new Set(["all", "clear"]);
 
 // One command, or null when the line is not a command at all. Trailing words after a verb that
-// takes none (desk next after this one) are refused rather than guessed at: on air, a command
+// takes none (crid next after this one) are refused rather than guessed at: on air, a command
 // that fires when nobody meant it is worse than one that is ignored.
 export function parseDeskCommand(line) {
   const m = String(line ?? "").trim().match(COMMAND);
@@ -28,15 +28,26 @@ export function parseDeskCommand(line) {
     const value = /^(on|off)$/i.test(rest) ? rest.toLowerCase() : null;
     return value ? { verb: "auto", value } : null;
   }
+  if (verb === "music") {
+    // Preserve the existing category filter: "crid music" still selects the Music desk.
+    if (!rest) return { verb: "desk", desk: "music" };
+    const match = rest.match(/^(play|pause|next|stop|off)(?:\s+(.*))?$/i);
+    if (!match) return null;
+    const requested = match[1].toLowerCase();
+    const action = requested === "off" ? "stop" : requested;
+    const query = (match[2] ?? "").trim();
+    if (query.length > 120 || (query && action !== "play")) return null;
+    return { verb: "music", action, ...(query ? { query } : {}) };
+  }
   if (verb === "desk" || rest) return null;
   // Anything else is a desk name. Which names exist is the server's list, so an invented one
   // comes back as a refusal in the log instead of being silently swallowed here.
   return { verb: "desk", desk: verb };
 }
 
-// desk poll                       → the on-air card's question, Yes/No
-// desk poll <question>             → that question, Yes/No
-// desk poll <question>|<a>|<b>[|<c>] → those options (the server takes 2 or 3, 40 chars each)
+// crid poll                       → the on-air card's question, Yes/No
+// crid poll <question>             → that question, Yes/No
+// crid poll <question>|<a>|<b>[|<c>] → those options (the server takes 2 or 3, 40 chars each)
 export function parsePollSpec(rest) {
   const raw = String(rest ?? "").trim();
   if (!raw.includes("|")) return { question: raw.slice(0, 140), options: ["Yes", "No"] };
@@ -83,8 +94,9 @@ export function chatMayCommand(tags, { enabled = false, allowIds = [] } = {}) {
 }
 
 export const COMMAND_HELP =
-  "desk next · desk prev · desk hold · desk hide · desk stop · desk poll <question>|<a>|<b> · " +
-  "desk auto on|off · desk music · desk streamers · desk movies · desk politics · desk business · desk trends · desk all";
+  "crid next · crid prev · crid hold · crid hide · crid stop · crid poll <question>|<a>|<b> · " +
+  "crid auto on|off · crid music · crid music play [queued track] · crid music pause|next|stop · " +
+  "crid streamers · crid movies · crid politics · crid business · crid trends · crid all";
 
 // Maps only implemented commands. Recognized-but-unimplemented verbs must never become
 // `{ action: undefined }`, which obscures rejection at the voice and EventSub boundaries.
@@ -92,18 +104,23 @@ export const commandBody = (cmd) => {
   if (cmd.verb === "poll") return { action: "start-poll", question: cmd.question, options: cmd.options };
   if (cmd.verb === "auto") return { action: "auto-play", value: cmd.value === "on" };
   if (cmd.verb === "desk") return { action: "desk", desk: cmd.desk };
+  if (cmd.verb === "music") {
+    const action = { play: "music-play", pause: "music-pause", next: "music-next", stop: "music-stop" }[cmd.action];
+    return action ? { action, ...(cmd.query ? { query: cmd.query } : {}) } : null;
+  }
   const action = { next: "next", prev: "previous", hold: "hold", hide: "hide", stop: "end-poll" }[cmd.verb];
   return action ? { action } : null;
 };
 
 // Human-readable form of a command, for logs and status displays.
 export const commandText = (cmd) =>
-  cmd.verb === "poll" ? `desk poll ${cmd.question || "(card question)"}`
-    : cmd.verb === "auto" ? `desk auto ${cmd.value}`
-    : cmd.verb === "desk" ? `desk ${cmd.desk}`
-    : cmd.verb === "research" ? `desk research ${cmd.topic ?? ""}`.trim()
-    : cmd.verb === "deeper" ? `desk deeper ${cmd.focus ?? ""}`.trim()
-    : `desk ${cmd.verb}`;
+  cmd.verb === "poll" ? `crid poll ${cmd.question || "(card question)"}`
+    : cmd.verb === "auto" ? `crid auto ${cmd.value}`
+    : cmd.verb === "desk" ? `crid ${cmd.desk}`
+    : cmd.verb === "music" ? `crid music ${cmd.action}${cmd.query ? ` ${cmd.query}` : ""}`
+    : cmd.verb === "research" ? `crid research ${cmd.topic ?? ""}`.trim()
+    : cmd.verb === "deeper" ? `crid deeper ${cmd.focus ?? ""}`.trim()
+    : `crid ${cmd.verb}`;
 
 // Netlify makes a function out of every file in netlify/functions. This module is imported by
 // _twitch-core.mjs and desk-commands.js, so it refuses a direct request instead of half-working.

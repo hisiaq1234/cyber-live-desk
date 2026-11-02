@@ -60,7 +60,7 @@ const message = (over = {}) => ({
     chatter_user_id: "111",
     chatter_user_name: "Cyber",
     message_id: "event-1",
-    message: { text: "desk next" },
+    message: { text: "crid next" },
     ...over,
   },
 });
@@ -142,11 +142,11 @@ test("the broadcaster may run the existing desk commands", async () => {
   const res = await send(store, { payload: message() });
   assert.equal(res.status, 204);
   const state = await readState(store);
-  assert.equal(state.activeCardId, "b", "desk next moved the approved queue");
+  assert.equal(state.activeCardId, "b", "crid next moved the approved queue");
   assert.equal(state.visible, true);
 
   const status = await twitchStatus(store, state, { env, origin: "https://desk.example" });
-  assert.match(status.lastCommand, /broadcaster.*desk next/);
+  assert.match(status.lastCommand, /broadcaster.*crid next/);
   assert.equal(status.lastError, null);
   assert.equal(status.tested, true);
   assert.equal(status.ready, true, "verified webhook plus a successful broadcaster command is Ready");
@@ -250,8 +250,9 @@ test("revocation turns Ready off and a new verification turns it back on", async
 });
 
 test("the server parser still understands every command the dashboard advertises", () => {
-  for (const text of ["desk next", "desk prev", "desk hold", "desk hide", "desk stop", "desk music", "desk all", "desk auto on", "desk poll Q|A|B"]) {
+  for (const text of ["crid next", "crid prev", "crid hold", "crid hide", "crid stop", "crid music", "crid all", "crid auto on", "crid poll Q|A|B", "crid music play Burna Boy"]) {
     assert.ok(parseDeskCommand(text), text);
   }
+  assert.equal(parseDeskCommand("desk next"), null, "the former prefix is no longer accepted");
   assert.equal(parseDeskCommand("hello chat"), null);
 });

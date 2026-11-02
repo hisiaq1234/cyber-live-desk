@@ -113,16 +113,16 @@ const handler = async (req) => {
       return json(await runBrief(s, await readBody(req)));
     }
     // Voice endpoint: operator authentication is required above, then speech is limited to
-    // an explicit allowlist of supported desk actions.
+    // an explicit allowlist of supported CRID actions.
     if (req.method === "POST" && route === "/api/desk/voice") {
       const body = await readBody(req);
       const text = typeof body.text === "string" ? body.text : "";
       if (!text) throw new HttpError(422, "Voice text is required.");
       const cmd = parseDeskCommand(text);
-      if (!cmd) throw new HttpError(422, "Not a recognized desk command.");
+      if (!cmd) throw new HttpError(422, "Not a recognized CRID command.");
       let actionBody = commandBody(cmd);
       if (!actionBody) throw new HttpError(422, "Command cannot be executed by voice.");
-      const safeActions = new Set(["next", "previous", "hold", "hide", "desk", "start-poll", "end-poll", "auto-play", "clip-create", "crid-open"]);
+      const safeActions = new Set(["next", "previous", "hold", "hide", "desk", "start-poll", "end-poll", "auto-play", "clip-create", "crid-open", "music-play", "music-pause", "music-next", "music-stop"]);
       if (!safeActions.has(actionBody.action)) throw new HttpError(403, "This command is not available by voice.");
       // Voice-opened CRID segments use a default title so the streamer can speak to open one.
       if (actionBody.action === "crid-open") {

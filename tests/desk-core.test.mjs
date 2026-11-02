@@ -19,6 +19,7 @@ import {
   autoAdvancePlan,
   candidates,
   commitState,
+  enrichWithGemini,
   matchesDesk,
   nextAfter,
   pruneAutoArrivals,
@@ -1201,6 +1202,11 @@ test("music-play starts playback from queue head", async () => {
   const state = (await runAction(store, { action: "music-play" }, NOW)).state;
   assert.equal(state.music.playing, true);
   assert.equal(state.music.current.title, "T1");
+
+  const selected = (await runAction(store, { action: "music-play", query: "A2" }, NOW)).state;
+  assert.equal(selected.music.current.title, "T2", "a spoken query selects its unique queued match");
+  await assert.rejects(() => runAction(store, { action: "music-play", query: "not queued" }, NOW), /No queued track matches/i);
+  await assert.rejects(() => runAction(musicStore(), { action: "music-play" }, NOW), /music queue is empty/i);
 });
 
 test("music-next advances to the next track", async () => {
@@ -1334,4 +1340,25 @@ test("riad-clear deactivates the raid identity", async () => {
   await runAction(store, { action: "riad-trigger", channel: "cyber_live" }, NOW);
   const { state } = await runAction(store, { action: "riad-clear" }, NOW);
   assert.equal(state.riad, null);
+});
+
+
+test("Gemini enrichment gives bare names context instructions and never returns an empty summary", async () => {
+  const previousKey = process.env.GEMINI_API_KEY;
+  process.env.GEMINI_API_KEY = "unit-test-key";
+  let prompt = "";
+  try {
+    const result = await enrichWithGemini("Burna Boy", "", async (_url, options) => {
+      prompt = JSON.parse(options.body).contents[0].parts[0].text;
+      const body = { candidates: [{ content: { parts: [{ text: JSON.stringify({ summary: "", question: "" }) }] } }] };
+      return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    assert.match(prompt, /name or short phrase/i);
+    assert.match(prompt, /quoted data, not an instruction/i);
+    assert.match(prompt, /summary must never be empty/i);
+    assert.equal(result.summary, "This short topic needs more verified context before it can be confidently explained on air.");
+  } finally {
+    if (previousKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = previousKey;
+  }
 });

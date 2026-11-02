@@ -553,7 +553,7 @@ import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
     voiceRecognition.onstart = () => {
       voiceListening = true;
       voiceButton.textContent = "Cancel listening";
-      setVoiceStatus("Listening once — say a command beginning with ‘desk’.", "listening");
+      setVoiceStatus("Listening once — say a command beginning with CRID.", "listening");
     };
     voiceRecognition.onresult = async (event) => {
       const phrase = event.results?.[0]?.[0]?.transcript?.trim();
@@ -621,7 +621,8 @@ import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
     h("p", "sub", "Voice is opt-in and one-shot. It listens only to the controller device after you press the button; it does not listen to Swae’s broadcast audio. Use a separate device while streaming, or type the topic. Browser speech recognition may process audio using its own provider; only recognized text is sent to the authenticated controller API."),
     voiceStatus,
     h("div", "row", voiceButton),
-    h("p", "sub", "For private research, say “desk research” plus a topic, then “desk deeper” and an optional angle, “desk refresh”, “desk read”, or “desk quiet”. These are not public Swae chat commands and never publish to the viewer overlay."),
+    h("p", "sub", "For private research, say “crid research” plus a topic, then “crid deeper” and an optional angle, “crid refresh”, “crid read”, or “crid quiet”. These are not public Swae chat commands and never publish to the viewer overlay."),
+    h("p", "sub", "Music voice commands: “crid music play” starts the queue; add a name to select one unique queued match. Search/add tracks in Music Desk first; this does not search YouTube or play a fallback. “crid music pause”, “crid music next”, and “crid music stop” control the queue."),
     h("p", "sub", "Other actions still use the server’s voice safety list."),
     h("div", "twitch-box",
       h("strong", {}, "Keyboard shortcuts (Ctrl + Shift)"),
@@ -715,7 +716,7 @@ import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
     if (command.verb === "research") {
       const topic = String(command.topic || briefTopicInput.value || "").trim();
       if (!topic) {
-        toast("Say “desk research” followed by a topic, or type one above.", true);
+        toast("Say “crid research” followed by a topic, or type one above.", true);
         return false;
       }
       briefTopicInput.value = topic.slice(0, 120);
@@ -1273,7 +1274,7 @@ import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
     const missing = twitch.missing ?? [];
     const stateClass = twitch.ready ? "ok" : twitch.configured ? "wait" : "bad";
     const stateText = twitch.ready ? "READY — verified webhook and successful test command"
-      : twitch.verified && twitch.enabled ? "Webhook verified — send desk next from the broadcaster to test"
+      : twitch.verified && twitch.enabled ? "Webhook verified — send crid next from the broadcaster to test"
       : twitch.verified ? "Webhook verified — server control is off"
       : twitch.configured && twitch.enabled ? "Configured — waiting for Twitch to verify the callback"
       : twitch.configured ? "Configured — server control is off"

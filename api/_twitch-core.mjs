@@ -6,7 +6,7 @@
 //
 // The webhook only accepts signed Twitch requests, verifies the challenge while subscribing,
 // and turns authorized channel.chat.message events into the same runAction calls the dashboard
-// uses. Secrets and OAuth app credentials come from Netlify environment variables; no token or
+// uses. Secrets and OAuth app credentials come from Vercel environment variables; no token or
 // secret is ever sent to the browser. This module stays dependency-free so tests can exercise it
 // with a plain in-memory Blob store.
 
@@ -307,7 +307,7 @@ export const TWITCH_SETUP_HELP = [
   "Enable Twitch chat control in the controller Settings tab (twitchChatEnabled must be on).",
 ];
 
-// Netlify makes a function out of every file in netlify/functions. This module is imported by
+// Vercel makes a function out of every file in the api directory. This module is imported by
 // twitch-eventsub.mjs, so it refuses a direct request instead of half-working.
 export default { fetch: () =>
   new Response(JSON.stringify({ error: "Internal module. Use /api/twitch/eventsub." }), {

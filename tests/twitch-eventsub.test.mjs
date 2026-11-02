@@ -1,5 +1,5 @@
 // Twitch EventSub webhook regressions: signatures, challenge, authorization, dedupe and status.
-// The handler takes a plain store, so these run without Netlify.
+// The handler takes a plain store, so these run without Vercel.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";

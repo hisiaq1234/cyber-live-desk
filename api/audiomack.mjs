@@ -8,7 +8,7 @@
 //   GET /api/audiomack?mode=search&q=keyword
 //   GET /api/audiomack?mode=play&id=123
 //
-// Env (Netlify site environment variables):
+// Env (Vercel site environment variables):
 //   AUDIOMACK_KEY       Audiomack Consumer Key
 //   AUDIOMACK_SECRET    Audiomack Consumer Secret
 
@@ -98,7 +98,7 @@ async function audiomackFetch(path, queryParams = {}) {
 }
 
 // Curated live broadcast starter tracks (royalty-safe / public streams)
-// displayed instantly if API keys are not yet configured in Netlify env
+// displayed instantly if API keys are not yet configured in Vercel env
 const CURATED_TRACKS = [
   {
     id: "am-01",
@@ -197,7 +197,7 @@ export default async (req) => {
       configured: isConfigured,
       note: isConfigured
         ? "Connected to live Audiomack API."
-        : "Curated broadcast station active. Add AUDIOMACK_KEY and AUDIOMACK_SECRET in Netlify for full API access.",
+        : "Curated broadcast station active. Add AUDIOMACK_KEY and AUDIOMACK_SECRET in Vercel for full API access.",
       tracks: CURATED_TRACKS,
     });
   } catch (err) {

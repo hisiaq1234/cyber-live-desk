@@ -1,5 +1,5 @@
 // Bulk approval, capacity and persisted research approval regressions.
-// These use the same in-memory store shape as the core tests: no @netlify/blobs needed.
+// These use the same in-memory store shape as the core tests: no @upstash/redis needed.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

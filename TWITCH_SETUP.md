@@ -7,13 +7,13 @@ or **waiting for Twitch to verify** and no command can arrive from Twitch.
 The deployed endpoint is:
 
 ```
-https://cyber-live-desk.netlify.app/api/twitch/eventsub
+https://cyber-live-desk.vercel.app/api/twitch/eventsub
 ```
 
 ## 1. Create the Twitch application
 
 1. Open <https://dev.twitch.tv/console/apps> and create an app.
-2. Set **OAuth Redirect URL** to `https://cyber-live-desk.netlify.app/`.
+2. Set **OAuth Redirect URL** to `https://cyber-live-desk.vercel.app/`.
 3. Choose any category; the app is only used to obtain a user token.
 4. Copy the **Client ID** and generate a **Client Secret**.
 
@@ -28,13 +28,13 @@ user:read:chat user:bot channel:bot
 Use Twitch's OAuth authorization-code flow (or the Twitch CLI). A bot account also needs the
 broadcaster to grant `channel:bot`; the broadcaster's own token already belongs to the channel.
 
-Do not put this token in Netlify. The deployed functions do not need it; it is only used to
+Do not put this token in Vercel. The deployed functions do not need it; it is only used to
 create the EventSub subscription in step 4. Keep it somewhere safe in case the subscription is
-revoked and must be recreated; Netlify only needs the webhook secret below.
+revoked and must be recreated; Vercel only needs the webhook secret below.
 
-## 3. Set Netlify environment variables
+## 3. Set Vercel environment variables
 
-In **Site configuration → Environment variables**, add:
+In **Project → Settings → Environment Variables**, add:
 
 | Name | Required | Value |
 | --- | --- | --- |
@@ -69,7 +69,7 @@ curl -X POST https://api.twitch.tv/helix/eventsub/subscriptions \
     },
     "transport": {
       "method": "webhook",
-      "callback": "https://cyber-live-desk.netlify.app/api/twitch/eventsub",
+      "callback": "https://cyber-live-desk.vercel.app/api/twitch/eventsub",
       "secret": "THE_SAME_VALUE_AS_TWITCH_WEBHOOK_SECRET"
     }
   }'
@@ -113,7 +113,7 @@ requests outside the 10-minute signature timestamp window are refused.
 
 ## Troubleshooting
 
-- **Not configured**: one of the required Netlify variables is missing.
+- **Not configured**: one of the required Vercel variables is missing.
 - **Waiting for Twitch to verify**: the subscription has not completed its challenge, or the
   challenge was signed with a different secret.
 - **Webhook verified but not Ready**: the challenge succeeded, but no authorized command has run

@@ -6,7 +6,7 @@
 // Routes:
 //   GET /api/spotify/top?time_range=long_term|medium_term|short_term&limit=5
 //
-// Env (Netlify site environment variables, never in this file):
+// Env (Vercel site environment variables, never in this file):
 //   SPOTIFY_CLIENT_ID       Spotify app client id
 //   SPOTIFY_CLIENT_SECRET   Spotify app client secret
 //   SPOTIFY_REFRESH_TOKEN   long-lived refresh token (6-month lifetime, reauth on invalid_grant)

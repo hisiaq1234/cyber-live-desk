@@ -2,7 +2,7 @@
 // Twitch calls this URL; the dashboard does not need to be open. Signature verification,
 // broadcaster/allowlist authorization and duplicate delivery protection live in _twitch-core.mjs.
 //
-// Required Netlify environment variables:
+// Required Vercel environment variables:
 //   TWITCH_WEBHOOK_SECRET          the same secret used when creating the EventSub subscription
 //   TWITCH_BROADCASTER_USER_ID     stable numeric id of the channel (never the login name)
 // Optional:

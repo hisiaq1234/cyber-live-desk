@@ -1,10 +1,5 @@
-# Local Netlify folder
-.netlify
+# Local Vercel project link and CLI cache
+.vercel
 
-# Locally generated function bundles and manifests
-netlify/functions/*.zip
-netlify/functions/manifest.json
-
-# Installed dependencies and local tool config
+# Installed dependencies
 node_modules/
-mcp.json

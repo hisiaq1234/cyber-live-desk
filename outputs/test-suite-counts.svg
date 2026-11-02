@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1120" height="660" viewBox="0 0 1120 660" role="img" aria-labelledby="title desc">
   <title id="title">Cyber Live Desk test items by file</title>
-  <desc id="desc">Node reported 159 passed, zero failed: 158 explicit test cases and one api/test.mjs route-module discovery.</desc>
+  <desc id="desc">Node reported 160 passed, zero failed: 159 explicit test cases and one api/test.mjs route-module discovery.</desc>
   <rect width="1120" height="660" rx="20" fill="#0b1020"/>
   <text x="36" y="48" fill="#f7f8fb" font-family="Arial, sans-serif" font-size="24" font-weight="700">CYBER LIVE DESK · TEST RUN</text>
-  <text x="36" y="77" fill="#aebbd0" font-family="Arial, sans-serif" font-size="14">Node --test · 1 Nov 2026 · distribution by discovered test file</text>
+  <text x="36" y="77" fill="#aebbd0" font-family="Arial, sans-serif" font-size="14">Node --test · 2 Nov 2026 · distribution by discovered test file</text>
   <rect x="806" y="27" width="278" height="54" rx="13" fill="#14263b" stroke="#274763"/>
-  <text x="828" y="51" fill="#75e0bd" font-family="Arial, sans-serif" font-size="20" font-weight="700">159 PASS</text>
+  <text x="828" y="51" fill="#75e0bd" font-family="Arial, sans-serif" font-size="20" font-weight="700">160 PASS</text>
   <text x="828" y="69" fill="#d9e2ef" font-family="Arial, sans-serif" font-size="12">0 fail · 0 skipped · 100% pass</text>
   <text x="36" y="112" fill="#73839c" font-family="Arial, sans-serif" font-size="11">FILE</text>
   <text x="389" y="112" fill="#73839c" font-family="Arial, sans-serif" font-size="11">RUNNER-COUNTED ITEMS</text>
@@ -40,7 +40,7 @@
     <rect x="390" y="204" width="15.6" height="18" rx="7" fill="#63c7c0"/>
     <rect x="390" y="239" width="62.4" height="18" rx="7" fill="#efad5c"/>
     <rect x="390" y="274" width="46.8" height="18" rx="7" fill="#53c9c3"/>
-    <rect x="390" y="309" width="494" height="18" rx="7" fill="#6da8ff"/>
+    <rect x="390" y="309" width="499.2" height="18" rx="7" fill="#6da8ff"/>
     <rect x="390" y="344" width="15.6" height="18" rx="7" fill="#60c5ee"/>
     <rect x="390" y="379" width="10.4" height="18" rx="7" fill="#b89aff"/>
     <rect x="390" y="414" width="10.4" height="18" rx="7" fill="#9d86df"/>
@@ -50,7 +50,7 @@
     <rect x="390" y="554" width="31.2" height="18" rx="7" fill="#f08d75"/>
   </g>
   <g fill="#f7f8fb" font-family="Arial, sans-serif" font-size="12" font-weight="700">
-    <text x="401" y="148">1</text><text x="427" y="183">6</text><text x="411" y="218">3</text><text x="459" y="253">12</text><text x="444" y="288">9</text><text x="892" y="323">95</text><text x="411" y="358">3</text><text x="406" y="393">2</text><text x="406" y="428">2</text><text x="422" y="463">5</text><text x="416" y="498">4</text><text x="453" y="533">11</text><text x="427" y="568">3 + 3</text>
+    <text x="401" y="148">1</text><text x="427" y="183">6</text><text x="411" y="218">3</text><text x="459" y="253">12</text><text x="444" y="288">9</text><text x="897" y="323">96</text><text x="411" y="358">3</text><text x="406" y="393">2</text><text x="406" y="428">2</text><text x="422" y="463">5</text><text x="416" y="498">4</text><text x="453" y="533">11</text><text x="427" y="568">3 + 3</text>
   </g>
-  <text x="36" y="638" fill="#8291a7" font-family="Arial, sans-serif" font-size="11">158 explicit tests + 1 route-module discovery. The final row combines X-feed and YouTube-playlist suites (3 tests each).</text>
+  <text x="36" y="638" fill="#8291a7" font-family="Arial, sans-serif" font-size="11">159 explicit tests + 1 route-module discovery. The final row combines X-feed and YouTube-playlist suites (3 tests each).</text>
 </svg>

@@ -17,11 +17,14 @@
 //   POST /api/desk/research        operator fetch headlines/trends, or held items with heldOnly
 //   POST /api/desk/brief           operator-only, on-demand evidence brief; never public state
 //   GET  /api/desk/twitch          operator-only Twitch EventSub configuration status
+//   GET  /api/desk/music/search    operator-only YouTube lookup so a song name can be played
 //
-// Env: DESK_OPERATOR_TOKEN (required). Storage: Vercel KV (via _store.mjs adapter).
+// Env: DESK_OPERATOR_TOKEN (required). Storage: Upstash Redis (via _store.mjs adapter).
 // Optional for research: DESK_FEED_PROXY (a scraping API, your own worker or an RSS-Bridge
 // instance, see proxyFor in the core), DESK_FEED_TIMEOUT_MS and DESK_FEED_BUDGET_MS.
 // Optional for private briefs: GEMINI_API_KEY, BRIEF_MODEL, BRIEF_MAX_AGE_HOURS and BRIEF_X_WOEID.
+// Optional for Music Desk search: YOUTUBE_API_KEY (YouTube Data API v3). Without it the desk
+// stays queue-only and a spoken song name is refused.
 // Twitch webhook secrets live in Vercel environment variables, never in this file.
 // Single operator assumed: concurrent writes are last-write-wins, except the auto-play
 // advance, which re-checks the version it read so a race cannot skip a card.
@@ -48,12 +51,20 @@ import {
 import { twitchStatus } from "./_twitch-core.mjs";
 import { parseDeskCommand, commandBody, commandText } from "./_commands.mjs";
 import { readBrief, runBrief } from "./_brief.mjs";
+import { searchYouTubeTracks, youtubeApiKey } from "./_youtube-search.mjs";
 
 export const config = { runtime: "nodejs" };
 
 const PAGE = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
   "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\">" +
   "<title>Cyber Live Desk overlay</title>" +
+  // Both themes name real families, and this is the only page that loads overlay.js, so the
+  // fonts have to be fetched here. Without this every theme silently fell back to Georgia.
+  // Caveat is variable, hence the weight range; one rejected family fails the whole sheet.
+  "<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>" +
+  "<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Caveat:wght@400..700" +
+  "&family=Kalam:wght@400;700&family=Fraunces:opsz,wght@9..144,400..700" +
+  "&family=Inter:wght@400;700&family=JetBrains+Mono:wght@400;700&display=swap\">" +
   "<style>html,body{margin:0;background:transparent}</style></head>" +
   "<body><script type=\"module\" src=\"/desk-assets/overlay.js\"></script></body></html>";
 
@@ -74,10 +85,22 @@ const handler = async (req) => {
         headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=300" },
       });
     }
+    // The overlay can be loaded straight from a local file in OBS, so the public
+    // read-only state has to be reachable cross-origin. Only this one route is opened
+    // up: it exposes the viewer projection and nothing else. Every operator route
+    // below still sits behind requireOperator and stays same-origin only.
+    const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Content-Type" };
+    if (req.method === "OPTIONS" && route === "/api/desk/state") {
+      return new Response(null, { status: 204, headers: { ...CORS, "Access-Control-Max-Age": "600" } });
+    }
     if (req.method === "GET" && route === "/api/desk/state") {
       const res = await publicState(store(), url.searchParams.get("since"));
-      if (res.status === 204) return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
-      return json(res.body);
+      if (res.status === 204) {
+        return new Response(null, { status: 204, headers: { "Cache-Control": "no-store", ...CORS } });
+      }
+      return new Response(JSON.stringify(res.body), {
+        headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...CORS },
+      });
     }
 
     requireOperator(req);
@@ -108,6 +131,23 @@ const handler = async (req) => {
     }
     if (req.method === "GET" && route === "/api/desk/twitch") {
       return json(await twitchStatus(s, await readState(s), { origin: url.origin }));
+    }
+    // Music search is operator-only, so it may name the missing setting. The player itself is
+    // never here: only which YouTube video the phrase resolves to.
+    if (req.method === "GET" && route === "/api/desk/music/search") {
+      const q = (url.searchParams.get("q") ?? "").trim();
+      if (!q) throw new HttpError(422, "A music search phrase (q) is required.");
+      if (q.length > 120) throw new HttpError(422, "A music search phrase must be 120 characters or fewer.");
+      if (!youtubeApiKey()) {
+        throw new HttpError(503, "YouTube search is not configured. Set YOUTUBE_API_KEY in the Vercel project environment.");
+      }
+      let results;
+      try {
+        results = await searchYouTubeTracks(q);
+      } catch (err) {
+        throw new HttpError(502, err.message || "YouTube search failed.");
+      }
+      return json({ query: q, results });
     }
     if (req.method === "POST" && route === "/api/desk/brief") {
       return json(await runBrief(s, await readBody(req)));

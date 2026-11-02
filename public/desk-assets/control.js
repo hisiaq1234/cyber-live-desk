@@ -622,7 +622,7 @@ import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
     voiceStatus,
     h("div", "row", voiceButton),
     h("p", "sub", "For private research, say “crid research” plus a topic, then “crid deeper” and an optional angle, “crid refresh”, “crid read”, or “crid quiet”. These are not public Swae chat commands and never publish to the viewer overlay."),
-    h("p", "sub", "Music voice commands: “crid music play” starts the queue; add a name to select one unique queued match. Search/add tracks in Music Desk first; this does not search YouTube or play a fallback. “crid music pause”, “crid music next”, and “crid music stop” control the queue."),
+    h("p", "sub", "Music voice commands: “crid music play” starts the first queued track, or YE — MAMA'S FAVORITE if the queue is empty. Add a name to select one unique queued match; named voice requests do not search YouTube. “crid music pause”, “crid music next”, and “crid music stop” control playback."),
     h("p", "sub", "Other actions still use the server’s voice safety list."),
     h("div", "twitch-box",
       h("strong", {}, "Keyboard shortcuts (Ctrl + Shift)"),
@@ -852,7 +852,9 @@ import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
     btnRatio169.classList.toggle("go", r === "16-9");
   };
   const copySwaeUrl = () => {
-    const url = `${location.origin}/desk?pos=bottom-left`;
+    // The overlay forces its own placement and detects Swae on its own, so the plain URL
+    // is the correct thing to paste into a Swae Browser Widget.
+    const url = `${location.origin}/desk`;
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(url).then(() => toast("Copied Swae URL to clipboard!")).catch(() => prompt("Swae Overlay URL:", url));
     } else {
@@ -871,7 +873,7 @@ import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
         btn("↻", reloadPreview, "small"),
         btn("Copy Swae URL", copySwaeUrl, "small"))),
     h("div", "preview-wrap", previewFrame),
-    h("p", "sub", "Landscape 16:9 Twitch preview through Swae. Add the copied /desk URL as a Swae Browser Widget or Web Page layer. Private research stays in /control."));
+    h("p", "sub", "Landscape 16:9 preview of the /desk overlay. Add the copied URL as a Swae Browser Widget or Web Page layer. Swae redraws the page as snapshots — about 5 per second by default — so it is never as smooth as this preview, and its stream audio is microphone-only: anything playing in the overlay is heard on the phone, not on the broadcast. Use the larger widget size or a lower frame rate if the device struggles. Private research stays in /control."));
 
   // ---------- CRID (Cyber's Rent Is Due) Segment ----------
   const cridPanel = h("section", "panel crid-panel");
@@ -883,7 +885,7 @@ import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
     h("option", { value: "question" }, "Question"));
   const cridTitleIn = h("input", { placeholder: "Subject / Album / Debate (e.g. Does this album survive the Jumbotron?)", maxlength: 120 });
   const cridCreditIn = h("input", { placeholder: "Stranger credit / community handle (optional)", maxlength: 30 });
-  const cridAudioIn = h("input", { placeholder: "Audio URL (MP3/AAC/WebM) — plays on the jumbotron", maxlength: 2000 });
+  const cridAudioIn = h("input", { placeholder: "Audio URL (MP3/AAC/WebM) — heard on the overlay device only", maxlength: 2000 });
 
   const renderCridDeck = () => {
     cridPanel.replaceChildren();
@@ -927,6 +929,7 @@ import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
         h("label", "f", h("span", {}, "Segment Title / Subject (max 120 chars)"), cridTitleIn),
         h("label", "f", h("span", {}, "Stranger Credit (community member, max 30 chars)"), cridCreditIn),
         h("label", "f", h("span", {}, "Audio URL (MP3 / AAC / WebM)"), cridAudioIn),
+        h("p", "sub", "Plays on whatever device renders the overlay. Swae broadcasts microphone audio only, so this is not heard on the stream there; a desktop browser source that routes its audio is the way to get it on air."),
         btn("Open Jumbotron Segment", async () => {
           const title = cridTitleIn.value.trim();
           if (!title) return toast("Enter a segment title", true);
@@ -1266,7 +1269,7 @@ import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
       h("ol", "setup",
         h("li", {}, "Create a Twitch app in the Twitch developer console and set its OAuth redirect URL to this site."),
         h("li", {}, "Create a user token with user:read:chat, user:bot and channel:bot for the broadcaster (or a bot account in the channel)."),
-        h("li", {}, "In Netlify, set TWITCH_WEBHOOK_SECRET and TWITCH_BROADCASTER_USER_ID. Optional: TWITCH_ALLOWED_USER_IDS, TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET, TWITCH_EVENTSUB_CALLBACK."),
+        h("li", {}, "In Vercel, set TWITCH_WEBHOOK_SECRET and TWITCH_BROADCASTER_USER_ID. Optional: TWITCH_ALLOWED_USER_IDS, TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET, TWITCH_EVENTSUB_CALLBACK."),
         h("li", {}, "Create a channel.chat.message EventSub webhook subscription with the callback URL above and the same secret."),
         h("li", {}, "Enable server control here. The panel says Ready only after Twitch has completed the webhook challenge and a signed test command from the broadcaster has run."))));
 
@@ -1283,7 +1286,7 @@ import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
       h("p", { class: "statusline" },
         h("span", { class: "twitch-state " + stateClass }, stateText),
         h("span", "sub", twitch.verifiedAt ? `Verified ${fmt(twitch.verifiedAt)}` : "No verified webhook yet")),
-      missing.length ? h("p", "sub", "Missing Netlify env: " + missing.join(", ")) : null,
+      missing.length ? h("p", "sub", "Missing Vercel env: " + missing.join(", ")) : null,
       h("p", "sub", `Callback: ${twitch.callbackUrl || `${location.origin}/api/twitch/eventsub`}`),
       h("p", "sub", `Enabled: ${twitch.enabled ? "yes" : "no"} · Allowed ids: ${(twitch.allowedUserIds ?? []).join(", ") || "broadcaster only"}`),
       twitch.lastEventAt ? h("p", "sub", `Last event: ${fmt(twitch.lastEventAt)}${twitch.lastCommand ? ` · ${twitch.lastCommand}` : ""}`) : null,
@@ -1430,7 +1433,7 @@ import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
   const clipEditLink = h("a", { target: "_blank", rel: "noopener noreferrer", style: "color:#7CC4FF;text-decoration:underline" }, "Open clip edit link");
   const clipPanel = h("section", "panel", h("h2", {}, "Twitch Clip"),
     h("div", "twitch-box",
-      h("p", "sub", "Create a clip of the current live moment. Requires TWITCH_CLIENT_ID, TWITCH_CLIP_ACCESS_TOKEN (clips:edit scope) and TWITCH_BROADCASTER_USER_ID in Netlify env."),
+      h("p", "sub", "Create a clip of the current live moment. Requires TWITCH_CLIENT_ID, TWITCH_CLIP_ACCESS_TOKEN (clips:edit scope) and TWITCH_BROADCASTER_USER_ID in Vercel env."),
       clipStatus,
       h("div", "row", clipCreateBtn)),
     h("div", "twitch-box",
@@ -1586,6 +1589,32 @@ import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
     if (!youtubeEmbedOutput.value) return toast("Paste a valid playlist URL first.", true);
     window.open(youtubeEmbedOutput.value, "_blank", "noopener,noreferrer");
   };
+  const musicSearchInput = h("input", { placeholder: "Song, artist, cover or DJ mix", maxlength: 120 });
+  const musicSearchResults = h("div");
+  const queueSearchResult = async (result) => {
+    if (!(await act("music-add", { title: result.title, artist: result.artist, videoId: result.videoId }))) return;
+    await act("music-play", { query: result.title });
+    musicSearchResults.replaceChildren();
+    toast("Queued. Add the player URL above as a Swae web-page layer to put it on air.");
+  };
+  const runMusicSearch = async () => {
+    const q = musicSearchInput.value.trim();
+    if (!q) return toast("Type a song or artist first.", true);
+    musicSearchResults.replaceChildren(h("p", "sub", "Searching YouTube…"));
+    try {
+      const { results } = await api("/api/desk/music/search?q=" + encodeURIComponent(q));
+      if (!results.length) {
+        musicSearchResults.replaceChildren(h("p", "sub", "No YouTube results. Try a different title."));
+        return;
+      }
+      musicSearchResults.replaceChildren(...results.map((r) =>
+        h("div", "row",
+          h("span", "sub", r.title + (r.artist ? " — " + r.artist : "")),
+          btn("Queue", () => queueSearchResult(r), "small primary"))));
+    } catch (e) {
+      musicSearchResults.replaceChildren(h("p", "sub", e.message));
+    }
+  };
   const musicPanel = h("section", "panel", h("h2", {}, "Music Desk"),
     h("div", "twitch-box",
       h("label", "f", h("span", {}, "Title"), musicTitle),
@@ -1601,6 +1630,9 @@ import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
         btn("Next", () => act("music-next"), "small"),
         btn("Stop", () => act("music-stop"), "small danger"),
         btn("Clear", () => act("music-clear"), "small danger")),
+      h("label", "f", h("span", {}, "Find on YouTube"), musicSearchInput),
+      h("div", "row", btn("Search YouTube", runMusicSearch, "small")),
+      musicSearchResults,
       musicStatus),
     h("div", "twitch-box",
       h("strong", {}, "YouTube Music playlist — official player"),
@@ -1609,7 +1641,7 @@ import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
       h("label", "f", h("span", {}, "Swae web-page player URL"), youtubeEmbedOutput),
       youtubeStatus,
       h("div", "row", btn("Copy Swae page URL", copyYoutubeWidgetUrl, "small primary"), btn("Preview player", openYoutubeWidget, "small")),
-      h("p", "sub", "Add it as a Swae Browser Widget/Web Page layer and keep YouTube’s player visible and interactive (minimum player size applies). Do not use it as an audio extractor; test privately, and only stream music you have rights to broadcast.")));
+      h("p", "sub", "Add it as a Swae Browser Widget/Web Page layer and keep YouTube’s player visible (minimum player size applies). Note that a Swae widget cannot be tapped or scrolled and is redrawn as snapshots, so start playback from the phone itself, not through the overlay. Do not use it as an audio extractor — Swae streams microphone audio only; test privately, and only stream music you have rights to broadcast.")));
 
   // ---------- X Space Radar ----------
   const spaceTitle = h("input", { placeholder: "Space title", maxlength: 120 });

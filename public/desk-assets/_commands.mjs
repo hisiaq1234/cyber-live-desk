@@ -1,7 +1,7 @@
 // CYBER LIVE DESK — shared chat command rules.
 // Single source of truth for command parsing, used by both the browser controller
 // (public/desk-assets/desk-commands.js) and the Twitch EventSub webhook
-// (netlify/functions/_twitch-core.mjs). Pure JS: no Node imports, no DOM, so the
+// (api/_twitch-core.mjs). Pure JS: no Node imports, no DOM, so the
 // same file runs in both environments.
 
 // "crid" then the verb, glued, spaced, dashed or underscored: cridnext, crid next, !crid_next.
@@ -82,7 +82,7 @@ export function validatePollDraft(question, options) {
 export const parseAllowIds = (text) => String(text ?? "").split(/[^0-9]+/).filter(Boolean);
 
 // Legacy tab-side gate, kept because the parser tests still exercise it. Production command
-// authorization lives in netlify/functions/_twitch-core.mjs: EventSub supplies a stable
+// authorization lives in api/_twitch-core.mjs: EventSub supplies a stable
 // chatter_user_id, and a moderator badge or display name is never accepted as identity.
 export function chatMayCommand(tags, { enabled = false, allowIds = [] } = {}) {
   if (!enabled) return { ok: false, reason: "chat control is off" };
@@ -95,7 +95,7 @@ export function chatMayCommand(tags, { enabled = false, allowIds = [] } = {}) {
 
 export const COMMAND_HELP =
   "crid next · crid prev · crid hold · crid hide · crid stop · crid poll <question>|<a>|<b> · " +
-  "crid auto on|off · crid music · crid music play [queued track] · crid music pause|next|stop · " +
+  "crid auto on|off · crid music · crid music play [song or queued track] · crid music pause|next|stop · " +
   "crid streamers · crid movies · crid politics · crid business · crid trends · crid all";
 
 // Maps only implemented commands. Recognized-but-unimplemented verbs must never become
@@ -122,7 +122,7 @@ export const commandText = (cmd) =>
     : cmd.verb === "deeper" ? `crid deeper ${cmd.focus ?? ""}`.trim()
     : `crid ${cmd.verb}`;
 
-// Netlify makes a function out of every file in netlify/functions. This module is imported by
+// Vercel makes a function out of every file in the api directory. This module is imported by
 // _twitch-core.mjs and desk-commands.js, so it refuses a direct request instead of half-working.
 export default () =>
   new Response(JSON.stringify({ error: "Internal module. Import parseDeskCommand, parsePollSpec, validatePollDraft, parseAllowIds, chatMayCommand, COMMAND_HELP instead." }), {

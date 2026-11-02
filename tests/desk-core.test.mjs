@@ -24,11 +24,13 @@ import {
   nextAfter,
   pruneAutoArrivals,
   proxyFor,
+  publicProjection,
   publicState,
   queueOf,
   readCards,
   readState,
   resolveDesk,
+  resolveMusicPhrase,
   runAction,
   runResearch,
   untouchedAuto,
@@ -1205,8 +1207,48 @@ test("music-play starts playback from queue head", async () => {
 
   const selected = (await runAction(store, { action: "music-play", query: "A2" }, NOW)).state;
   assert.equal(selected.music.current.title, "T2", "a spoken query selects its unique queued match");
-  await assert.rejects(() => runAction(store, { action: "music-play", query: "not queued" }, NOW), /No queued track matches/i);
-  await assert.rejects(() => runAction(musicStore(), { action: "music-play" }, NOW), /music queue is empty/i);
+
+  // A phrase in no queue slot is handed to YouTube. With no key configured the desk refuses
+  // rather than searching, which also keeps this test off the network.
+  const priorKey = process.env.YOUTUBE_API_KEY;
+  delete process.env.YOUTUBE_API_KEY;
+  try {
+    await assert.rejects(() => runAction(store, { action: "music-play", query: "not queued" }, NOW), /Nothing queued matches/i);
+  } finally {
+    if (priorKey !== undefined) process.env.YOUTUBE_API_KEY = priorKey;
+  }
+});
+
+test("resolveMusicPhrase takes the first YouTube hit and refuses clearly when there is none", async () => {
+  const found = await resolveMusicPhrase("sisters and brothers", async () => [
+    { videoId: "8jDVdq70zUI", title: "SISTERS AND BROTHERS", artist: "Kanye West" },
+  ]);
+  assert.equal(found.videoId, "8jDVdq70zUI");
+
+  await assert.rejects(() => resolveMusicPhrase("nothing at all", async () => []), /Try a more specific title/i);
+  await assert.rejects(
+    () => resolveMusicPhrase("unreachable", async () => { throw new Error("HTTP 403"); }),
+    /YouTube search is unavailable/i,
+  );
+});
+
+test("music-play uses the supplied default YouTube video when the queue is empty", async () => {
+  const { state } = await runAction(musicStore(), { action: "music-play" }, NOW);
+  assert.equal(state.music.playing, true);
+  assert.equal(state.music.current.title, "MAMA'S FAVORITE");
+  assert.equal(state.music.current.artist, "YE");
+  assert.equal(state.music.current.videoId, "8jDVdq70zUI");
+
+  const projected = publicProjection(state);
+  assert.deepEqual(projected.music, {
+    current: { title: "MAMA'S FAVORITE", artist: "YE", videoId: "8jDVdq70zUI" },
+    playing: true,
+  });
+  assert.equal(projected.music.current.audioUrl, undefined);
+  assert.equal(projected.music.queue, undefined);
+
+  const unsafe = publicProjection({ ...state, music: { ...state.music, current: { ...state.music.current, videoId: "https://youtube.com/watch?v=8jDVdq70zUI" } } });
+  assert.equal(unsafe.music.current.videoId, undefined, "only an 11-character YouTube ID may be public");
 });
 
 test("music-next advances to the next track", async () => {

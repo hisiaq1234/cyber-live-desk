@@ -4,11 +4,17 @@ import { createCridAudioSync } from "./crid-audio.js";
    Transparent, no dependencies, no build step. Loaded by the /desk page.
    - Topic cards use top-left; news cards use the lower third; CRID stays top-docked.
    - X, Spaces and Court use #dock-right; now-playing and headlines share the lower identity strip.
+   Renderer-independent: the same page is used by Swae, a desktop browser source or OBS.
+   Swae is detected automatically (its "Swae access" bridge is injected into the page) and
+   only then switches to snapshot-safe drawing — no blur, no animation. Stream audio is
+   always microphone-only, so any audio here is heard on the rendering device, never on air.
    URL options (all optional)
      pos=top-left              (forced; news placement is fixed to the lower third)
      scale=0.6–1.4             poll=1–30 (seconds, default 3)
      anim=slide | fade | none  debug=1   (connection dot, leave off on air)
      x.mode=trends|following   x.userId=      x.jpoll=10–3600
+     swae=0 | 1                (force the snapshot-safe style off / on)
+     chat=0 | 1                chatPrefix=   (Swae chat strip; on by default inside Swae)
      logo=                     (CRID badge logo URL, falls back to ./crid-logo.png)
      Add a card type: DeskOverlay.register("my-type", (card, opts) => HTMLElement)  */
 import { createSoundOrbSync } from "./sound-orb.js";
@@ -23,15 +29,33 @@ import { createSoundOrbSync } from "./sound-orb.js";
     return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d;
   };
   const pick = (k, list, d) => (list.includes(P.get(k)) ? P.get(k) : d);
+
+  // ---------- renderer detection ----------
+  // Swae's Browser Widget injects `window.webkit.messageHandlers.swae` only when the widget
+  // has "Swae access" enabled. That makes its presence an exact, zero-config signal that we
+  // are being composited by Swae, which matters because Swae draws a *snapshot* of this page
+  // at 1/fps (5 by default, never a live view), runs it passively with no hit testing, and
+  // mixes only the microphone into the broadcast. Everything else here is renderer-agnostic;
+  // this only selects a cheaper drawing style. ?swae=1 forces the cheap style off-device,
+  // ?swae=0 forces the full-fidelity one.
+  const SWAE = P.get("swae") === "1" ||
+    (P.get("swae") !== "0" && typeof window.webkit?.messageHandlers?.swae !== "undefined");
+  if (SWAE) document.documentElement.classList.add("swae");
+
   const CFG = {
     pollMs: num("poll", 3, 1, 30) * 1000,
     pos: "top-left",
     scale: num("scale", 1, 0.6, 1.4),
     anim: pick("anim", ["slide", "fade", "none"], "slide"),
-    debug: P.get("debug") === "1",
+    layout: pick("layout", ["alive", "classic"], "alive"),
+    debug: P.get("debug") === "1" && !SWAE,
     crid: P.get("crid") !== "0",
     cridPos: "top",
   };
+  const theme = pick("theme", ["creative", "torn-paper"], "creative");
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.dataset.crop = P.get("crop") === "0" ? "false" : "true";
+  if (P.get("power") === "low") document.documentElement.classList.add("low-power");
   const xMode = P.get("x.mode") || "";
   const xJPos = "top";
   const xJPollMs = num("x.jpoll", 60, 10, 3600) * 1000;
@@ -334,6 +358,89 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
   #desk::after{animation:none!important}
   .scale-wrap input::-webkit-slider-thumb{animation:none}
 }
+/* Port of overlay-alive.html: 16:9 left/center/right staging with an editorial footer. */
+html[data-theme="creative"] #desk{
+  --accent:#d9c29a;--accent-glow:rgba(192,169,232,.42);--glass:rgba(18,16,15,.93);
+  --surface-line:rgba(217,194,154,.32);--surface-soft:rgba(217,194,154,.1);
+  --brand:"Inter",system-ui,sans-serif;--serif:"Fraunces",Georgia,serif;--mono:"JetBrains Mono",ui-monospace,monospace;
+  color:#f8f3ea
+}
+html[data-theme="torn-paper"] #desk{
+  --accent:#3d2b1f;--accent-glow:rgba(61,43,31,.24);--glass:#f7f1e6;
+  --surface-line:rgba(61,43,31,.22);--surface-soft:rgba(61,43,31,.08);
+  --brand:"Kalam","Caveat",system-ui,sans-serif;--serif:"Caveat","Kalam",Georgia,serif;--mono:"JetBrains Mono",ui-monospace,monospace;
+  --paper-grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.08'/%3E%3C/svg%3E");
+  color:#2a1f16
+}
+.layout-alive .slot{left:var(--m);top:calc(var(--m) + 4.5em + env(safe-area-inset-top,0px));display:block;
+  width:min(460px,calc(100vw - 2*var(--m)));max-height:65dvh;overflow:auto;scrollbar-width:none}
+.layout-alive .slot::-webkit-scrollbar,#dock-right::-webkit-scrollbar{display:none}
+.layout-alive .slot>*{grid-area:auto;justify-self:stretch;width:100%}
+.layout-alive #dock-right{top:var(--m);right:var(--m);width:min(360px,calc(100vw - 2*var(--m)));
+  max-height:calc(100dvh - 2*var(--m) - 5em);overflow:auto;scrollbar-width:none;align-items:stretch;gap:.55em}
+.layout-alive #dock-right>*{width:100%;box-sizing:border-box}
+.layout-alive #modules{display:flex;flex-direction:column;align-items:stretch;gap:.55em}
+.layout-alive .card{max-height:36dvh;overflow:auto;border-radius:var(--radius);padding:var(--cp,1.1em 1.25em)}
+.layout-alive #crid-jumbotron{left:var(--m);top:var(--m);max-width:min(460px,calc(100vw - 2*var(--m)));border-radius:1.2em}
+.layout-alive .meta{font-family:var(--mono);font-size:.64em;color:#9d9587}
+.layout-alive .headline,.layout-alive .ask,.layout-alive .court-question,.layout-alive .music-current,.layout-alive .ledger-title{
+  font-family:var(--serif);letter-spacing:.005em}
+.layout-alive .summary,.layout-alive .source,.layout-alive .court-viewpoint .v-text,.layout-alive .ledger-entry{font-family:var(--brand)}
+.layout-alive .music-wrap{max-height:28dvh;overflow:auto}
+.music-empty{font-size:.78em;color:#9d9587;margin-top:.4em}
+#time-dock{position:absolute;left:var(--m);bottom:var(--m);z-index:20;pointer-events:none;min-width:10em;
+  padding:.55em .85em;border:1px solid var(--surface-line);border-left:.28em solid var(--accent);border-radius:.75em;
+  background:var(--glass);box-shadow:0 8px 24px rgba(0,0,0,.35);font-family:var(--mono);font-variant-numeric:tabular-nums}
+#time-dock .clock-brand{font-size:.48em;letter-spacing:.16em;color:#9d9587}
+#time-dock .clock-time{font-size:1em;font-weight:700;color:var(--ink,#f8f3ea);line-height:1.25}
+#time-dock .clock-zone{font-size:.45em;letter-spacing:.12em;color:#9d9587}
+html[data-crop="true"] #desk .mod::before{content:"";position:absolute;inset:-1px;border-radius:inherit;pointer-events:none;opacity:.34;
+  background:linear-gradient(to right,var(--accent) 2px,transparent 2px) 0 0/8px 8px no-repeat,
+    linear-gradient(to bottom,var(--accent) 2px,transparent 2px) 0 0/8px 8px no-repeat,
+    linear-gradient(to left,var(--accent) 2px,transparent 2px) 100% 100%/8px 8px no-repeat,
+    linear-gradient(to top,var(--accent) 2px,transparent 2px) 100% 100%/8px 8px no-repeat}
+html[data-theme="torn-paper"] #desk .mod{background:var(--glass) var(--paper-grain);border-color:var(--surface-line);
+  border-radius:.35em;box-shadow:0 8px 24px rgba(61,43,31,.18),0 1px 0 rgba(255,255,255,.6) inset;color:#2a1f16;transform:rotate(-.25deg)}
+html[data-theme="torn-paper"] #desk .card,html[data-theme="torn-paper"] #desk .court-wrap,
+html[data-theme="torn-paper"] #desk .music-wrap,html[data-theme="torn-paper"] #desk .ledger-wrap,
+html[data-theme="torn-paper"] #desk .space-wrap,html[data-theme="torn-paper"] #desk .riad-wrap,
+html[data-theme="torn-paper"] #desk #x-jumbotron{clip-path:polygon(0 2%,4% 0,10% 1.5%,17% 0,24% 1.7%,33% 0,42% 1.5%,52% 0,63% 1.8%,72% 0,82% 1.4%,92% 0,100% 1%,100% 98%,96% 100%,87% 98.5%,77% 100%,66% 98%,56% 100%,44% 98.3%,34% 100%,23% 98.4%,13% 100%,4% 98.2%,0 99%)}
+html[data-theme="torn-paper"] #desk .headline,html[data-theme="torn-paper"] #desk .ask,
+html[data-theme="torn-paper"] #desk .court-question,html[data-theme="torn-paper"] #desk .music-current,
+html[data-theme="torn-paper"] #desk .ledger-title{font-family:var(--serif);font-weight:700;line-height:1.12}
+html[data-theme="torn-paper"] #desk .chip{background:transparent;border:1.5px solid var(--accent);color:var(--accent);transform:rotate(-1.5deg)}
+html[data-theme="torn-paper"].low-power #desk .mod,html.low-power #desk .mod{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+  box-shadow:0 4px 12px rgba(0,0,0,.16);background-image:none;transform:none;clip-path:none}
+
+/* Swae composites one screenshot per frame (5 per second by default) instead of showing
+   this page live, never forwards taps or scrolling, and mixes only the microphone into the
+   broadcast. So backdrop-filter costs a full re-render every snapshot, and animations get
+   sampled mid-flight into arbitrary half-drawn frames. Same palette and hierarchy here,
+   drawn with solid scrims instead of blur, and state changes land instantly and completely. */
+html.swae #desk .card,html.swae #desk .court-wrap,html.swae #desk .music-wrap,
+html.swae #desk .space-wrap,html.swae #desk .ledger-wrap,html.swae #desk .riad-wrap,
+html.swae #desk #x-jumbotron,html.swae #desk .news-drop-card,html.swae #desk .mod{
+  backdrop-filter:none!important;-webkit-backdrop-filter:none!important;background:#0b0d12f5}
+html.swae #desk *{transition:none!important;animation:none!important}
+html.swae .scale-wrap{display:none}
+
+/* Live chat handed over by Swae's own chat bridge, shown only when it exists.
+   Sits above #time-dock, which owns the bottom-left corner. */
+#swae-chat{position:fixed;left:var(--m);bottom:calc(var(--m) + 4.4em + env(safe-area-inset-bottom,0px));z-index:24;
+  width:min(26em,calc(100vw - 2*var(--m)));display:flex;flex-direction:column;gap:.18em;
+  padding:.42em .7em;background:rgba(7,9,14,.88);border:1px solid rgba(102,139,179,.32);
+  border-left:.28em solid #75b9e8;border-radius:.9em;box-shadow:0 8px 24px rgba(0,0,0,.4);
+  font-size:clamp(12px,1.7vmin,17px);pointer-events:none}
+#swae-chat[hidden]{display:none}
+#swae-chat .swae-chat-line{display:flex;gap:.45em;min-width:0;line-height:1.25}
+#swae-chat .swae-chat-user{color:#75b9e8;font-weight:800;flex:0 0 auto;max-width:9em;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#swae-chat .swae-chat-text{color:#e7ecf2;flex:1 1 auto;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+@media(max-width:900px){.layout-alive .slot{width:min(39vw,460px)}
+  .layout-alive #dock-right{width:min(31vw,360px)}
+  #time-dock{font-size:.72em}}
 `;
 
 // ---------- upgraded DOM helper ----------
@@ -502,6 +609,35 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
   document.body.append(root);
   const headlineShelf = h("div", { id: "auto-headlines", "aria-live": "off", "data-status": "loading" });
   root.append(headlineShelf);
+
+  // ---------- Swae chat bridge ----------
+  // Swae already reads the chat for the broadcast. With "Swae access" on it can hand those
+  // messages straight to this page, so chat can be shown without a second connection to
+  // Twitch. Messages arrive as { chat: { user, segments } }; a prefix can be requested so
+  // Swae forwards only matching lines. Chat is a Swae-only surface today, ?chat=0 turns it
+  // off and ?chat=1 previews the empty strip elsewhere.
+  const chatFeed = h("div", { id: "swae-chat", hidden: true, "aria-live": "off" });
+  root.append(chatFeed);
+  const CHAT = (SWAE || P.get("chat") === "1") && P.get("chat") !== "0";
+  const CHAT_LINES = 3;
+  if (CHAT && typeof swae !== "undefined" && typeof swae.subscribe === "function") {
+    const chatPrefix = P.get("chatPrefix") || "";
+    swae.subscribe(chatPrefix ? { chat: { prefix: chatPrefix } } : { chat: {} });
+    swae.onmessage = (data) => {
+      const chat = data && data.chat;
+      if (!chat) return;
+      const text = (chat.segments || [])
+        .map((s) => (s && typeof s.text === "string" ? s.text : ""))
+        .join("")
+        .trim();
+      if (!text) return;
+      chatFeed.hidden = false;
+      chatFeed.append(h("div", "swae-chat-line",
+        h("span", "swae-chat-user", chat.user || "???"),
+        h("span", "swae-chat-text", text)));
+      while (chatFeed.children.length > CHAT_LINES) chatFeed.firstElementChild.remove();
+    };
+  }
 
   const cridAudio = document.createElement("audio");
   cridAudio.preload = "none";

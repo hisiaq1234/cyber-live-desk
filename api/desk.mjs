@@ -23,8 +23,8 @@
 // Optional for research: DESK_FEED_PROXY (a scraping API, your own worker or an RSS-Bridge
 // instance, see proxyFor in the core), DESK_FEED_TIMEOUT_MS and DESK_FEED_BUDGET_MS.
 // Optional for private briefs: GEMINI_API_KEY, BRIEF_MODEL, BRIEF_MAX_AGE_HOURS and BRIEF_X_WOEID.
-// Optional for Music Desk search: YOUTUBE_API_KEY (YouTube Data API v3). Without it the desk
-// stays queue-only and a spoken song name is refused.
+// Optional for Music Desk search: YOUTUBE_API_KEY (YouTube Data API v3). Voice tries the queue
+// first, then uses server-side YouTube search on a named-track miss; bare play uses its default.
 // Twitch webhook secrets live in Vercel environment variables, never in this file.
 // Single operator assumed: concurrent writes are last-write-wins, except the auto-play
 // advance, which re-checks the version it read so a race cannot skip a card.
@@ -78,6 +78,29 @@ const json = (data, status = 200) =>
     status,
     headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" },
   });
+
+export async function runVoiceMusicAction(actionBody, { run = runAction, search = searchYouTubeTracks } = {}) {
+  try {
+    return await run(actionBody);
+  } catch (error) {
+    if (actionBody?.action !== "music-play" || typeof actionBody.query !== "string" || !actionBody.query.trim() ||
+        !(error instanceof HttpError) || !/^No queued track matches/i.test(error.message)) throw error;
+    let results;
+    try {
+      results = await search(actionBody.query, { max: 1 });
+    } catch (searchError) {
+      const message = String(searchError?.message || "");
+      if (/YOUTUBE_API_KEY|not configured|not set/i.test(message)) {
+        throw new HttpError(503, "YouTube voice search is not configured. Add YOUTUBE_API_KEY in Vercel.");
+      }
+      throw new HttpError(502, "YouTube search failed.");
+    }
+    const track = Array.isArray(results) ? results[0] : null;
+    const videoId = typeof track?.videoId === "string" ? track.videoId.trim() : "";
+    if (!/^[A-Za-z0-9_-]{11}$/.test(videoId)) throw new HttpError(404, "No playable YouTube result was found.");
+    return run({ ...actionBody, videoId, title: track.title || actionBody.query, artist: track.artist || "" });
+  }
+}
 
 const handler = async (req) => {
   const url = new URL(req.url.startsWith("http") ? req.url : `https://cyber-live-desk.vercel.app${req.url}`);
@@ -171,7 +194,7 @@ const handler = async (req) => {
       if (actionBody.action === "crid-open") {
         actionBody = { ...actionBody, kind: "topic", title: "Voice segment", credit: "Voice" };
       }
-      const result = await runAction(s, actionBody);
+      const result = await runVoiceMusicAction(actionBody, { run: (body) => runAction(s, body) });
       return json({ ok: true, ...result, command: commandText(cmd), serverNow: Date.now() });
     }
     if (req.method === "POST" && route === "/api/desk/cards") return json({ card: await upsertCard(s, await readBody(req)) });

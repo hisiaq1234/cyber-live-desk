@@ -106,7 +106,7 @@ export function chatMayCommand(tags, { enabled = false, allowIds = [] } = {}) {
 
 export const COMMAND_HELP =
   "crid next · crid prev · crid hold · crid hide · crid stop · crid poll <question>|<a>|<b> · " +
-  "crid auto on|off · crid music · crid music play [song or queued track; default YouTube video if empty] · crid music pause|next|stop · " +
+  "crid auto on|off · crid music · crid music play [song or artist; unique queued track first, YouTube search on miss if configured; bare play uses default] · crid music pause|next|stop · " +
   `crid bot on|off · crid bot ${BOT_REACTS.join("|")} · ` +
   "crid streamers · crid movies · crid politics · crid business · crid trends · crid all";
 

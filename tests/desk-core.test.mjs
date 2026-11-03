@@ -1260,6 +1260,22 @@ test("music-play uses the supplied default YouTube video when the queue is empty
   assert.equal(unsafe.music.current.videoId, undefined, "only an 11-character YouTube ID may be public");
 });
 
+test("music-play accepts only a validated YouTube search result after a queue miss", async () => {
+  const store = musicStore();
+  await runAction(store, { action: "music-add", title: "Queued song", artist: "Artist", videoId: "dQw4w9WgXcQ" }, NOW);
+  const { state } = await runAction(store, {
+    action: "music-play", query: "Burna Boy", videoId: "8jDVdq70zUI", title: "MAMA'S FAVORITE", artist: "YE",
+  }, NOW);
+  assert.equal(state.music.current.videoId, "8jDVdq70zUI");
+  assert.equal(state.music.current.title, "MAMA'S FAVORITE");
+  assert.equal(state.music.queue.length, 2);
+  assert.equal(publicProjection(state).music.current.videoId, "8jDVdq70zUI");
+  await assert.rejects(
+    () => runAction(musicStore(), { action: "music-play", query: "Burna Boy", videoId: "https://youtube.com/watch?v=8jDVdq70zUI" }, NOW),
+    /valid YouTube video ID/i,
+  );
+});
+
 test("music-next advances to the next track", async () => {
   const store = musicStore();
   await runAction(store, { action: "music-add", title: "T1", artist: "A1" }, NOW);

@@ -622,7 +622,7 @@ import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
     voiceStatus,
     h("div", "row", voiceButton),
     h("p", "sub", "For private research, say “crid research” plus a topic, then “crid deeper” and an optional angle, “crid refresh”, “crid read”, or “crid quiet”. These are not public Swae chat commands and never publish to the viewer overlay."),
-    h("p", "sub", "Music voice commands: “crid music play” starts the first queued track, or YE — MAMA'S FAVORITE if the queue is empty. Add a name to select one unique queued match; named voice requests do not search YouTube. “crid music pause”, “crid music next”, and “crid music stop” control playback."),
+    h("p", "sub", "Music voice commands: “crid music play” starts the first queued track, or YE — MAMA'S FAVORITE if the queue is empty. “crid music play” plus a song or artist uses one unique queue match first, then searches YouTube automatically on a miss when the server-only YOUTUBE_API_KEY is configured. “crid music pause”, “crid music next”, and “crid music stop” control playback."),
     h("p", "sub", "Other actions still use the server’s voice safety list."),
     h("div", "twitch-box",
       h("strong", {}, "Keyboard shortcuts (Ctrl + Shift)"),

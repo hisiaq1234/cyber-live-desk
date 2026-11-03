@@ -768,25 +768,38 @@ export async function runAction(store, b, now = Date.now()) {
       if (!title) throw new HttpError(422, "A track title is required.");
       const artist = text(b.artist, LIMITS.headline, "artist");
       const audioUrl = typeof b.audioUrl === "string" && b.audioUrl.trim() ? clip(b.audioUrl.trim(), LIMITS.cridAudioUrl) : null;
+      const videoId = typeof b.videoId === "string" ? b.videoId.trim() : "";
+      if (b.videoId !== undefined && !/^[A-Za-z0-9_-]{11}$/.test(videoId)) throw new HttpError(422, "A valid YouTube video ID is required.");
       const music = state.music || { queue: [], current: null, playing: false, volume: 1, muted: false };
-      const track = { id: cryptoRandomId(), title, artist, audioUrl };
+      const track = { id: cryptoRandomId(), title, artist, audioUrl, ...(videoId ? { videoId } : {}) };
       patch = { music: { ...music, queue: [...music.queue, track] } };
       break;
     }
     case "music-play": {
       const music = state.music || { queue: [], current: null, playing: false, volume: 1, muted: false };
-      const queue = Array.isArray(music.queue) ? music.queue : [];
+      let queue = Array.isArray(music.queue) ? music.queue : [];
       const query = typeof b.query === "string" ? b.query.trim() : "";
       if (query.length > 120) throw new HttpError(422, "A music search phrase must be 120 characters or fewer.");
+      const suppliedVideoId = typeof b.videoId === "string" ? b.videoId.trim() : "";
+      if (b.videoId !== undefined && !/^[A-Za-z0-9_-]{11}$/.test(suppliedVideoId)) throw new HttpError(422, "A valid YouTube video ID is required.");
       let current = music.current || queue[0] || null;
       if (query) {
         const candidates = [...queue];
         if (music.current && !candidates.some((track) => track?.id === music.current.id)) candidates.push(music.current);
         const needle = query.toLocaleLowerCase();
         const matches = candidates.filter((track) => `${track?.title ?? ""} ${track?.artist ?? ""}`.toLocaleLowerCase().includes(needle));
-        if (!matches.length) throw new HttpError(409, `No queued track matches “${query}”. Search for it in Music Desk and add it to the queue first.`);
+        if (!matches.length) {
+          if (!suppliedVideoId) throw new HttpError(409, `No queued track matches “${query}”. Search for it in Music Desk and add it to the queue first.`);
+          current = candidates.find((track) => track?.videoId === suppliedVideoId) || {
+            id: cryptoRandomId(),
+            title: text(typeof b.title === "string" && b.title.trim() ? b.title : query, LIMITS.headline, "title"),
+            artist: text(typeof b.artist === "string" ? b.artist : "", LIMITS.headline, "artist"),
+            videoId: suppliedVideoId,
+          };
+          if (!queue.some((track) => track?.id === current.id)) queue = [...queue, current];
+        }
         if (matches.length > 1) throw new HttpError(409, `More than one queued track matches “${query}”. Say a more specific title.`);
-        current = matches[0];
+        if (matches.length === 1) current = matches[0];
       }
       if (!current && !query) current = { id: "youtube-default-8jDVdq70zUI", title: "MAMA'S FAVORITE", artist: "YE", videoId: "8jDVdq70zUI" };
       if (!current) throw new HttpError(409, "The music queue is empty. Add a track in Music Desk first.");

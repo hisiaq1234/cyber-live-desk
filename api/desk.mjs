@@ -58,13 +58,16 @@ export const config = { runtime: "nodejs" };
 const PAGE = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
   "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\">" +
   "<title>Cyber Live Desk overlay</title>" +
-  // Both themes name real families, and this is the only page that loads overlay.js, so the
+  // Every theme names real families, and this is the only page that loads overlay.js, so the
   // fonts have to be fetched here. Without this every theme silently fell back to Georgia.
   // Caveat is variable, hence the weight range; one rejected family fails the whole sheet.
+  // Anton and Instrument Serif serve the cyber theme and are requested as plain families here
+  // as network fallbacks; the theme's self-hosted copies are shipped at /desk-assets/fonts/.
   "<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>" +
   "<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Caveat:wght@400..700" +
   "&family=Kalam:wght@400;700&family=Fraunces:opsz,wght@9..144,400..700" +
-  "&family=Inter:wght@400;700&family=JetBrains+Mono:wght@400;700&display=swap\">" +
+  "&family=Inter:wght@400;700&family=JetBrains+Mono:wght@400;700" +
+  "&family=Anton&family=Instrument+Serif:ital@0;1&display=swap\">" +
   "<style>html,body{margin:0;background:transparent}</style></head>" +
   "<body><script type=\"module\" src=\"/desk-assets/overlay.js\"></script></body></html>";
 

@@ -9,6 +9,10 @@
 const COMMAND = /^[!/]?\s*crid[-_ ]*([a-z]+)\b(.*)$/i;
 const NO_ARG = new Set(["next", "prev", "previous", "hold", "hide", "stop", "refresh", "read", "quiet"]);
 const LEAVE_DESK = new Set(["all", "clear"]);
+// CRID, the mascot. Restated here rather than imported from _desk-core.mjs because this module is
+// also served to the browser, which cannot reach the api directory; the commands test asserts the
+// two lists still agree.
+export const BOT_REACTS = ["wave", "cheer", "think", "surprise", "wince", "nod", "shrug"];
 
 // One command, or null when the line is not a command at all. Trailing words after a verb that
 // takes none (crid next after this one) are refused rather than guessed at: on air, a command
@@ -38,6 +42,13 @@ export function parseDeskCommand(line) {
     const query = (match[2] ?? "").trim();
     if (query.length > 120 || (query && action !== "play")) return null;
     return { verb: "music", action, ...(query ? { query } : {}) };
+  }
+  if (verb === "bot") {
+    // A bare "crid bot" flips it, which is exactly what the dashboard's single button posts.
+    if (!rest) return { verb: "bot" };
+    const asked = rest.toLowerCase();
+    if (asked === "on" || asked === "off") return { verb: "bot", value: asked };
+    return BOT_REACTS.includes(asked) ? { verb: "bot", react: asked } : null;
   }
   if (verb === "desk" || rest) return null;
   // Anything else is a desk name. Which names exist is the server's list, so an invented one
@@ -96,6 +107,7 @@ export function chatMayCommand(tags, { enabled = false, allowIds = [] } = {}) {
 export const COMMAND_HELP =
   "crid next · crid prev · crid hold · crid hide · crid stop · crid poll <question>|<a>|<b> · " +
   "crid auto on|off · crid music · crid music play [song or queued track; default YouTube video if empty] · crid music pause|next|stop · " +
+  `crid bot on|off · crid bot ${BOT_REACTS.join("|")} · ` +
   "crid streamers · crid movies · crid politics · crid business · crid trends · crid all";
 
 // Maps only implemented commands. Recognized-but-unimplemented verbs must never become
@@ -108,6 +120,10 @@ export const commandBody = (cmd) => {
     const action = { play: "music-play", pause: "music-pause", next: "music-next", stop: "music-stop" }[cmd.action];
     return action ? { action, ...(cmd.query ? { query: cmd.query } : {}) } : null;
   }
+  if (cmd.verb === "bot") {
+    if (cmd.react) return { action: "bot-react", kind: cmd.react };
+    return { action: "bot", ...(cmd.value ? { value: cmd.value === "on" } : {}) };
+  }
   const action = { next: "next", prev: "previous", hold: "hold", hide: "hide", stop: "end-poll" }[cmd.verb];
   return action ? { action } : null;
 };
@@ -118,6 +134,7 @@ export const commandText = (cmd) =>
     : cmd.verb === "auto" ? `crid auto ${cmd.value}`
     : cmd.verb === "desk" ? `crid ${cmd.desk}`
     : cmd.verb === "music" ? `crid music ${cmd.action}${cmd.query ? ` ${cmd.query}` : ""}`
+    : cmd.verb === "bot" ? `crid bot${cmd.react ? ` ${cmd.react}` : cmd.value ? ` ${cmd.value}` : ""}`
     : cmd.verb === "research" ? `crid research ${cmd.topic ?? ""}`.trim()
     : cmd.verb === "deeper" ? `crid deeper ${cmd.focus ?? ""}`.trim()
     : `crid ${cmd.verb}`;

@@ -30,7 +30,6 @@ import {
   readCards,
   readState,
   resolveDesk,
-  resolveMusicPhrase,
   runAction,
   runResearch,
   untouchedAuto,
@@ -782,6 +781,38 @@ test("closing a segment clears its verdict, so a stale 0 cannot ride onto the ne
   assert.equal(next.crid.verdict, null, "the closed verdict did not leak");
 });
 
+test("the operator can take CRID off the air and fire one gesture at a time", async () => {
+  const store = makeStore();
+
+  // A desk that has never been told anything about the bot reads as on with nothing pending.
+  assert.equal((await readState(store)).bot, null);
+
+  // A bare press flips whatever was there, so the dashboard needs one button, not two.
+  assert.equal((await runAction(store, { action: "bot" }, NOW)).state.bot.on, false);
+  assert.equal((await runAction(store, { action: "bot" }, NOW)).state.bot.on, true, "the second press puts it back");
+  assert.equal(
+    (await runAction(store, { action: "bot", value: false }, NOW)).state.bot.on,
+    false,
+    "an explicit value beats the toggle",
+  );
+
+  // The counter is what the overlay watches, so the same kind twice is still two reactions.
+  const first = (await runAction(store, { action: "bot-react", kind: "wave" }, NOW)).state;
+  assert.deepEqual(first.bot.react, { kind: "wave", n: 1 });
+  assert.equal(first.bot.on, false, "asking for a gesture does not switch the bot back on");
+  assert.deepEqual(
+    (await runAction(store, { action: "bot-react", kind: "wave" }, NOW)).state.bot.react,
+    { kind: "wave", n: 2 },
+    "the second wave is a different reaction, not a duplicate",
+  );
+  await assert.rejects(() => runAction(store, { action: "bot-react", kind: "explode" }, NOW), /kind must be one of/);
+
+  // The overlay draws the bot from the viewer projection, so the switch must survive it.
+  const body = publicProjection((await runAction(store, { action: "bot", value: true }, NOW)).state);
+  assert.equal(body.bot.on, true);
+  assert.deepEqual(body.bot.react, { kind: "wave", n: 2 }, "a toggle does not discard the pending gesture");
+});
+
 test("an ended poll writes its result onto the open segment, and the operator still stamps the verdict", async () => {
   const store = cridStore();
   await openCrid(store);
@@ -1207,29 +1238,7 @@ test("music-play starts playback from queue head", async () => {
 
   const selected = (await runAction(store, { action: "music-play", query: "A2" }, NOW)).state;
   assert.equal(selected.music.current.title, "T2", "a spoken query selects its unique queued match");
-
-  // A phrase in no queue slot is handed to YouTube. With no key configured the desk refuses
-  // rather than searching, which also keeps this test off the network.
-  const priorKey = process.env.YOUTUBE_API_KEY;
-  delete process.env.YOUTUBE_API_KEY;
-  try {
-    await assert.rejects(() => runAction(store, { action: "music-play", query: "not queued" }, NOW), /Nothing queued matches/i);
-  } finally {
-    if (priorKey !== undefined) process.env.YOUTUBE_API_KEY = priorKey;
-  }
-});
-
-test("resolveMusicPhrase takes the first YouTube hit and refuses clearly when there is none", async () => {
-  const found = await resolveMusicPhrase("sisters and brothers", async () => [
-    { videoId: "8jDVdq70zUI", title: "SISTERS AND BROTHERS", artist: "Kanye West" },
-  ]);
-  assert.equal(found.videoId, "8jDVdq70zUI");
-
-  await assert.rejects(() => resolveMusicPhrase("nothing at all", async () => []), /Try a more specific title/i);
-  await assert.rejects(
-    () => resolveMusicPhrase("unreachable", async () => { throw new Error("HTTP 403"); }),
-    /YouTube search is unavailable/i,
-  );
+  await assert.rejects(() => runAction(store, { action: "music-play", query: "not queued" }, NOW), /No queued track matches/i);
 });
 
 test("music-play uses the supplied default YouTube video when the queue is empty", async () => {

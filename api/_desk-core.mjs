@@ -1,9 +1,7 @@
 // CYBER LIVE DESK — shared core.
 // Every function here takes a blobs store as its first argument, so the HTTP handler
 // (desk.mjs) and the scheduled run (desk-auto-research.mjs) share one implementation
-// and this file stays importable by tests without @upstash/redis.
-
-import { searchYouTubeTracks } from "./_youtube-search.mjs";
+// and this file stays importable by tests without @netlify/blobs.
 
 export const DEFAULT_TTL_SEC = 45;
 export const RESULT_SEC = 20; // how long final poll results stay up
@@ -27,6 +25,8 @@ export const LIMITS = {
 // replacing it, so news keeps flowing underneath a live segment.
 export const CRID_KINDS = ["topic", "news", "debate", "music", "question"];
 export const VERDICTS = [0, 1]; // 1 = paid, 0 = still owing. Never anything else.
+// CRID can be told to perform on command, on top of the reactions it derives from the desk state.
+export const BOT_REACTS = ["wave", "cheer", "think", "surprise", "wince", "nod", "shrug"];
 export const STORE_NAME = "cyber-live-desk";
 
 export const DEFAULT_STATE = {
@@ -52,6 +52,10 @@ export const DEFAULT_STATE = {
   ledger: [], // [{ id, type, title, description, createdAt }]
   // RIAD — Rent Is Always Due raid identity.
   riad: null, // { active: boolean, announcedAt: number|null, channel: string|null }
+  // CRID, the on-screen mascot. null means "on, nothing pending", which is what a desk that has
+  // never been told otherwise looks like. The overlay reads on to boot or kill the bot, and react
+  // to fire one gesture; n counts up so the same reaction can be asked for twice in a row.
+  bot: null, // { on: boolean, react?: { kind: string, n: number } }
   autoPlay: false, // when on, an expired card advances to the next approved one by itself
   autoResearch: false, // when on, the scheduled run adds new research by itself
   // Research approval is a separate, persistent decision from whether the scheduler fetches at
@@ -764,20 +768,14 @@ export async function runAction(store, b, now = Date.now()) {
       if (!title) throw new HttpError(422, "A track title is required.");
       const artist = text(b.artist, LIMITS.headline, "artist");
       const audioUrl = typeof b.audioUrl === "string" && b.audioUrl.trim() ? clip(b.audioUrl.trim(), LIMITS.cridAudioUrl) : null;
-      // A queue slot found through YouTube search carries the video so the operator can build
-      // the matching Swae web-page player URL from the same track.
-      const videoId = typeof b.videoId === "string" && /^[A-Za-z0-9_-]{11}$/.test(b.videoId.trim()) ? b.videoId.trim() : null;
       const music = state.music || { queue: [], current: null, playing: false, volume: 1, muted: false };
-      // Re-adding a video already in the queue must not create a second slot, or a later
-      // "play <title>" would match twice and be refused as ambiguous.
-      const already = videoId ? music.queue.find((t) => t?.videoId === videoId) : null;
-      const track = already ?? { id: cryptoRandomId(), title, artist, audioUrl, ...(videoId ? { videoId } : {}) };
-      patch = { music: { ...music, queue: already ? music.queue : [...music.queue, track] } };
+      const track = { id: cryptoRandomId(), title, artist, audioUrl };
+      patch = { music: { ...music, queue: [...music.queue, track] } };
       break;
     }
     case "music-play": {
       const music = state.music || { queue: [], current: null, playing: false, volume: 1, muted: false };
-      const queue = [...(Array.isArray(music.queue) ? music.queue : [])];
+      const queue = Array.isArray(music.queue) ? music.queue : [];
       const query = typeof b.query === "string" ? b.query.trim() : "";
       if (query.length > 120) throw new HttpError(422, "A music search phrase must be 120 characters or fewer.");
       let current = music.current || queue[0] || null;
@@ -786,18 +784,9 @@ export async function runAction(store, b, now = Date.now()) {
         if (music.current && !candidates.some((track) => track?.id === music.current.id)) candidates.push(music.current);
         const needle = query.toLocaleLowerCase();
         const matches = candidates.filter((track) => `${track?.title ?? ""} ${track?.artist ?? ""}`.toLocaleLowerCase().includes(needle));
+        if (!matches.length) throw new HttpError(409, `No queued track matches “${query}”. Search for it in Music Desk and add it to the queue first.`);
         if (matches.length > 1) throw new HttpError(409, `More than one queued track matches “${query}”. Say a more specific title.`);
-        if (matches.length === 1) {
-          current = matches[0];
-        } else {
-          // Nothing queued matches, so the phrase is a song name. Resolving here only decides
-          // which video is on air and puts it in the queue; the player itself stays in a Swae
-          // web-page layer, because a Swae widget cannot play audio onto the stream.
-          const found = await resolveMusicPhrase(query);
-          const queued = queue.find((track) => track?.videoId && track.videoId === found.videoId);
-          current = queued ?? { id: cryptoRandomId(), title: found.title, artist: found.artist, videoId: found.videoId };
-          if (!queued) queue.push(current);
-        }
+        current = matches[0];
       }
       if (!current && !query) current = { id: "youtube-default-8jDVdq70zUI", title: "MAMA'S FAVORITE", artist: "YE", videoId: "8jDVdq70zUI" };
       if (!current) throw new HttpError(409, "The music queue is empty. Add a track in Music Desk first.");
@@ -871,27 +860,24 @@ export async function runAction(store, b, now = Date.now()) {
       patch = { riad: null };
       break;
     }
+    // ---------- CRID, the mascot ----------
+    case "bot": {
+      // No value means "flip it", so the dashboard can use one button for both states. The react
+      // history is carried across so toggling visibility never replays the last gesture.
+      const on = typeof b.value === "boolean" ? b.value : !(state.bot?.on ?? true);
+      patch = { bot: { ...(state.bot ?? {}), on } };
+      break;
+    }
+    case "bot-react": {
+      if (!BOT_REACTS.includes(b.kind)) throw new HttpError(422, `kind must be one of ${BOT_REACTS.join(", ")}.`);
+      patch = { bot: { on: state.bot?.on ?? true, react: { kind: b.kind, n: (state.bot?.react?.n ?? 0) + 1 } } };
+      break;
+    }
     default:
       throw new HttpError(422, "Unknown action.");
   }
 
   return { state: await commitState(store, state, patch, now), queueLength: queue.length };
-}
-
-// ---------- Music search ----------
-// A spoken or typed phrase is matched against the queue first, then YouTube. Twitch chat is
-// public, so the refusal text explains the problem without naming server configuration.
-export async function resolveMusicPhrase(query, searchFn = searchYouTubeTracks) {
-  let results;
-  try {
-    results = await searchFn(query);
-  } catch (err) {
-    console.error("music search", err);
-    throw new HttpError(409, `Nothing queued matches “${query}”. YouTube search is unavailable right now, so add the track in Music Desk first.`);
-  }
-  const best = results[0];
-  if (!best) throw new HttpError(409, `Nothing queued or found on YouTube matches “${query}”. Try a more specific title.`);
-  return best;
 }
 
 // ---------- Twitch clipping ----------
@@ -1546,8 +1532,8 @@ export function queueCounts(cards, state, heldTotal = 0) {
   };
 }
 
-// Vercel makes a function out of every file in the api directory, this one included, so it
-// answers its own /api/_desk-core URL with a refusal rather than half-work.
+// Netlify makes a function out of every file in netlify/functions, this one included, so it
+// answers its own /.netlify/functions/_desk-core URL with a refusal rather than half-work.
 export default () =>
   new Response(JSON.stringify({ error: "Internal module. Use the /api/desk routes." }), {
     status: 501,

@@ -4,9 +4,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { COMMAND_HELP, chatMayCommand, commandText, parseAllowIds, parseDeskCommand, parsePollSpec, validatePollDraft } from "../public/desk-assets/desk-commands.js";
-import { commandBody as serverCommandBody, commandText as serverCommandText, parseDeskCommand as parseServerDeskCommand } from "../api/_commands.mjs";
+import { BOT_REACTS, COMMAND_HELP, chatMayCommand, commandText, parseAllowIds, parseDeskCommand, parsePollSpec, validatePollDraft } from "../public/desk-assets/desk-commands.js";
+import { BOT_REACTS as serverBotReacts, commandBody as serverCommandBody, commandText as serverCommandText, parseDeskCommand as parseServerDeskCommand } from "../api/_commands.mjs";
 import { commandBody as publicCommandBody, commandText as publicCommandText, parseDeskCommand as parsePublicDeskCommand } from "../public/desk-assets/_commands.mjs";
+import { BOT_REACTS as coreBotReacts } from "../api/_desk-core.mjs";
 
 test("every shape the streamer actually types is a command", () => {
   for (const line of ["crid next", "cridnext", "!cridnext", "!crid next", "CRID_NEXT", "crid  next", "/crid next"]) {
@@ -33,6 +34,27 @@ test("auto is only ever on or off", () => {
   assert.deepEqual(parseDeskCommand("crid AUTO off"), { verb: "auto", value: "off" });
   assert.equal(parseDeskCommand("crid auto"), null);
   assert.equal(parseDeskCommand("crid auto maybe"), null);
+});
+
+test("the bot is one switch and a closed set of gestures, on both sides of the wire", () => {
+  // The overlay, the parser and the server each name the gestures they accept. A list that drifts
+  // would show the operator a button the API then refuses, so all three are compared here.
+  assert.deepEqual(BOT_REACTS, coreBotReacts);
+  assert.deepEqual(serverBotReacts, coreBotReacts);
+
+  assert.deepEqual(parseDeskCommand("crid bot"), { verb: "bot" }, "a bare bot flips the switch");
+  assert.deepEqual(parseDeskCommand("crid bot off"), { verb: "bot", value: "off" });
+  assert.deepEqual(parseDeskCommand("crid BOT on"), { verb: "bot", value: "on" });
+  assert.deepEqual(parseDeskCommand("crid bot wave"), { verb: "bot", react: "wave" });
+  assert.equal(parseDeskCommand("crid bot explode"), null, "an invented gesture is not a command");
+  assert.equal(parseDeskCommand("crid bot off please"), null, "a gesture takes no trailing words");
+
+  assert.deepEqual(publicCommandBody(parseDeskCommand("crid bot")), { action: "bot" });
+  assert.deepEqual(publicCommandBody(parseDeskCommand("crid bot off")), { action: "bot", value: false });
+  assert.deepEqual(publicCommandBody(parseDeskCommand("crid bot wave")), { action: "bot-react", kind: "wave" });
+  assert.equal(commandText(parseDeskCommand("crid bot")), "crid bot");
+  assert.equal(commandText(parseDeskCommand("crid bot wave")), "crid bot wave");
+  for (const kind of BOT_REACTS) assert.ok(COMMAND_HELP.includes(kind), kind);
 });
 
 test("a poll command takes a question and up to three options", () => {
@@ -86,6 +108,7 @@ test("server and browser parser copies agree; private research verbs never map t
     "crid next", "crid previous", "crid hold", "crid hide", "crid stop", "crid all",
     "crid poll Q|A|B", "crid auto on", "crid music", "crid music play", "crid music play Burna Boy",
     "crid music pause", "crid music next", "crid music stop", "crid research", "crid research Lagos TikTok trends",
+    "crid bot", "crid bot on", "crid bot off", "crid bot wave", "crid bot explode",
     "crid deeper", "crid deeper local impact", "crid refresh", "crid read", "crid quiet", "ordinary chat", "desk next",
   ];
   for (const line of lines) assert.deepEqual(parseServerDeskCommand(line), parsePublicDeskCommand(line), line);

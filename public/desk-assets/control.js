@@ -3,7 +3,7 @@
    Operate it from a second device. Every request carries the operator token
    (stored in this browser only); the public overlay never sees notes or the token.
    Loaded as a module so the poll validator and command help are the tested shared copy. */
-import { COMMAND_HELP, commandText, parseAllowIds, parseDeskCommand, validatePollDraft } from "./desk-commands.js";
+import { BOT_REACTS, COMMAND_HELP, commandText, parseAllowIds, parseDeskCommand, validatePollDraft } from "./desk-commands.js";
 import { deskHotkeyAction } from "./desk-hotkeys.js";
 import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
 
@@ -861,6 +861,14 @@ import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
       prompt("Swae Overlay URL:", url);
     }
   };
+  const copySwaePipUrl = () => {
+    const url = `${location.origin}/desk?scene=pip`;
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(url).then(() => toast("Copied dual-camera PiP URL!")).catch(() => prompt("Swae PiP Overlay URL:", url));
+    } else {
+      prompt("Swae PiP Overlay URL:", url);
+    }
+  };
   const reloadPreview = () => {
     try { previewFrame.src = "/desk?debug=0&r=" + Date.now(); } catch { /* ignore */ }
     toast("Preview refreshed");
@@ -871,9 +879,11 @@ import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
       h("div", { class: "row", style: "flex:0 0 auto;gap:4px" },
         btnRatio916, btnRatio169,
         btn("↻", reloadPreview, "small"),
-        btn("Copy Swae URL", copySwaeUrl, "small"))),
+        btn("Copy Swae URL", copySwaeUrl, "small"),
+        btn("Copy PiP URL", copySwaePipUrl, "small"))),
     h("div", "preview-wrap", previewFrame),
-    h("p", "sub", "Landscape 16:9 preview of the /desk overlay. Add the copied URL as a Swae Browser Widget or Web Page layer. Swae redraws the page as snapshots — about 5 per second by default — so it is never as smooth as this preview, and its stream audio is microphone-only: anything playing in the overlay is heard on the phone, not on the broadcast. Use the larger widget size or a lower frame rate if the device struggles. Private research stays in /control."));
+    h("p", "sub", "Landscape 16:9 preview of the /desk overlay. Add the copied URL as a Swae Browser Widget or Web Page layer. Swae redraws the page as snapshots — about 5 per second by default — so it is never as smooth as this preview, and its stream audio is microphone-only: anything playing in the overlay is heard on the phone, not on the broadcast. Use the larger widget size or a lower frame rate if the device struggles. Private research stays in /control."),
+    h("p", "sub", "The PiP URL only reserves the bottom-right area; add or position the second-camera layer separately in Swae or OBS."));
 
   // ---------- CRID (Cyber's Rent Is Due) Segment ----------
   const cridPanel = h("section", "panel crid-panel");
@@ -939,6 +949,25 @@ import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
           cridAudioIn.value = "";
         }, "primary giant", "heavy"));
     }
+  };
+
+  // ---------- CRID, the mascot ----------
+  // The bot is drawn inside the overlay by the viewer page and reacts to the desk on his own.
+  // These are the only two things an operator needs from here: take him off the air, or ask for
+  // one gesture by hand. The gesture list comes from the command parser, so this panel and a typed
+  // "crid bot wave" can never offer the server a reaction it would reject.
+  const botPanel = h("section", "panel crid-bot-panel");
+  const renderBotPanel = () => {
+    const on = state?.bot?.on !== false;
+    const last = state?.bot?.react;
+    botPanel.replaceChildren(
+      h("h2", {}, "CRID — the mascot", h("span", { class: on ? "chip ok" : "chip" }, on ? "ON AIR" : "OFF AIR")),
+      h("p", "sub", "CRID lives in the overlay: he grooms, dozes and reacts to the desk on his own. The switch is the one the overlay reads. A reaction is a single gesture, and asking for the same one twice is two gestures, not one ignored."),
+      h("div", "row",
+        btn(on ? "Take CRID off the air" : "Put CRID back on the air", () => act("bot"), (on ? "danger " : "primary ") + "giant", "heavy"),
+        last ? h("span", "sub", `Last sent: ${last.kind}`) : null),
+      h("div", "grid", ...BOT_REACTS.map((kind) =>
+        btn(kind.toUpperCase(), () => act("bot-react", { kind }), "small"))));
   };
 
   // ---------- desks ----------
@@ -1716,14 +1745,14 @@ import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
     switch(currentTab) {
       case "live": panels = [statusEl, controlsEl, voicePanel, briefPanel, previewPanel]; break;
       case "topics": panels = [queuePanel, editorEl]; break;
-      case "crid": panels = [cridPanel]; break;
+      case "crid": panels = [cridPanel, botPanel]; break;
       case "community": panels = [riadPanel, ledgerPanel, spacePanel, chatPanel, slangPanel]; break;
       case "studio": panels = [clipPanel, musicPanel, courtPanel, audiomackPanel]; break;
       case "settings": panels = [autoEl, pollEl, twitchPanel, settingsExtrasEl]; break;
       default: panels = [statusEl, controlsEl, voicePanel, briefPanel, previewPanel];
     }
     // Show/hide panels based on active tab
-    const allPanels = [statusEl, controlsEl, voicePanel, briefPanel, previewPanel, queuePanel, editorEl, cridPanel,
+    const allPanels = [statusEl, controlsEl, voicePanel, briefPanel, previewPanel, queuePanel, editorEl, cridPanel, botPanel,
       riadPanel, ledgerPanel, spacePanel, chatPanel, slangPanel,
       clipPanel, musicPanel, courtPanel, audiomackPanel, autoEl, pollEl, twitchPanel, settingsExtrasEl];
     for (const p of allPanels) {
@@ -1799,6 +1828,7 @@ import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
     if (!state) { statusEl.append(h("p", "sub", "Connecting")); return; }
     drawDesks();
     renderCridDeck();
+    renderBotPanel();
     const c = activeCard();
     const desk = desks.find((d) => d.id === state.desk) || null;
     const what = !state.visible ? "Nothing on stream"

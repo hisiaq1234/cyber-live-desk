@@ -4,6 +4,7 @@
    This file re-exports everything for browser consumers and tests. */
 
 export {
+  BOT_REACTS,
   parseDeskCommand,
   commandText,
   parsePollSpec,

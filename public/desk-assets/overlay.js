@@ -14,10 +14,17 @@ import { createCridAudioSync } from "./crid-audio.js";
      anim=slide | fade | none  debug=1   (connection dot, leave off on air)
      x.mode=trends|following   x.userId=      x.jpoll=10–3600
      swae=0 | 1                (force the snapshot-safe style off / on)
+     theme=cyber|creative|torn-paper   (default cyber; the theme CSS is ./cyber-theme.js)
+     scene=pip                 pip.w=10–60 pip.h=10–60 (% of viewport)
+     bot=0 | bl|bc|br          bot.x=0–100 bot.y=0–100  (CRID mascot; 0 restores the sound orb)
+     clock=0 | 1               (bottom-left clock plate; on by default)
      chat=0 | 1                chatPrefix=   (Swae chat strip; on by default inside Swae)
      logo=                     (CRID badge logo URL, falls back to ./crid-logo.png)
      Add a card type: DeskOverlay.register("my-type", (card, opts) => HTMLElement)  */
 import { createSoundOrbSync } from "./sound-orb.js";
+import { createCridBot } from "./crid-bot.js";
+import { CYBER_CSS } from "./cyber-theme.js";
+import { youtubeEmbedUrl } from "./youtube-embed.js";
 
 (() => {
   "use strict";
@@ -52,16 +59,30 @@ import { createSoundOrbSync } from "./sound-orb.js";
     crid: P.get("crid") !== "0",
     cridPos: "top",
   };
-  const theme = pick("theme", ["creative", "torn-paper"], "creative");
+  const theme = pick("theme", ["creative", "torn-paper", "cyber"], "cyber");
   document.documentElement.dataset.theme = theme;
   document.documentElement.dataset.crop = P.get("crop") === "0" ? "false" : "true";
   if (P.get("power") === "low") document.documentElement.classList.add("low-power");
+  // ?scene=pip reserves the bottom-right corner for the renderer's dual-camera inset and lifts
+  // the right column above it. The inset itself is drawn by the renderer, so the page only has
+  // to know how much room to leave; the CSS carries a default for when no size is given.
+  const scene = pick("scene", ["pip"], "");
+  if (scene) {
+    document.documentElement.dataset.scene = scene;
+    document.documentElement.style.setProperty("--pip-w", num("pip.w", 34, 10, 60) + "vw");
+    document.documentElement.style.setProperty("--pip-h", num("pip.h", 34, 10, 60) + "vh");
+  }
   const xMode = P.get("x.mode") || "";
   const xJPos = "top";
   const xJPollMs = num("x.jpoll", 60, 10, 3600) * 1000;
   const xUserId = P.get("x.userId") || "";
 
   // ---------- styles ----------
+  // "cyber" is the desk's own palette: onyx surfaces, indigo structure, mint for the single
+  // thing worth looking at. Flat fills, big radii and one hard offset shadow in deep indigo
+  // instead of blur or glow — that is both the look and the cheapest thing to snapshot on Swae.
+  // The theme itself lives in ./cyber-theme.js and is appended to the base sheet below. Anton and
+  // Instrument Serif are self-hosted there, with Impact and Georgia as the fallback stacks.
   const CSS = `
 html,body{margin:0;background:transparent!important;overflow:hidden}
 #desk{position:fixed;inset:0;pointer-events:none;color:#f3f2f0;
@@ -297,6 +318,9 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 .music-track.current{border-color:var(--accent);background:rgba(255,69,58,.15)}
 .music-title{flex:1;font-size:.85em;color:#f3f2f0}
 .music-artist-small{font-size:.75em;color:#c7c7cc}
+#dock-right .music-wrap{width:min(42vw,24em);max-height:32dvh;overflow:hidden;padding:.65em}
+.music-video{display:block;width:100%;aspect-ratio:16/9;height:auto;max-height:26dvh;border:0;border-radius:.65em;background:#05070b;pointer-events:none}
+.music-empty{margin:.35em 0 0;font-size:.72em;color:#9A90B8}
 .space-title{font-size:1em;font-weight:800;color:#f3f2f0;margin:0 0 .2em}
 .space-host{font-size:.8em;color:#c7c7cc;margin:0 0 .3em}
 .space-topic{font-size:.85em;color:#8E8E93;margin:0 0 .4em}
@@ -546,19 +570,27 @@ html.swae .scale-wrap{display:none}
     } catch { return h("div", "court-wrap", h("div", "court-question", "Court")); }
   });
 
-  register("music", (c) => {
+  register("music", (musicState) => {
     try {
-      const music = c || state?.music || { queue: [], current: null, playing: false, volume: 1, muted: false };
-      const cur = music.current;
-      return h("div", "music-wrap",
-        cur ? h("div", "music-current", cur.title) : null,
-        cur && cur.artist ? h("div", "music-artist", cur.artist.toUpperCase()) : null,
-        h("div", "music-queue", `Queue: ${music.queue.length} · ${music.playing ? "playing" : "paused"}${music.muted ? " · muted" : ""}`),
-        music.queue.map((t) => h("div", "music-track" + (t.id === cur?.id ? " current" : ""),
-          h("span", "music-title", t.title),
-          t.artist && h("span", "music-artist-small", t.artist)))
+      const music = musicState || state?.music;
+      const cur = music?.current;
+      if (!cur) return null;
+      const src = youtubeEmbedUrl(cur.videoId, { autoplay: music.playing === true });
+      const player = src ? h("iframe", {
+        class: "music-video",
+        src,
+        title: `YouTube player: ${cur.title || "current track"}`,
+        loading: "lazy",
+        referrerPolicy: "strict-origin-when-cross-origin",
+        allow: "autoplay; encrypted-media; picture-in-picture; web-share",
+        allowFullscreen: true,
+      }) : h("p", "music-empty", "No validated YouTube video is available for this track.");
+      return h("section", { class: "music-wrap", "aria-label": "Music player" },
+        h("div", "music-current", cur.title || "Now playing"),
+        cur.artist && h("div", "music-artist", cur.artist),
+        player
       );
-    } catch { return h("div", "music-wrap", h("div", "music-current", "Music")); }
+    } catch { return null; }
   });
 
   register("space", (c) => {
@@ -601,11 +633,11 @@ html.swae .scale-wrap{display:none}
 
   // ---------- mount ----------
   const style = document.createElement("style");
-  style.textContent = CSS;
+  style.textContent = CSS + CYBER_CSS;
   document.head.append(style);
 
   const slot = h("div", "slot");
-  const root = h("div", { id: "desk", class: `pos-${CFG.pos} anim-${CFG.anim} crid-pos-${CFG.cridPos} x-pos-${xJPos}${CFG.debug ? " debug" : ""}` }, slot);
+  const root = h("div", { id: "desk", class: `layout-${CFG.layout} pos-${CFG.pos} anim-${CFG.anim} crid-pos-${CFG.cridPos} x-pos-${xJPos}${CFG.debug ? " debug" : ""}` }, slot);
   document.body.append(root);
   const headlineShelf = h("div", { id: "auto-headlines", "aria-live": "off", "data-status": "loading" });
   root.append(headlineShelf);
@@ -648,9 +680,24 @@ html.swae .scale-wrap{display:none}
   const syncCridAudio = createCridAudioSync(cridAudio, (error) => {
     console.warn("CRID audio could not start. Browser autoplay policy or the audio URL may have blocked playback.", error);
   });
-  const soundOrb = h("div", { id: "sound-orb", "aria-hidden": "true" },
+  // CRID, the mascot, replaces the sound orb: it grooms itself when idle, reacts to the desk and
+  // pushes docked modules out of its own chest. ?bot=0 restores the orb, ?bot=bl|bc|br picks the
+  // spot (default bottom-right, immediately beside the lower-third identity strip), and
+  // ?bot.x= / ?bot.y= place it by percent. The two are independent — giving one anchors that axis
+  // and leaves the other on its default — so a corner can be nudged without restating both.
+  const BOT_ARG = P.get("bot");
+  const botPlaced = P.get("bot.x") != null || P.get("bot.y") != null;
+  const bot = BOT_ARG === "0" ? null : createCridBot({
+    root,
+    swae: SWAE,
+    lowPower: document.documentElement.classList.contains("low-power"),
+    position: ["bl", "bc", "br"].includes(BOT_ARG) ? BOT_ARG : "br",
+    x: botPlaced ? num("bot.x", 50, 0, 100) : null,
+    y: botPlaced ? num("bot.y", 88, 0, 100) : null,
+  });
+  const soundOrb = bot ? bot.el : h("div", { id: "sound-orb", "aria-hidden": "true" },
     h("span", { class: "orb-ring" }), h("span", { class: "orb-ring" }), h("span", { class: "orb-core" }));
-  root.append(soundOrb);
+  if (!bot) root.append(soundOrb);
   const disposeSoundOrb = createSoundOrbSync(cridAudio, soundOrb);
   window.addEventListener("pagehide", disposeSoundOrb, { once: true });
 
@@ -679,12 +726,22 @@ html.swae .scale-wrap{display:none}
   let shownKey = null;
   let moduleKey = null;
   let identityMusicKey = "";
+  let shownKinds = new Set();
 
   // ---------- modules (docked right) ----------
+  // Every teardown has to go through bot.cancel first: CRID owns a module's transform while it is
+  // mid-flight, so removing the node underneath it would leave a queued animation pointing at a
+  // detached element and stall the whole job queue.
+  const clearModules = () => {
+    if (bot) for (const c of [...modulesWrap.children]) bot.cancel(c);
+    modulesWrap.innerHTML = "";
+  };
+
   const renderModule = (s) => {
     if (!s) {
-      modulesWrap.innerHTML = "";
+      clearModules();
       moduleKey = null;
+      shownKinds = new Set();
       return;
     }
     const track = s.music?.current;
@@ -695,24 +752,46 @@ html.swae .scale-wrap{display:none}
       drawHeadlines();
     }
     const parts = [];
-    if (s.court) parts.push((renderers.get("court") || fallback)({ type: "court", ...s.court }));
-    if (s.spaces && s.spaces.length) parts.push((renderers.get("space") || fallback)({ type: "space", spaces: s.spaces }));
-    if (s.ledger && s.ledger.length) parts.push((renderers.get("ledger") || fallback)({ type: "ledger", ledger: s.ledger }));
-    if (s.riad && s.riad.active) parts.push((renderers.get("riad") || fallback)({ type: "riad", ...s.riad }));
-    const key = JSON.stringify({ court: s.court, spaces: s.spaces, ledger: s.ledger, riad: s.riad });
+    const kinds = [];
+    if (s.music?.current) { parts.push((renderers.get("music") || fallback)(s.music)); kinds.push("music"); }
+    if (s.court) { parts.push((renderers.get("court") || fallback)({ type: "court", ...s.court })); kinds.push("court"); }
+    if (s.spaces && s.spaces.length) { parts.push((renderers.get("space") || fallback)({ type: "space", spaces: s.spaces })); kinds.push("spaces"); }
+    if (s.ledger && s.ledger.length) { parts.push((renderers.get("ledger") || fallback)({ type: "ledger", ledger: s.ledger })); kinds.push("ledger"); }
+    if (s.riad && s.riad.active) { parts.push((renderers.get("riad") || fallback)({ type: "riad", ...s.riad })); kinds.push("riad"); }
+    const key = JSON.stringify({
+      music: s.music?.current ? {
+        title: s.music.current.title, artist: s.music.current.artist,
+        videoId: s.music.current.videoId, playing: Boolean(s.music.playing),
+      } : null,
+      court: s.court, spaces: s.spaces, ledger: s.ledger, riad: s.riad,
+    });
     if (key === moduleKey) return;
-    modulesWrap.innerHTML = "";
+    clearModules();
     if (parts.length) parts.forEach(p => modulesWrap.append(p));
+    // only a module that was not already up gets pushed out of the bot; the rest stay put
+    if (bot) parts.forEach((p, i) => { if (p && !shownKinds.has(kinds[i])) bot.summon(p); });
+    shownKinds = new Set(kinds);
     moduleKey = key;
   };
 
-  const dropCard = () => {
+  // A card on air is dismissed *into* CRID rather than faded: the bot pulls it back into its chest
+  // and only then removes the node. The `leaving` marker stops a second drop from grabbing a card
+  // that is already on its way back, which matters because a replacement appends the new card
+  // while the old one is still in the slot.
+  let summonedCardId = null;
+  const dropCard = (replacing = false) => {
     const old = slot.firstElementChild;
-    if (old) {
-      old.classList.add("out");
-      setTimeout(() => old.remove(), 320);
+    if (old && !old.dataset.leaving) {
+      old.dataset.leaving = "1";
+      if (bot && !replacing) bot.dismiss(old, () => old.remove());
+      else {
+        bot?.cancel(old);
+        old.classList.add("out");
+        setTimeout(() => old.remove(), 320);
+      }
     }
     shownKey = null;
+    if (!replacing) summonedCardId = null;
   };
 
   const showCard = (card, opts) => {
@@ -721,9 +800,11 @@ html.swae .scale-wrap{display:none}
       slot.lastElementChild?.updatePoll?.(opts.poll);
       return;
     }
-    dropCard();
+    dropCard(true);
     const el = (renderers.get(card.type) || fallback)(card, opts);
     slot.append(el);
+    // an edit to the card already on air does not re-summon it; a different card does
+    if (bot && summonedCardId !== card.id) { summonedCardId = card.id; bot.summon(el); }
     requestAnimationFrame(() =>
       requestAnimationFrame(() => {
         el.classList.add("in");
@@ -856,6 +937,7 @@ html.swae .scale-wrap{display:none}
     } else {
       cridEl = h("div", { id: "crid-jumbotron" }, logo, textBody);
       root.append(cridEl);
+      bot?.summon(cridEl);
       requestAnimationFrame(() => requestAnimationFrame(() => cridEl?.classList.add("in")));
     }
     cridKey = key;
@@ -929,6 +1011,7 @@ html.swae .scale-wrap{display:none}
     } else {
       xEl = h("div", { id: "x-jumbotron" }, head, list, foot);
       dockRight.prepend(xEl);
+      bot?.summon(xEl);
       requestAnimationFrame(() => requestAnimationFrame(() => xEl?.classList.add("in")));
     }
     xKey = key;
@@ -977,6 +1060,9 @@ html.swae .scale-wrap{display:none}
     lastUpdated = s.updatedAt;
     clockOffset = s.serverNow - Date.now();
     state = s;
+    // CRID derives its own reactions, text tag and dozing from the same state the panels get; it
+    // keeps the previous state itself and counts the diff, so it only fires on a real change.
+    bot?.observe(s);
     if (changed) {
       clearTimeout(telemetryTimer);
       root.classList.remove("telemetry-pulse");
@@ -985,6 +1071,12 @@ html.swae .scale-wrap{display:none}
     }
     render();
   };
+
+  // CRID is told about the connection only when it flips. A poll that keeps succeeding must not
+  // re-boot a bot that is already up, and a run of failures must not stack restart animations —
+  // setMode() returns early on a no-op, which would also freeze the doze timer in place.
+  let online = true;
+  const setOnline = (v) => { if (v !== online) { online = v; bot?.setOnline(v); } };
 
   const tick = async () => {
     let delay = CFG.pollMs;
@@ -1000,6 +1092,7 @@ html.swae .scale-wrap{display:none}
       if (r.ok && r.status !== 204) apply(await r.json());
       else if (!r.ok && r.status !== 204) throw new Error("HTTP " + r.status);
       failures = 0;
+      setOnline(true);
       const elapsed = Math.round(performance.now() - startedAt);
       root.style.setProperty("--poll-duration", `${Math.min(900, 280 + elapsed)}ms`);
       root.dataset.connection = "connected";
@@ -1007,6 +1100,7 @@ html.swae .scale-wrap{display:none}
       if (dot) dot.title = `Connected · ${elapsed} ms poll`;
     } catch {
       failures++;
+      setOnline(false);
       root.dataset.connection = "reconnecting";
       dot?.classList.remove("loading");
       dot?.classList.add("off");
@@ -1017,6 +1111,27 @@ html.swae .scale-wrap{display:none}
       schedulePoll(delay);
     }
   };
+
+  // ---------- clock plate ----------
+  // The bottom-left corner: what this desk is, the time, and the zone that time belongs to. The
+  // time is the server's, shifted by the offset each poll keeps, so a phone whose own clock is
+  // wrong still shows the stream's real time; the zone name is the device's, because the device
+  // rendering the overlay is the one standing in it. Seconds are written whole, once a second —
+  // a state change, not a tween — so a Swae snapshot can only ever catch a correct reading.
+  if (P.get("clock") !== "0") {
+    let zone = "";
+    try { zone = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch { /* older engines */ }
+    const clockTime = h("div", "clock-time", "--:--:--");
+    root.append(h("div", { id: "time-dock" },
+      h("div", "clock-brand", "CYBER LIVE DESK"),
+      clockTime,
+      h("div", "clock-zone", zone ? zone.toUpperCase().replace(/_/g, " ") : "LOCAL TIME")));
+    const clockFormat = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+    const drawClock = () => { clockTime.textContent = clockFormat.format(new Date(serverNow())); };
+    drawClock();
+    const clockTimer = setInterval(drawClock, 1000);
+    window.addEventListener("pagehide", () => clearInterval(clockTimer), { once: true });
+  }
 
   window.DeskOverlay = { register };
   refreshHeadlines();

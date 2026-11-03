@@ -250,7 +250,7 @@ test("revocation turns Ready off and a new verification turns it back on", async
 });
 
 test("the server parser still understands every command the dashboard advertises", () => {
-  for (const text of ["crid next", "crid prev", "crid hold", "crid hide", "crid stop", "crid music", "crid all", "crid auto on", "crid poll Q|A|B", "crid music play Burna Boy"]) {
+  for (const text of ["crid next", "crid prev", "crid hold", "crid hide", "crid stop", "crid music", "crid all", "crid auto on", "crid poll Q|A|B", "crid music play Burna Boy", "crid bot off", "crid bot wave"]) {
     assert.ok(parseDeskCommand(text), text);
   }
   assert.equal(parseDeskCommand("desk next"), null, "the former prefix is no longer accepted");

@@ -6,6 +6,8 @@
 //   GET /api/x/feed?mode=for-you&userId=123     closest available: home timeline
 // Env: X_BEARER_TOKEN (preferred) or X_ACCESS_TOKEN (legacy fallback).
 
+import { requestUrl } from "./_http.mjs";
+
 export const config = { runtime: "nodejs" };
 const X_API = "https://api.x.com";
 const X_TIMEOUT_MS = 8000;
@@ -57,7 +59,7 @@ export async function fetchXTrends({
 }
 
 export default async (req) => {
-  const url = new URL(req.url);
+  const url = requestUrl(req);
   const mode = url.searchParams.get("mode") || "trends";
   const woeid = url.searchParams.get("woeid") || "23424908";
   const userId = url.searchParams.get("userId");

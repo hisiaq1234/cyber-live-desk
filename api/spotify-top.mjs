@@ -12,6 +12,8 @@
 //   SPOTIFY_REFRESH_TOKEN   long-lived refresh token (6-month lifetime, reauth on invalid_grant)
 //   SPOTIFY_ACCESS_TOKEN    optional cached access token (function will refresh if needed)
 
+import { requestUrl } from "./_http.mjs";
+
 export const config = { path: "/api/spotify/top" };
 
 const SPOTIFY_API = "https://api.spotify.com/v1";
@@ -69,7 +71,7 @@ async function getAccessToken(fetchFn = globalThis.fetch) {
 }
 
 export default async (req) => {
-  const url = new URL(req.url);
+  const url = requestUrl(req);
   const timeRange = url.searchParams.get("time_range") || "long_term";
   const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 5, 1), 50);
 

@@ -52,6 +52,7 @@ import { twitchStatus } from "./_twitch-core.mjs";
 import { parseDeskCommand, commandBody, commandText } from "./_commands.mjs";
 import { readBrief, runBrief } from "./_brief.mjs";
 import { searchYouTubeTracks, youtubeApiKey } from "./_youtube-search.mjs";
+import { requestUrl } from "./_http.mjs";
 
 export const config = { runtime: "nodejs" };
 
@@ -103,7 +104,7 @@ export async function runVoiceMusicAction(actionBody, { run = runAction, search 
 }
 
 const handler = async (req) => {
-  const url = new URL(req.url.startsWith("http") ? req.url : `https://cyber-live-desk.vercel.app${req.url}`);
+  const url = requestUrl(req);
   const route = url.pathname.replace(/\/+$/, "") || "/";
   try {
     if ((req.method === "GET" || req.method === "HEAD") && (route === "/desk" || route === "/api/desk")) {

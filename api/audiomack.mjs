@@ -13,6 +13,7 @@
 //   AUDIOMACK_SECRET    Audiomack Consumer Secret
 
 import crypto from "node:crypto";
+import { requestUrl } from "./_http.mjs";
 
 export const config = { path: "/api/audiomack" };
 
@@ -143,7 +144,7 @@ const CURATED_TRACKS = [
 ];
 
 export default async (req) => {
-  const url = new URL(req.url);
+  const url = requestUrl(req);
   const mode = url.searchParams.get("mode") || "trending";
   const genre = url.searchParams.get("genre") || "";
   const query = url.searchParams.get("q") || "";

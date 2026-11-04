@@ -5,6 +5,7 @@
 
 export {
   BOT_REACTS,
+  THOUGHT_WAR_CATEGORY,
   parseDeskCommand,
   commandText,
   parsePollSpec,

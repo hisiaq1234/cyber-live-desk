@@ -14,6 +14,11 @@ const LEAVE_DESK = new Set(["all", "clear"]);
 // two lists still agree.
 export const BOT_REACTS = ["wave", "cheer", "think", "surprise", "wince", "nod", "shrug"];
 
+// The Thought War deck's category, restated here for the same reason as BOT_REACTS: this module is
+// served to the browser, which cannot reach scripts/thought-war-deck.mjs. The commands test
+// asserts it still matches the deck.
+export const THOUGHT_WAR_CATEGORY = "thought-war";
+
 // One command, or null when the line is not a command at all. Trailing words after a verb that
 // takes none (crid next after this one) are refused rather than guessed at: on air, a command
 // that fires when nobody meant it is worse than one that is ignored.
@@ -50,6 +55,10 @@ export function parseDeskCommand(line) {
     if (asked === "on" || asked === "off") return { verb: "bot", value: asked };
     return BOT_REACTS.includes(asked) ? { verb: "bot", react: asked } : null;
   }
+  // Thought War: one word pulls a random dilemma off the deck. "crid random" shuffles whatever
+  // desk is already on instead, so the operator can draw from Politics or the whole queue.
+  if (verb === "thought") return rest ? null : { verb: "draw", category: THOUGHT_WAR_CATEGORY };
+  if (verb === "random") return rest ? null : { verb: "draw" };
   if (verb === "desk" || rest) return null;
   // Anything else is a desk name. Which names exist is the server's list, so an invented one
   // comes back as a refusal in the log instead of being silently swallowed here.
@@ -106,6 +115,7 @@ export function chatMayCommand(tags, { enabled = false, allowIds = [] } = {}) {
 
 export const COMMAND_HELP =
   "crid next · crid prev · crid hold · crid hide · crid stop · crid poll <question>|<a>|<b> · " +
+  "crid thought · crid random · " +
   "crid auto on|off · crid music · crid music play [song or artist; unique queued track first, YouTube search on miss if configured; bare play uses default] · crid music pause|next|stop · " +
   `crid bot on|off · crid bot ${BOT_REACTS.join("|")} · ` +
   "crid streamers · crid movies · crid politics · crid business · crid trends · crid all";
@@ -114,6 +124,7 @@ export const COMMAND_HELP =
 // `{ action: undefined }`, which obscures rejection at the voice and EventSub boundaries.
 export const commandBody = (cmd) => {
   if (cmd.verb === "poll") return { action: "start-poll", question: cmd.question, options: cmd.options };
+  if (cmd.verb === "draw") return { action: "draw", ...(cmd.category ? { category: cmd.category } : {}) };
   if (cmd.verb === "auto") return { action: "auto-play", value: cmd.value === "on" };
   if (cmd.verb === "desk") return { action: "desk", desk: cmd.desk };
   if (cmd.verb === "music") {
@@ -131,6 +142,7 @@ export const commandBody = (cmd) => {
 // Human-readable form of a command, for logs and status displays.
 export const commandText = (cmd) =>
   cmd.verb === "poll" ? `crid poll ${cmd.question || "(card question)"}`
+    : cmd.verb === "draw" ? `crid ${cmd.category === THOUGHT_WAR_CATEGORY ? "thought" : "random"}`
     : cmd.verb === "auto" ? `crid auto ${cmd.value}`
     : cmd.verb === "desk" ? `crid ${cmd.desk}`
     : cmd.verb === "music" ? `crid music ${cmd.action}${cmd.query ? ` ${cmd.query}` : ""}`

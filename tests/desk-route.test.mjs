@@ -68,3 +68,31 @@ test("voice music explains the missing server-side YouTube key without revealing
     (error) => error instanceof HttpError && error.status === 503 && /YOUTUBE_API_KEY/.test(error.message),
   );
 });
+
+// The voice route checks its allowlist before any storage read, so these two assertions hold
+// without a live Redis: one proves a mascot gesture stays off voice, the other that "crid thought"
+// is recognised AND permitted (a later storage failure is not a 403 or a 422).
+test("a Thought War draw is speakable while a mascot gesture is not", async () => {
+  const saved = process.env.DESK_OPERATOR_TOKEN;
+  process.env.DESK_OPERATOR_TOKEN = "route-test-only-token";
+  const voice = (text) => desk.fetch(new Request("https://cyber-live-desk.vercel.app/api/desk/voice", {
+    method: "POST",
+    headers: { authorization: "Bearer route-test-only-token", "content-type": "application/json" },
+    body: JSON.stringify({ text }),
+  }));
+  try {
+    assert.equal((await voice("crid bot wave")).status, 403, "a gesture is not a voice action");
+
+    const drawn = await voice("crid thought");
+    assert.notEqual(drawn.status, 422, "crid thought is a recognised command");
+    assert.notEqual(drawn.status, 403, "and the deck draw is allowed by voice");
+
+    // An unknown verb is a desk name by design, and the server's desk list answers it after a
+    // state read, so these two stay in the route's own pre-storage checks instead.
+    assert.equal((await voice("")).status, 422, "empty speech is refused");
+    assert.equal((await voice("someone is raiding")).status, 422, "ordinary chat is never a voice command");
+  } finally {
+    if (saved === undefined) delete process.env.DESK_OPERATOR_TOKEN;
+    else process.env.DESK_OPERATOR_TOKEN = saved;
+  }
+});

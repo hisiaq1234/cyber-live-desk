@@ -171,6 +171,18 @@ export function nextAfter(queue, activeId, step = 1) {
   return i < 0 ? queue[0] : queue[(i + step + queue.length) % queue.length];
 }
 
+// Random draw from a pool, never the card already on air unless that is all there is.
+// Takes its own rng so the no-repeat rule is testable without patching Math.random, and walks a
+// bounded loop instead of retrying forever: an rng pinned to one value must still terminate.
+export function drawFrom(pool, activeId, rand = Math.random) {
+  if (!pool.length) return null;
+  for (let i = 0; i < pool.length; i += 1) {
+    const pick = pool[Math.floor(rand() * pool.length)];
+    if (pick && pick.id !== activeId) return pick;
+  }
+  return pool.find((c) => c.id !== activeId) ?? pool[0];
+}
+
 const ttlMs = (c) => (c?.ttlSec ?? DEFAULT_TTL_SEC) * 1000;
 
 // Pure: decides what auto-play does when the current display runs out. Returns null when
@@ -251,6 +263,15 @@ export const DESKS = [
     aliases: ["trends", "trending", "viral"],
     words: ["trending", "trend", "google trends", "most searched"],
   },
+  {
+    // The Thought War deck. Declared by exact category rather than keywords: these cards are
+    // worded like news ("corruption", "business", "pay the bill") without being news.
+    id: "thought-war",
+    label: "Thought War",
+    category: "thought-war",
+    aliases: ["thought war", "thoughtwar", "thought", "war", "debate", "philosophy", "dilemma"],
+    words: ["thought war", "dilemma", "kantian", "socratic", "nietzschean", "side a", "side b"],
+  },
 ];
 
 // The way back out. Not a desk you can be stuck in.
@@ -261,13 +282,20 @@ const deskRx = (d) => (d.rx ??= new RegExp(`\\b(?:${d.words.map(escapeRe).join("
 export function resolveDesk(arg) {
   const a = norm(String(arg ?? ""));
   if (!a) return null;
-  return DESKS.find((d) => d.id === a || d.aliases.includes(a)) ?? (ALL_DESK.aliases.includes(a) ? ALL_DESK : null);
+  // norm() collapses hyphens, so ids are compared normed too or "thought-war" answers to nothing.
+  return DESKS.find((d) => norm(d.id) === a || d.aliases.includes(a)) ?? (ALL_DESK.aliases.includes(a) ? ALL_DESK : null);
 }
 
 export function matchesDesk(c, deskId) {
   const d = DESKS.find((x) => x.id === deskId);
   if (!d) return false;
-  return deskRx(d).test(`${norm(c.category ?? "")} ${norm(c.headline ?? "")} ${norm(c.summary ?? "")}`);
+  const category = norm(c.category ?? "");
+  const owner = DESKS.find((x) => x.category && norm(x.category) === category);
+  // A desk that declares an exact category owns those cards outright, so a Thought War dilemma
+  // never leaks into another desk's next/previous rotation just because of how it is phrased.
+  // Cards without a declared category keep the keyword matching they have always had.
+  if (owner) return d.id === owner.id;
+  return deskRx(d).test(`${category} ${norm(c.headline ?? "")} ${norm(c.summary ?? "")}`);
 }
 
 // ---------- public feed ----------
@@ -558,6 +586,30 @@ export async function runAction(store, b, now = Date.now()) {
       // Asking for a card that is not on the current desk means you want that card, so the
       // desk filter comes off instead of the command failing on air.
       patch = { ...goLive(c), desk: state.desk && matchesDesk(c, state.desk) ? state.desk : null };
+      break;
+    }
+    case "draw": {
+      // A named deck (Thought War) is asked for by category; with no category the draw stays
+      // inside whatever desk is already on, so "crid random" never fights the operator's filter.
+      const category = text(b.category, LIMITS.category, "category");
+      const wanted = category ? norm(category) : "";
+      const pool = wanted
+        ? all.filter((c) => norm(c.category ?? "") === wanted)
+        : state.desk ? queue : all;
+      if (!pool.length) {
+        throw new HttpError(409, wanted
+          ? `Nothing approved in the ${category} deck yet. Approve a card there, or use desk all.`
+          : "No approved cards in the queue.");
+      }
+      const pick = drawFrom(pool, state.activeCardId);
+      const owner = DESKS.find((d) => d.category && norm(d.category) === wanted);
+      patch = {
+        ...goLive(pick),
+        // Drawing from a deck tunes the desk to it, so next walks that deck rather than dumping
+        // you back into the whole queue. Otherwise this keeps show's rule: stay put when the
+        // card is already on the current desk, come off the filter when it is not.
+        desk: owner ? owner.id : state.desk && matchesDesk(pick, state.desk) ? state.desk : null,
+      };
       break;
     }
     case "desk": {

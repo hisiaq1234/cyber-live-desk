@@ -11,7 +11,7 @@
 //   GET  /api/desk/state           public   on-air state; 204 when ?since= equals the current version
 //   GET  /api/desk/cards           operator full queue incl. presenter notes
 //   POST /api/desk/cards           operator create or update one card
-//   POST /api/desk/action          operator show | next | previous | hide | hold | source | mode |
+//   POST /api/desk/action          operator show | next | previous | draw | hide | hold | source | mode |
 //                                   desk | poll actions | auto-play | auto-research | bulk-approval |
 //                                   research-approval | twitch-chat | twitch-allow
 //   POST /api/desk/research        operator fetch headlines/trends, or held items with heldOnly
@@ -189,7 +189,7 @@ const handler = async (req) => {
       if (!cmd) throw new HttpError(422, "Not a recognized CRID command.");
       let actionBody = commandBody(cmd);
       if (!actionBody) throw new HttpError(422, "Command cannot be executed by voice.");
-      const safeActions = new Set(["next", "previous", "hold", "hide", "desk", "start-poll", "end-poll", "auto-play", "clip-create", "crid-open", "music-play", "music-pause", "music-next", "music-stop"]);
+      const safeActions = new Set(["next", "previous", "hold", "hide", "desk", "draw", "start-poll", "end-poll", "auto-play", "clip-create", "crid-open", "music-play", "music-pause", "music-next", "music-stop"]);
       if (!safeActions.has(actionBody.action)) throw new HttpError(403, "This command is not available by voice.");
       // Voice-opened CRID segments use a default title so the streamer can speak to open one.
       if (actionBody.action === "crid-open") {

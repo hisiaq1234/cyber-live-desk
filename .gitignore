@@ -3,3 +3,7 @@
 
 # Installed dependencies
 node_modules/
+
+# Local scratch: staged deliverable copies and agent caches
+.work/
+.manus/

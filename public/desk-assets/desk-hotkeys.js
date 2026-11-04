@@ -1,1 +1,9 @@
-const MAP=Object.freeze({p:"start-poll",b:"bot",r:"riad-trigger",c:"crid-open",k:"crid-close",l:"ledger-add",m:"music-play",v:"court-open",x:"hide",s:"show",arrowleft:"previous",arrowright:"next",arrowup:"hold"}),RESERVED=new Set(["tab","escape","f5","f11","f12"]);export function deskHotkeyAction(event,context){if(!event||typeof event.key!="string")return null;const ctx=context&&typeof context=="object"?context:{};if(ctx.enabled===!1||ctx.visible===!1||ctx.editable===!0||ctx.sheetOpen===!0||event.repeat===!0)return null;const key=event.key.toLowerCase();return RESERVED.has(key)||!((event.ctrlKey===!0||event.metaKey===!0)&&event.altKey===!0)?null:MAP[key]||null}export function deskHotkeyList(){return Object.entries(MAP).map(([key,action])=>({key:key.length===1?key.toUpperCase():key.replace("arrow","Arrow "),action}))}
+// Deliberate modifier-based shortcuts keep ordinary navigation and text editing untouched.
+export function deskHotkeyAction(event, { enabled = false, editable = false, sheetOpen = false, visible = true } = {}) {
+  if (!event || !enabled || !visible || event.defaultPrevented || event.isComposing || event.repeat || editable || sheetOpen) return null;
+  if (!event.ctrlKey || !event.shiftKey || event.altKey || event.metaKey) return null;
+  if (event.code === "ArrowRight") return "next";
+  if (event.code === "ArrowLeft") return "previous";
+  if (event.code === "Space") return "hold";
+  return null;
+}

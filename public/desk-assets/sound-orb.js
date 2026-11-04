@@ -1,1 +1,29 @@
-const TRANSPORT_EVENTS=["playing","play","pause","ended","emptied","stalled","volumechange"];export function createSoundOrbSync(audioEl,orbEl){if(!orbEl||typeof orbEl.classList!="function")return()=>{};const reflect=()=>{const active=!!audioEl&&!audioEl.paused&&!audioEl.ended;orbEl.classList.toggle("is-active",active),orbEl.setAttribute("aria-hidden","true")},reset=()=>orbEl.classList.remove("is-active");if(audioEl&&typeof audioEl.addEventListener=="function"){for(const name of TRANSPORT_EVENTS)audioEl.addEventListener(name,reflect);audioEl.addEventListener("loadstart",reset),audioEl.addEventListener("abort",reset)}reflect();let disposed=!1;return function(){if(!disposed){if(disposed=!0,audioEl&&typeof audioEl.removeEventListener=="function"){for(const name of TRANSPORT_EVENTS)audioEl.removeEventListener(name,reflect);audioEl.removeEventListener("loadstart",reset),audioEl.removeEventListener("abort",reset)}orbEl.classList.remove("is-active")}}}
+const STOP_EVENTS = ["pause", "ended", "emptied", "abort", "waiting", "stalled"];
+
+// Drive the decorative overlay orb from actual media playback state, not microphone input.
+export function createSoundOrbSync(audio, orb) {
+  let playbackStarted = false;
+  const sync = () => {
+    const audible = playbackStarted && !audio.paused && !audio.muted && audio.volume > 0 && !audio.ended;
+    orb.classList.toggle("is-active", audible);
+  };
+  const onPlaying = () => { playbackStarted = true; sync(); };
+  const onStopped = () => { playbackStarted = false; sync(); };
+  const onVolumeChange = () => {
+    playbackStarted = !audio.paused && !audio.muted && audio.volume > 0 && !audio.ended;
+    sync();
+  };
+
+  audio.addEventListener("playing", onPlaying);
+  STOP_EVENTS.forEach((event) => audio.addEventListener(event, onStopped));
+  audio.addEventListener("volumechange", onVolumeChange);
+  sync();
+
+  return () => {
+    audio.removeEventListener("playing", onPlaying);
+    STOP_EVENTS.forEach((event) => audio.removeEventListener(event, onStopped));
+    audio.removeEventListener("volumechange", onVolumeChange);
+    playbackStarted = false;
+    sync();
+  };
+}

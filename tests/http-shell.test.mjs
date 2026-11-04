@@ -4,6 +4,8 @@
 // so `new URL(req.url)` was never exercised the way production exercises it: three
 // functions answered 500 FUNCTION_INVOCATION_FAILED live while the suite stayed green.
 // The parse also sits before each handler's try block, so no JSON fallback can run.
+// Handlers are called through .fetch because that is the shape the runtime invokes;
+// see tests/api-handler-shape.test.mjs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
@@ -21,7 +23,7 @@ const vercelReq = (url, init = {}) => ({
 });
 
 test("x-feed reads query parameters from a relative url", async () => {
-  const res = await xFeed(vercelReq("/api/x/feed?mode=not-a-mode"));
+  const res = await xFeed.fetch(vercelReq("/api/x/feed?mode=not-a-mode"));
   assert.equal(res.status, 422);
   assert.match((await res.json()).error, /Unknown mode: not-a-mode/);
 });
@@ -31,7 +33,7 @@ test("x-feed reports a missing token as 502 instead of crashing", async () => {
   delete process.env.X_BEARER_TOKEN;
   delete process.env.X_ACCESS_TOKEN;
   try {
-    const res = await xFeed(vercelReq("/api/x/feed?mode=trends&woeid=23424908"));
+    const res = await xFeed.fetch(vercelReq("/api/x/feed?mode=trends&woeid=23424908"));
     assert.equal(res.status, 502);
     assert.match((await res.json()).error, /X_BEARER_TOKEN/);
   } finally {
@@ -42,13 +44,13 @@ test("x-feed reports a missing token as 502 instead of crashing", async () => {
 });
 
 test("spotify-top validates time_range from a relative url", async () => {
-  const res = await spotifyTop(vercelReq("/api/spotify-top?time_range=nonsense"));
+  const res = await spotifyTop.fetch(vercelReq("/api/spotify-top?time_range=nonsense"));
   assert.equal(res.status, 422);
   assert.match((await res.json()).error, /time_range/);
 });
 
 test("audiomack answers from its curated list on a relative url", async () => {
-  const res = await audiomack(vercelReq("/api/audiomack?mode=search&q=qqqqzzz"));
+  const res = await audiomack.fetch(vercelReq("/api/audiomack?mode=search&q=qqqqzzz"));
   assert.equal(res.status, 200);
   const body = await res.json();
   assert.equal(body.mode, "search");
@@ -62,7 +64,7 @@ test("the desk page is reachable on a relative url", async () => {
 });
 
 test("absolute urls keep working, because that is what the overlay and tests send", async () => {
-  const res = await xFeed(vercelReq("https://cyber-live-desk.vercel.app/api/x/feed?mode=nope"));
+  const res = await xFeed.fetch(vercelReq("https://cyber-live-desk.vercel.app/api/x/feed?mode=nope"));
   assert.equal(res.status, 422);
   assert.match((await res.json()).error, /Unknown mode: nope/);
 });

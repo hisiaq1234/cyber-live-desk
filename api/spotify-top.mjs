@@ -70,7 +70,7 @@ async function getAccessToken(fetchFn = globalThis.fetch) {
   return data.access_token;
 }
 
-export default async (req) => {
+const handler = async (req) => {
   const url = requestUrl(req);
   const timeRange = url.searchParams.get("time_range") || "long_term";
   const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 5, 1), 50);
@@ -133,3 +133,5 @@ function normalizeTracks(data) {
     };
   }).filter(Boolean);
 }
+
+export default { fetch: handler };

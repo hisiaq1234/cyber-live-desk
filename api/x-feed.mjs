@@ -58,7 +58,7 @@ export async function fetchXTrends({
   return { mode: "trends", woeid: id, updatedAt: now, trends };
 }
 
-export default async (req) => {
+const handler = async (req) => {
   const url = requestUrl(req);
   const mode = url.searchParams.get("mode") || "trends";
   const woeid = url.searchParams.get("woeid") || "23424908";
@@ -97,3 +97,5 @@ export default async (req) => {
     return json({ error: err.message || "X feed failed." }, 502);
   }
 };
+
+export default { fetch: handler };

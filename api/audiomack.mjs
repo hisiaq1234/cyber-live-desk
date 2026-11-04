@@ -143,7 +143,7 @@ const CURATED_TRACKS = [
   },
 ];
 
-export default async (req) => {
+const handler = async (req) => {
   const url = requestUrl(req);
   const mode = url.searchParams.get("mode") || "trending";
   const genre = url.searchParams.get("genre") || "";
@@ -212,3 +212,5 @@ export default async (req) => {
     );
   }
 };
+
+export default { fetch: handler };

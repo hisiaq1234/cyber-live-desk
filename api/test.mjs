@@ -1,1 +1,1 @@
-export default async () => new Response("OK", { status: 200 });
+export default { fetch: async () => new Response("OK", { status: 200 }) };

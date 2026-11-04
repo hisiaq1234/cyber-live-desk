@@ -11,7 +11,7 @@ import { readState, runResearch } from "./_desk-core.mjs";
 
 export const config = { runtime: "nodejs" };
 
-export default async (req) => {
+const handler = async (req) => {
   // Vercel cron jobs call the function via GET with a special header.
   // Protect against random GET requests hitting this endpoint.
   const authHeader = req.headers.get("authorization");
@@ -41,3 +41,5 @@ export default async (req) => {
     return Response.json({ ok: false, error: err.message }, { status: 500 });
   }
 };
+
+export default { fetch: handler };

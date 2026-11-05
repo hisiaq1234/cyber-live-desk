@@ -19,6 +19,14 @@ export const BOT_REACTS = ["wave", "cheer", "think", "surprise", "wince", "nod",
 // asserts it still matches the deck.
 export const THOUGHT_WAR_CATEGORY = "thought-war";
 
+// The lockup is placed by eye, so chat gets the words a streamer actually says out loud. The
+// six codes are the ones the server stores (see LOGO_POSITIONS in _desk-core.mjs); the commands
+// test asserts this map only ever points at names the server accepts.
+export const LOGO_POSITION_WORDS = {
+  top: "tc", bottom: "bc", topleft: "tl", topright: "tr", bottomleft: "bl", bottomright: "br",
+  tl: "tl", tc: "tc", tr: "tr", bl: "bl", bc: "bc", br: "br",
+};
+
 // One command, or null when the line is not a command at all. Trailing words after a verb that
 // takes none (crid next after this one) are refused rather than guessed at: on air, a command
 // that fires when nobody meant it is worse than one that is ignored.
@@ -54,6 +62,18 @@ export function parseDeskCommand(line) {
     const asked = rest.toLowerCase();
     if (asked === "on" || asked === "off") return { verb: "bot", value: asked };
     return BOT_REACTS.includes(asked) ? { verb: "bot", react: asked } : null;
+  }
+  if (verb === "logo") {
+    // Which layers take part stays on the panel: nobody asks for "just the rule" out loud, and a
+    // chat line that quietly removes the wordmark mid-show is exactly the accident this gate is
+    // here to prevent.
+    if (!rest) return { verb: "logo" };
+    const asked = rest.toLowerCase().replace(/[\s_-]+/g, "");
+    if (asked === "on" || asked === "off") return { verb: "logo", value: asked };
+    if (asked === "big" || asked === "small") return { verb: "logo", size: asked };
+    if (asked === "replay" || asked === "again") return { verb: "logo", replay: true };
+    const pos = LOGO_POSITION_WORDS[asked];
+    return pos ? { verb: "logo", pos } : null;
   }
   // Thought War: one word pulls a random dilemma off the deck. "crid random" shuffles whatever
   // desk is already on instead, so the operator can draw from Politics or the whole queue.
@@ -118,6 +138,7 @@ export const COMMAND_HELP =
   "crid thought · crid random · " +
   "crid auto on|off · crid music · crid music play [song or artist; unique queued track first, YouTube search on miss if configured; bare play uses default] · crid music pause|next|stop · " +
   `crid bot on|off · crid bot ${BOT_REACTS.join("|")} · ` +
+  "crid logo on|off · crid logo top|bottom|topleft|topright|bottomleft|bottomright · crid logo big|small · crid logo replay · " +
   "crid streamers · crid movies · crid politics · crid business · crid trends · crid all";
 
 // Maps only implemented commands. Recognized-but-unimplemented verbs must never become
@@ -135,6 +156,14 @@ export const commandBody = (cmd) => {
     if (cmd.react) return { action: "bot-react", kind: cmd.react };
     return { action: "bot", ...(cmd.value ? { value: cmd.value === "on" } : {}) };
   }
+  if (cmd.verb === "logo") {
+    const body = { action: "logo" };
+    if (cmd.value) body.value = cmd.value === "on";
+    if (cmd.pos) body.pos = cmd.pos;
+    if (cmd.size) body.size = cmd.size;
+    if (cmd.replay) body.replay = true;
+    return body;
+  }
   const action = { next: "next", prev: "previous", hold: "hold", hide: "hide", stop: "end-poll" }[cmd.verb];
   return action ? { action } : null;
 };
@@ -147,6 +176,8 @@ export const commandText = (cmd) =>
     : cmd.verb === "desk" ? `crid ${cmd.desk}`
     : cmd.verb === "music" ? `crid music ${cmd.action}${cmd.query ? ` ${cmd.query}` : ""}`
     : cmd.verb === "bot" ? `crid bot${cmd.react ? ` ${cmd.react}` : cmd.value ? ` ${cmd.value}` : ""}`
+    : cmd.verb === "logo"
+      ? `crid logo${cmd.value ? ` ${cmd.value}` : cmd.pos ? ` ${cmd.pos}` : cmd.size ? ` ${cmd.size}` : cmd.replay ? " replay" : ""}`
     : cmd.verb === "research" ? `crid research ${cmd.topic ?? ""}`.trim()
     : cmd.verb === "deeper" ? `crid deeper ${cmd.focus ?? ""}`.trim()
     : `crid ${cmd.verb}`;

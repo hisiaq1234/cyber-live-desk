@@ -6,6 +6,7 @@
 export {
   BOT_REACTS,
   THOUGHT_WAR_CATEGORY,
+  LOGO_POSITION_WORDS,
   parseDeskCommand,
   commandText,
   parsePollSpec,

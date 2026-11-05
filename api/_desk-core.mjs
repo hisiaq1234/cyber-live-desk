@@ -56,6 +56,11 @@ export const DEFAULT_STATE = {
   // never been told otherwise looks like. The overlay reads on to boot or kill the bot, and react
   // to fire one gesture; n counts up so the same reaction can be asked for twice in a row.
   bot: null, // { on: boolean, react?: { kind: string, n: number } }
+  // The desk lockup — the robot, the wordmark and the rule. null means "on, and the operator has
+  // changed nothing yet", which is what a desk that has never been told otherwise looks like.
+  // layers is a subset of LOGO_LAYERS below; replay counts up so the same intro can be asked for
+  // twice in a row. The choreography itself lives in public/desk-assets/logo.js.
+  logo: null, // { on, pos, x, y, width, layers: string[]|null, replay: number }
   autoPlay: false, // when on, an expired card advances to the next approved one by itself
   autoResearch: false, // when on, the scheduled run adds new research by itself
   // Research approval is a separate, persistent decision from whether the scheduler fetches at
@@ -66,6 +71,14 @@ export const DEFAULT_STATE = {
   twitchAllowedUserIds: [],
 };
 export const RESEARCH_APPROVAL_MODES = ["manual", "trusted", "all"];
+
+// The desk lockup. These names are the contract; the choreography that gives each one its own
+// window on screen lives in public/desk-assets/logo.js. The server stores a subset and refuses
+// anything else, so a typo can never quietly drop a layer on air. tests/logo.test.mjs keeps the
+// two lists in step, the same way the two copies of _commands.mjs are kept in step.
+export const LOGO_LAYERS = ["sweep", "mark", "word", "rule"];
+export const LOGO_POSITIONS = ["tl", "tc", "tr", "bl", "bc", "br", "custom"];
+export const LOGO_WIDTH = { min: 6, max: 46, default: 24, step: 6 }; // vw
 
 // CRID × Gemini — AI enrichment for social/trend cards
 export async function enrichWithGemini(headline, fallbackSummary = "", fetchFn = globalThis.fetch) {
@@ -936,6 +949,55 @@ export async function runAction(store, b, now = Date.now()) {
     case "bot-react": {
       if (!BOT_REACTS.includes(b.kind)) throw new HttpError(422, `kind must be one of ${BOT_REACTS.join(", ")}.`);
       patch = { bot: { on: state.bot?.on ?? true, react: { kind: b.kind, n: (state.bot?.react?.n ?? 0) + 1 } } };
+      break;
+    }
+    // ---------- the desk lockup ----------
+    case "logo": {
+      // One action for the whole lockup, because every field is a placement the operator decides
+      // while looking at the frame. Nothing is stored unless it is sent: a body that only names a
+      // width must never reset the position a previous command set.
+      const next = { on: true, ...state.logo };
+      if (typeof b.value === "boolean") next.on = b.value;
+      // A body that names nothing but the action is a flip, so the panel and chat can use one
+      // word for both states — the contract `crid bot` already keeps. Anything more specific is
+      // a placement and must leave the lockup standing where it is.
+      else if (Object.keys(b).length === 1) next.on = !(state.logo?.on ?? true);
+      else if (b.value !== undefined) throw new HttpError(422, "value must be true or false.");
+      if (b.pos !== undefined) {
+        if (!LOGO_POSITIONS.includes(b.pos)) throw new HttpError(422, `pos must be one of ${LOGO_POSITIONS.join(", ")}.`);
+        next.pos = b.pos;
+      }
+      if (b.width !== undefined) {
+        const w = Number(b.width);
+        if (!Number.isFinite(w)) throw new HttpError(422, "width must be a number of viewport widths.");
+        next.width = Math.min(LOGO_WIDTH.max, Math.max(LOGO_WIDTH.min, w));
+      }
+      // "big" and "small" step from wherever the lockup already is, so the server does the
+      // arithmetic and the clamping. A chat command that repeats must converge, not overrun.
+      if (b.size !== undefined) {
+        if (b.size !== "big" && b.size !== "small") throw new HttpError(422, "size must be big or small.");
+        const step = b.size === "big" ? LOGO_WIDTH.step : -LOGO_WIDTH.step;
+        const from = Number(next.width ?? LOGO_WIDTH.default);
+        next.width = Math.min(LOGO_WIDTH.max, Math.max(LOGO_WIDTH.min, (Number.isFinite(from) ? from : LOGO_WIDTH.default) + step));
+      }
+      for (const axis of ["x", "y"]) {
+        if (b[axis] === undefined) continue;
+        const v = Number(b[axis]);
+        if (!Number.isFinite(v) || v < 0 || v > 100) throw new HttpError(422, `${axis} must be a percentage from 0 to 100.`);
+        next[axis] = v;
+      }
+      if (b.layers !== undefined) {
+        if (b.layers === null) next.layers = null;
+        else {
+          if (!Array.isArray(b.layers) || !b.layers.length) throw new HttpError(422, `layers must be a list of ${LOGO_LAYERS.join(", ")}.`);
+          const unknown = b.layers.filter((id) => !LOGO_LAYERS.includes(id));
+          if (unknown.length) throw new HttpError(422, `Unknown logo layer: ${unknown.join(", ")}. Use ${LOGO_LAYERS.join(", ")}.`);
+          next.layers = LOGO_LAYERS.filter((id) => b.layers.includes(id)); // timeline order, always
+        }
+      }
+      // A counter rather than a boolean, so the same intro can be asked for twice in a row.
+      if (b.replay === true) next.replay = (next.replay ?? 0) + 1;
+      patch = { logo: next };
       break;
     }
     default:

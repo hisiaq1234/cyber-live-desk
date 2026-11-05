@@ -81,6 +81,17 @@ ${T} #desk .poll-state{color:var(--ink-3);letter-spacing:.14em}
 ${T} #desk #crid-jumbotron{background:var(--onyx-900);border:.14em solid var(--indigo-500);box-shadow:var(--sticker);
   backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
 ${T} #desk .crid-logo{background:var(--onyx-950);border:.14em solid var(--indigo-500)}
+${T} #desk .crid-logo:not(img){font-family:var(--display);font-weight:400;letter-spacing:.08em;color:var(--mint)}
+
+/* The desk lockup. Named here so the theme owns its logo colours outright rather than leaving
+   them to the module's fallback chain — and so nothing in the lockup can ever be red. Red is
+   reserved above for disputed / owing / offline and is capped at ~2% of a frame; a permanent red
+   bar across the top of the stream broke that on every theme. */
+${T} #desk-logo{
+  --t-logo-shell:var(--indigo-500);--t-logo-plate:var(--onyx-900);--t-logo-screen:var(--onyx-950);
+  --t-logo-edge:var(--indigo-700);--t-logo-eye:var(--mint);--t-logo-rule:var(--indigo-500);
+  --t-logo-gesture:var(--indigo-300);--t-logo-1:var(--ink-1);--t-logo-2:var(--mint);
+  --t-logo-bone:var(--indigo-300)}
 ${T} #desk .crid-brand{color:var(--mint);font-family:var(--display);font-weight:400;font-size:1.3em;letter-spacing:.14em}
 ${T} #desk .crid-kind{background:var(--indigo-500);color:var(--ink-1);border-radius:99px}
 ${T} #desk .crid-title{font-family:var(--display);font-weight:400;font-size:1.3em;letter-spacing:.02em;text-transform:uppercase;color:var(--ink-1)}

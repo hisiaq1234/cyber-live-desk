@@ -189,7 +189,7 @@ const handler = async (req) => {
       if (!cmd) throw new HttpError(422, "Not a recognized CRID command.");
       let actionBody = commandBody(cmd);
       if (!actionBody) throw new HttpError(422, "Command cannot be executed by voice.");
-      const safeActions = new Set(["next", "previous", "hold", "hide", "desk", "draw", "start-poll", "end-poll", "auto-play", "clip-create", "crid-open", "music-play", "music-pause", "music-next", "music-stop"]);
+      const safeActions = new Set(["next", "previous", "hold", "hide", "desk", "draw", "start-poll", "end-poll", "auto-play", "clip-create", "crid-open", "music-play", "music-pause", "music-next", "music-stop", "logo"]);
       if (!safeActions.has(actionBody.action)) throw new HttpError(403, "This command is not available by voice.");
       // Voice-opened CRID segments use a default title so the streamer can speak to open one.
       if (actionBody.action === "crid-open") {

@@ -19,10 +19,14 @@ import { createCridAudioSync } from "./crid-audio.js";
      bot=0 | bl|bc|br          bot.x=0–100 bot.y=0–100  (CRID mascot; 0 restores the sound orb)
      clock=0 | 1               (bottom-left clock plate; on by default)
      chat=0 | 1                chatPrefix=   (Swae chat strip; on by default inside Swae)
-     logo=                     (CRID badge logo URL, falls back to ./crid-logo.png)
+     cridLogo=                 (CRID badge logo URL, falls back to ./crid-logo.png)
+     logo=0 | tl|tc|tr|bl|bc|br|custom   (desk lockup, see ./logo.js; 0 hides it; default tc)
+     logo.w=6–46               (lockup width in vw; the server's state.logo wins over this)
+     logo.x= logo.y=0–100      (percent placement, with logo=custom)
      Add a card type: DeskOverlay.register("my-type", (card, opts) => HTMLElement)  */
 import { createSoundOrbSync } from "./sound-orb.js";
 import { createCridBot } from "./crid-bot.js";
+import { createLogo, LOGO_POSITIONS } from "./logo.js";
 import { CYBER_CSS } from "./cyber-theme.js";
 import { youtubeEmbedUrl } from "./youtube-embed.js";
 
@@ -193,7 +197,10 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 }
 #crid-jumbotron.in { opacity: 1; transform: translateX(0) scale(1); animation: bug-breathe 4s ease-in-out infinite; }
 #crid-jumbotron.out { opacity: 0; transform: translateX(-20px) scale(0.96); }
-.crid-logo { width: 3.2em; height: 3.2em; border-radius: 50%; object-fit: contain; background: #000; border: 2px solid var(--surface-line); flex-shrink: 0; }
+.crid-logo { width: 3.2em; height: 3.2em; border-radius: 50%; object-fit: contain; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  font-size: .78em; font-weight: 900; letter-spacing: .05em; line-height: 1.05;
+  background: var(--glass); border: 2px solid var(--surface-line); color: var(--ink); }
 .crid-body { display: flex; flex-direction: column; gap: 0.3em; flex: 1; overflow: hidden; }
 .crid-head { display: flex; align-items: center; gap: 0.5em; font-size: 0.65em; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; }
 .crid-brand { color: var(--accent); }
@@ -701,6 +708,21 @@ html.swae .scale-wrap{display:none}
   const disposeSoundOrb = createSoundOrbSync(cridAudio, soundOrb);
   window.addEventListener("pagehide", disposeSoundOrb, { once: true });
 
+  // The desk lockup: the robot, the wordmark and the rule, arriving one layer at a time. It is a
+  // separate thing from the mascot below it and from the CRID badge inside the jumbotron. Top-centre
+  // is the one band of this layout nothing else claims — the jumbotron owns top-left, the dock owns
+  // the right, the identity strip and clock own the bottom corners. state.logo wins over the URL,
+  // so the operator can move, resize, silence or replay it on air without touching a browser source.
+  const LOGO_ARG = P.get("logo");
+  const lockup = LOGO_ARG === "0" ? null : createLogo({
+    root,
+    position: LOGO_POSITIONS.includes(LOGO_ARG) ? LOGO_ARG : "tc",
+    width: num("logo.w", 24, 6, 46),
+    x: P.get("logo.x") != null ? num("logo.x", 50, 0, 100) : null,
+    y: P.get("logo.y") != null ? num("logo.y", 6, 0, 100) : null,
+  });
+  const renderLogo = (l) => { if (lockup) lockup.update(l || {}); };
+
   const dockRight = h("div", { id: "dock-right" });
   root.append(dockRight);
 
@@ -910,10 +932,13 @@ html.swae .scale-wrap{display:none}
       crid.result?.winner, crid.result?.percent, crid.result?.total, crid.result?.tie,
     ].join("|");
     if (key === cridKey && cridEl) return;
-    const logoUrl = P.get("logo") || "./crid-logo.png";
+    const logoUrl = P.get("cridLogo") || "./crid-logo.png";
     const logo = h("img", { class: "crid-logo", src: logoUrl, alt: "CRID Logo" });
     logo.onerror = () => {
-      const badge = h("div", { class: "crid-logo", style: "background:radial-gradient(circle at 35% 35%,#2a0808 0%,#0d0d10 80%);border:2px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:.78em;font-weight:900;color:#fff;letter-spacing:.05em;box-shadow:0 0 14px var(--accent-glow)" }, "CRID");
+      // No mark file has ever been deployed, so this fallback is what is actually on air. It is
+      // built from the theme's own tokens: cyber-theme.js reserves red for meaning and caps it at
+      // ~2% of a frame, and a permanent red disc behind "CRID" broke that on every theme.
+      const badge = h("div", { class: "crid-logo" }, "CRID");
       if (logo.parentNode) logo.replaceWith(badge);
     };
     const brand = h("span", "crid-brand", `CRID #${crid.entry}`);
@@ -1035,6 +1060,7 @@ html.swae .scale-wrap{display:none}
     renderCrid(state.crid);
     syncCridAudio(state.crid);
     renderModule(state);
+    renderLogo(state.logo);
     if (xMode && !xStarted) {
       xStarted = true;
       fetchXfeed();
@@ -1133,7 +1159,7 @@ html.swae .scale-wrap{display:none}
     window.addEventListener("pagehide", () => clearInterval(clockTimer), { once: true });
   }
 
-  window.DeskOverlay = { register };
+  window.DeskOverlay = { register, logo: lockup };
   refreshHeadlines();
   tick();
 })();

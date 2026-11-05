@@ -187,7 +187,12 @@ const CSS = `
 /* ---- the wordmark ---- */
 #desk-logo .lg-word{font-family:var(--display,Anton,"Arial Narrow",Impact,sans-serif);
   font-weight:400;font-size:2.5em;letter-spacing:.02em;text-transform:uppercase;
-  white-space:nowrap;color:var(--t-logo-1)}
+  white-space:nowrap;color:var(--t-logo-1);
+  /* This overlay is transparent, so the wordmark has to survive a bright camera plate as well as
+     onyx, and the desk rules out the blur a text-shadow would need. A hard sticker rim in the
+     theme's structure colour is the mascot's own language: the off-white fill carries it on dark,
+     the rim carries it on light. */
+  -webkit-text-stroke:.035em var(--t-logo-edge);paint-order:stroke fill}
 #desk-logo .lg-word .lg-letter{display:inline-block;will-change:transform,opacity}
 #desk-logo .lg-tail{color:var(--t-logo-2)}
 #desk-logo .lg-rule{background:var(--t-logo-rule);border-radius:99px;transform-origin:left center}

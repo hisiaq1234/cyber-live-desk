@@ -72,6 +72,9 @@ export function parseDeskCommand(line) {
     if (asked === "on" || asked === "off") return { verb: "logo", value: asked };
     if (asked === "big" || asked === "small") return { verb: "logo", size: asked };
     if (asked === "replay" || asked === "again") return { verb: "logo", replay: true };
+    // The mascot. Both words are the mark's own name, not an abstraction, so nobody has to
+    // remember which of goat/bot is "the other one".
+    if (asked === "goat" || asked === "bot") return { verb: "logo", mark: asked };
     const pos = LOGO_POSITION_WORDS[asked];
     return pos ? { verb: "logo", pos } : null;
   }
@@ -138,7 +141,7 @@ export const COMMAND_HELP =
   "crid thought · crid random · " +
   "crid auto on|off · crid music · crid music play [song or artist; unique queued track first, YouTube search on miss if configured; bare play uses default] · crid music pause|next|stop · " +
   `crid bot on|off · crid bot ${BOT_REACTS.join("|")} · ` +
-  "crid logo on|off · crid logo top|bottom|topleft|topright|bottomleft|bottomright · crid logo big|small · crid logo replay · " +
+  "crid logo on|off · crid logo top|bottom|topleft|topright|bottomleft|bottomright · crid logo big|small · crid logo replay · crid logo goat|bot · " +
   "crid streamers · crid movies · crid politics · crid business · crid trends · crid all";
 
 // Maps only implemented commands. Recognized-but-unimplemented verbs must never become
@@ -160,6 +163,7 @@ export const commandBody = (cmd) => {
     const body = { action: "logo" };
     if (cmd.value) body.value = cmd.value === "on";
     if (cmd.pos) body.pos = cmd.pos;
+    if (cmd.mark) body.mark = cmd.mark;
     if (cmd.size) body.size = cmd.size;
     if (cmd.replay) body.replay = true;
     return body;
@@ -177,7 +181,7 @@ export const commandText = (cmd) =>
     : cmd.verb === "music" ? `crid music ${cmd.action}${cmd.query ? ` ${cmd.query}` : ""}`
     : cmd.verb === "bot" ? `crid bot${cmd.react ? ` ${cmd.react}` : cmd.value ? ` ${cmd.value}` : ""}`
     : cmd.verb === "logo"
-      ? `crid logo${cmd.value ? ` ${cmd.value}` : cmd.pos ? ` ${cmd.pos}` : cmd.size ? ` ${cmd.size}` : cmd.replay ? " replay" : ""}`
+      ? `crid logo${cmd.value ? ` ${cmd.value}` : cmd.pos ? ` ${cmd.pos}` : cmd.mark ? ` ${cmd.mark}` : cmd.size ? ` ${cmd.size}` : cmd.replay ? " replay" : ""}`
     : cmd.verb === "research" ? `crid research ${cmd.topic ?? ""}`.trim()
     : cmd.verb === "deeper" ? `crid deeper ${cmd.focus ?? ""}`.trim()
     : `crid ${cmd.verb}`;

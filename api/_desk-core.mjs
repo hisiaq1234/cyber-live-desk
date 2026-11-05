@@ -79,6 +79,9 @@ export const RESEARCH_APPROVAL_MODES = ["manual", "trusted", "all"];
 export const LOGO_LAYERS = ["sweep", "mark", "word", "rule"];
 export const LOGO_POSITIONS = ["tl", "tc", "tr", "bl", "bc", "br", "custom"];
 export const LOGO_WIDTH = { min: 6, max: 46, default: 24, step: 6 }; // vw
+// The mascot inside the operator's animation. "bot" is the default because the vector fallback can
+// only draw the robot, so a sting that failed to load still shows something on-brand.
+export const LOGO_MARKS = ["bot", "goat"];
 
 // CRID × Gemini — AI enrichment for social/trend cards
 export async function enrichWithGemini(headline, fallbackSummary = "", fetchFn = globalThis.fetch) {
@@ -997,6 +1000,13 @@ export async function runAction(store, b, now = Date.now()) {
       }
       // A counter rather than a boolean, so the same intro can be asked for twice in a row.
       if (b.replay === true) next.replay = (next.replay ?? 0) + 1;
+      // Which mascot sits in the plate. Only meaningful for the sting: the vector fallback always
+      // draws the robot, so the state is honest about what is wanted and the browser decides what
+      // it can show.
+      if (b.mark !== undefined) {
+        if (!LOGO_MARKS.includes(b.mark)) throw new HttpError(422, `mark must be one of ${LOGO_MARKS.join(", ")}.`);
+        next.mark = b.mark;
+      }
       patch = { logo: next };
       break;
     }

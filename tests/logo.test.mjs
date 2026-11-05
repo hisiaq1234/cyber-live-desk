@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 import {
   DEFAULT_STATE,
   LOGO_LAYERS,
+  LOGO_MARKS,
   LOGO_POSITIONS,
   LOGO_WIDTH,
   commitState,
@@ -34,12 +35,32 @@ import {
 
 import {
   LOGO_LAYER_IDS,
+  LOGO_MARKS as BROWSER_LOGO_MARKS,
   LOGO_POSITIONS as PUBLIC_LOGO_POSITIONS,
+  MARK_GEOMETRY,
   logoFrameAt,
   logoIntroMs,
   logoRestLayers,
   selectLayers,
 } from "../public/desk-assets/logo.js";
+
+import {
+  MOTION_BOX,
+  MOTION_INTRO_END,
+  MOTION_REST,
+  LOGO_ANIM,
+} from "../public/desk-assets/logo-motion.js";
+
+import {
+  MARK_DEFAULTS,
+  MOTION_SOURCE_COLORS,
+  botMarkSvg,
+  mixRgb,
+  stingAspect,
+  stingBox,
+  stingLayers,
+  themeMotion,
+} from "../public/desk-assets/logo-sting.js";
 
 import {
   COMMAND_HELP as publicCommandHelp,
@@ -179,7 +200,8 @@ test("the server and the browser hold the same layer and position names", () => 
 
 test("the two command parsers agree about the lockup", () => {
   for (const line of ["crid logo", "crid logo on", "crid logo off", "crid logo big", "crid logo small",
-    "crid logo top", "crid logo bottom left", "crid logo replay", "crid logo tc"]) {
+    "crid logo top", "crid logo bottom left", "crid logo replay", "crid logo tc",
+    "crid logo goat", "crid logo bot", "crid logo BOT"]) {
     assert.deepEqual(parsePublicDeskCommand(line), parseDeskCommand(line), line);
     assert.deepEqual(publicCommandBody(parseDeskCommand(line)), commandBody(parseDeskCommand(line)), line);
     assert.equal(publicCommandText(parseDeskCommand(line)), commandText(parseDeskCommand(line)), line);
@@ -309,4 +331,168 @@ test("a stored logo survives being read back", async () => {
   assert.equal(placed.state.logo.y, 8);
   const again = await readState(store);
   assert.deepEqual(again.logo, placed.state.logo);
+});
+
+// ---------- the mark switch ----------
+
+test("the server and the browser agree about which mascots exist", () => {
+  assert.deepEqual(BROWSER_LOGO_MARKS, LOGO_MARKS, "the browser's mark list drifted from the server's");
+  // bot first: the vector fallback can only draw the robot, so the default is the one that never
+  // leaves the operator with a goat they did not ask for when the sting fails to load.
+  assert.equal(LOGO_MARKS[0], "bot");
+});
+
+test("crid logo goat and crid logo bot mean the mascot", () => {
+  for (const mark of ["goat", "bot"]) {
+    assert.deepEqual(parseDeskCommand(`crid logo ${mark}`), { verb: "logo", mark });
+    assert.deepEqual(commandBody(parseDeskCommand(`crid logo ${mark}`)), { action: "logo", mark });
+    assert.equal(commandText(parseDeskCommand(`crid logo ${mark}`)), `crid logo ${mark}`);
+  }
+  // "bot" must not be swallowed by the position word "bottom", and neither is a substring match.
+  assert.deepEqual(parseDeskCommand("crid logo bottom"), { verb: "logo", pos: "bc" });
+  assert.equal(parseDeskCommand("crid logo goat herder"), null);
+  assert.match(COMMAND_HELP, /crid logo goat\|bot/);
+});
+
+test("naming a mark is a placement, not a flip", async () => {
+  // The one-key body is a flip. { action, mark } is two keys, so asking for the robot must never
+  // also switch the lockup off mid-show.
+  const store = makeStore();
+  const off = await runAction(store, { action: "logo", value: false });
+  assert.equal(off.state.logo.on, false);
+  const goat = await runAction(store, { action: "logo", mark: "goat" });
+  assert.equal(goat.state.logo.mark, "goat");
+  assert.equal(goat.state.logo.on, false, "asking for the goat switched the lockup back on");
+});
+
+test("the server refuses a mark that does not exist", async () => {
+  const store = makeStore();
+  await assert.rejects(() => runAction(store, { action: "logo", mark: "horse" }), (e) => {
+    assert.equal(e.status, 422);
+    assert.match(e.message, /bot, goat/);
+    return true;
+  });
+  const untouched = await readState(store);
+  assert.equal(untouched.logo, DEFAULT_STATE.logo, "a refused mark still wrote logo state");
+});
+
+// ---------- the sting: the operator's own animation ----------
+
+// Every colour array the composition paints with, as 8-bit triples.
+const collectColors = (node, out = new Set()) => {
+  if (Array.isArray(node)) {
+    for (const n of node) collectColors(n, out);
+    return out;
+  }
+  if (!node || typeof node !== "object") return out;
+  for (const [k, v] of Object.entries(node)) {
+    if ((k === "c" || k === "sc") && Array.isArray(v?.k)) {
+      const seen = (c) => out.add(c.slice(0, 3).map((n) => Math.round(n * 255)).join(","));
+      if (typeof v.k[0] === "number") seen(v.k);
+      else for (const kf of v.k) for (const p of ["c", "s", "e"]) if (Array.isArray(kf?.[p])) seen(kf[p]);
+      continue;
+    }
+    collectColors(v, out);
+  }
+  return out;
+};
+
+test("the shipped composition is the operator's, not a reconstruction", () => {
+  // The complaint was that a previous attempt replaced their artwork. This is the guard: the file
+  // that ships is a 1920x1080 comp with the goat baked in as one image asset, and the filter is
+  // aimed at exactly the colours that file paints with.
+  assert.equal(LOGO_ANIM.w, 1920);
+  assert.equal(LOGO_ANIM.h, 1080);
+  const painted = collectColors(LOGO_ANIM);
+  for (const src of MOTION_SOURCE_COLORS) {
+    assert.ok(painted.has(src), `the filter maps ${src} but the composition no longer paints it`);
+  }
+});
+
+test("the crop is what killed the miniature", () => {
+  const box = stingBox();
+  assert.equal(box.viewBox, `${MOTION_BOX.x - 4} ${MOTION_BOX.y - 4} ${MOTION_BOX.width + 8} ${MOTION_BOX.height + 8}`);
+  // The lockup is a wide strip: less than a fifth of the comp's height. Mounting the whole canvas
+  // therefore shows the artwork at ~18% of the element, which is the size the operator rejected.
+  assert.ok(MOTION_BOX.height / LOGO_ANIM.h < 0.2, "the ink box is no longer a strip; re-measure");
+  assert.ok(MOTION_BOX.width <= LOGO_ANIM.w && MOTION_BOX.height <= LOGO_ANIM.h);
+  assert.ok(box.width / box.height > 4, "the crop should be much wider than the comp");
+  // logo.js pins the element's aspect-ratio to this number by hand; if they drift the lockup is
+  // stretched, which is the other half of the bug the viewBox fix was for.
+  const css = source("public/desk-assets/logo.js");
+  const declared = css.match(/--lg-motion-aspect:\s*([0-9.]+)/);
+  assert.ok(declared, "logo.js no longer declares the sting aspect");
+  assert.ok(Math.abs(Number(declared[1]) - stingAspect()) < 0.001,
+    `--lg-motion-aspect ${declared[1]} does not match stingAspect ${stingAspect()}`);
+});
+
+test("the rest frame is inside the intro and before its end", () => {
+  assert.ok(MOTION_REST < MOTION_INTRO_END, "the rest frame sits in the middle of the intro");
+  assert.ok(MOTION_INTRO_END < LOGO_ANIM.op, "the intro runs past the composition");
+});
+
+test("stingLayers finds the mark and the word that mattes it", () => {
+  const { mark, word } = stingLayers();
+  assert.equal(mark.ty, 2, "the mark is the one image layer");
+  assert.equal(word?.ty, 4);
+  assert.equal(word?.tt, 1, "the wordmark is an alpha matte, which is why order matters");
+  assert.ok(LOGO_ANIM.layers.indexOf(word) < LOGO_ANIM.layers.indexOf(mark));
+});
+
+test("themeMotion repaints the four source colours and nothing else", () => {
+  const before = collectColors(LOGO_ANIM);
+  const map = { "255,0,0": [0, 255, 0], "92,57,57": [1, 2, 3], "96,96,96": [4, 5, 6], "0,0,0": [7, 8, 9] };
+  const themed = themeMotion(LOGO_ANIM, map);
+  const after = collectColors(themed);
+  for (const src of MOTION_SOURCE_COLORS) {
+    assert.ok(!after.has(src), `${src} survived the filter, so a baked colour is still off-theme`);
+  }
+  // Purity: the operator's data is the source of truth for the next theme switch and for the goat.
+  assert.notEqual(themed, LOGO_ANIM);
+  assert.deepEqual([...collectColors(LOGO_ANIM)], [...before], "themeMotion mutated the canonical data");
+});
+
+test("themeMotion refuses to invent colours the composition does not use", () => {
+  const map = { "1,2,3": [255, 255, 255] };
+  const themed = themeMotion(LOGO_ANIM, map);
+  assert.deepEqual([...collectColors(themed)], [...collectColors(LOGO_ANIM)]);
+});
+
+test("mixRgb is the distance-preserving half of the palette", () => {
+  assert.deepEqual(mixRgb([255, 0, 0], [0, 0, 0], 0), [255, 0, 0]);
+  assert.deepEqual(mixRgb([255, 0, 0], [0, 0, 0], 1), [0, 0, 0]);
+  assert.deepEqual(mixRgb([255, 0, 0], [0, 0, 0], 0.5), [128, 0, 0]);
+  // The dark red under the rim has to stay the same distance from the accent on a mint theme as on
+  // a red one, which is why it is mixed rather than hard-coded.
+  assert.deepEqual(mixRgb([0, 255, 188], [22, 16, 37], 0.62), [14, 107, 94]);
+});
+
+test("the robot arrives as literal colours because an image cannot see the page", () => {
+  const svg = botMarkSvg();
+  assert.ok(svg.startsWith("<svg"), "the mark must be a standalone document");
+  assert.ok(!svg.includes("var(--"), "a token inside an <image> resolves to nothing");
+  assert.ok(svg.includes(MARK_DEFAULTS.eye));
+  const swapped = botMarkSvg({ eye: "#ff453a" });
+  assert.ok(swapped.includes("#ff453a") && !swapped.includes(MARK_DEFAULTS.eye));
+  // The geometry comes from logo.js rather than a second drawing of the mascot.
+  assert.ok(svg.includes(MARK_GEOMETRY.head.slice(0, 20)));
+});
+
+// ---------- the clock ----------
+
+test("the clock is the operator's size, not a shrunk copy of it", () => {
+  const css = source("public/desk-assets/overlay.js");
+  const dock = css.match(/#time-dock\{[^}]*\}/)?.[0];
+  assert.ok(dock, "could not find the clock block to check");
+  // The regression: a font-size on the container made every em inside it smaller than the
+  // reference page, which is the complaint "the time reader too is smaller than the original one".
+  assert.ok(!/font-size:[^;}]*\b0?\.\d+em/.test(dock), `the clock container shrinks itself: ${dock}`);
+  // The reference page's own numbers, scaled by the desk's one knob rather than by a second one.
+  assert.match(dock, /min-width:min\(390px,82vw\)/);
+  assert.match(css, /\.clock-time\{[^}]*font-family:var\(--mono\)/s);
+  assert.match(css, /\.clock-time\{[^}]*calc\(var\(--scale\)\*clamp\(24px,2\.35vw,43px\)\)/s);
+  // --mono only existed inside the creative and torn-paper themes, so on the default theme the
+  // time was set in the sans and read as a different object from the reference.
+  assert.match(css, /#desk\{[^}]*--mono:/);
+  assert.match(css, /@media\(max-width:520px\)/);
 });

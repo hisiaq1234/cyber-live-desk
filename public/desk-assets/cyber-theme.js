@@ -119,9 +119,17 @@ ${T} #desk .x-item .x-author,${T} #desk .x-item .x-bullet{color:var(--mint)}
 ${T} #desk .x-item .x-text{color:var(--ink-2)}
 
 /* lower third, clock and chat share the same plate */
-${T} #auto-headlines,${T} #time-dock,${T} #swae-chat{
+${T} #auto-headlines,${T} #swae-chat{
   background:var(--onyx-900);border:.14em solid var(--indigo-500);border-left-width:.5em;border-radius:1em;
   box-shadow:.22em .26em 0 var(--indigo-700);backdrop-filter:none;-webkit-backdrop-filter:none}
+/* The clock keeps the plate but not its outline colour: the heavy left edge is the one place on
+   this desk that carries the meaning token, and it is square on the left because it is a bar the
+   frame sits against, not a corner. That is the operator's original timestamp shape, drawn with
+   cyber's own fills, radii and single hard shadow. */
+${T} #time-dock{
+  background:var(--onyx-900);border:.14em solid var(--indigo-500);border-left:.5em solid var(--accent);
+  border-radius:0 1em 1em 0;box-shadow:.22em .26em 0 var(--indigo-700);
+  backdrop-filter:none;-webkit-backdrop-filter:none}
 ${T} .headline-feed-kicker{font-family:var(--display);font-weight:400;letter-spacing:.16em;color:var(--indigo-300)}
 ${T} .identity-row .headline-feed-title{font-family:var(--brand);font-weight:700;color:var(--ink-1)}
 ${T} .identity-row .headline-feed-meta{color:var(--ink-3)}

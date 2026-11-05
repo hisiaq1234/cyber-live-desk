@@ -26,7 +26,7 @@ import { createCridAudioSync } from "./crid-audio.js";
      Add a card type: DeskOverlay.register("my-type", (card, opts) => HTMLElement)  */
 import { createSoundOrbSync } from "./sound-orb.js";
 import { createCridBot } from "./crid-bot.js";
-import { createLogo, LOGO_POSITIONS } from "./logo.js";
+import { createLogo, LOGO_POSITIONS, LOGO_MARKS } from "./logo.js";
 import { CYBER_CSS } from "./cyber-theme.js";
 import { youtubeEmbedUrl } from "./youtube-embed.js";
 
@@ -94,6 +94,7 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
   --glass:#111214f0;--surface-soft:#ededef11;--surface-line:#ededef21;
   --radius:1rem;
   --brand:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;
+  --mono:ui-monospace,"SF Mono","Cascadia Mono","JetBrains Mono","Roboto Mono","Courier New",monospace;
   font-family:var(--brand);
   font-synthesis:none;text-rendering:optimizelegibility;-webkit-font-smoothing:antialiased;
   --m:clamp(12px,4vmin,32px);--identity-w:min(36vw,32rem);
@@ -419,12 +420,28 @@ html[data-theme="torn-paper"] #desk{
 .layout-alive .summary,.layout-alive .source,.layout-alive .court-viewpoint .v-text,.layout-alive .ledger-entry{font-family:var(--brand)}
 .layout-alive .music-wrap{max-height:28dvh;overflow:auto}
 .music-empty{font-size:.78em;color:#9d9587;margin-top:.4em}
-#time-dock{position:absolute;left:var(--m);bottom:var(--m);z-index:20;pointer-events:none;min-width:10em;
-  padding:.55em .85em;border:1px solid var(--surface-line);border-left:.28em solid var(--accent);border-radius:.75em;
-  background:var(--glass);box-shadow:0 8px 24px rgba(0,0,0,.35);font-family:var(--mono);font-variant-numeric:tabular-nums}
-#time-dock .clock-brand{font-size:.48em;letter-spacing:.16em;color:#9d9587}
-#time-dock .clock-time{font-size:1em;font-weight:700;color:var(--ink,#f8f3ea);line-height:1.25}
-#time-dock .clock-zone{font-size:.45em;letter-spacing:.12em;color:#9d9587}
+/* The clock plate, sized and built to the operator's own timestamp (index (2).html), which is the
+   version they kept. The measurements below are that file's, not a paraphrase: a 390px floor, the
+   time at clamp(24px,2.35vw,43px) in a tabular mono with -.045em of tracking, a 3px accent rule on
+   the left edge only, and a radius that closes on the right. Every one of those is calc'd by
+   --scale so the desk's scale control still moves it, which is the one thing the original had no
+   reason to support. The purple pill it replaces was .72em at 900px and one third of the height. */
+#time-dock{position:absolute;left:var(--m);bottom:var(--m);z-index:20;pointer-events:none;
+  min-width:min(390px,82vw);max-width:calc(100vw - 2*var(--m));box-sizing:border-box;overflow:hidden;
+  padding:calc(var(--scale)*16px) calc(var(--scale)*22px) calc(var(--scale)*17px) calc(var(--scale)*24px);
+  border:1px solid var(--surface-line);border-left:.28em solid var(--accent);border-radius:0 .75em .75em 0;
+  background:var(--glass);box-shadow:0 14px 40px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.05);
+  color:var(--ink)}
+#time-dock .clock-top{display:flex;align-items:center;justify-content:space-between;gap:1.4em;
+  margin-bottom:.72em;font-family:var(--brand);font-size:calc(var(--scale)*clamp(10px,.72vw,13px));
+  font-weight:600;letter-spacing:.18em;line-height:1;text-transform:uppercase;color:var(--ink-3,#9d9587)}
+#time-dock .clock-time{display:block;font-family:var(--mono);
+  font-size:calc(var(--scale)*clamp(24px,2.35vw,43px));font-weight:500;letter-spacing:-.045em;
+  line-height:1.05;white-space:nowrap;color:var(--ink);font-variant-numeric:tabular-nums lining-nums}
+#time-dock .clock-detail{display:flex;align-items:center;gap:.62em;margin-top:.75em;
+  font-family:var(--brand);font-size:calc(var(--scale)*clamp(11px,.8vw,14px));font-weight:500;
+  letter-spacing:.04em;color:var(--ink-3,#9d9587)}
+#time-dock .clock-sep{flex:0 0 auto;width:4px;height:4px;border-radius:50%;background:var(--accent)}
 html[data-crop="true"] #desk .mod::before{content:"";position:absolute;inset:-1px;border-radius:inherit;pointer-events:none;opacity:.34;
   background:linear-gradient(to right,var(--accent) 2px,transparent 2px) 0 0/8px 8px no-repeat,
     linear-gradient(to bottom,var(--accent) 2px,transparent 2px) 0 0/8px 8px no-repeat,
@@ -470,8 +487,11 @@ html.swae .scale-wrap{display:none}
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 @media(max-width:900px){.layout-alive .slot{width:min(39vw,460px)}
-  .layout-alive #dock-right{width:min(31vw,360px)}
-  #time-dock{font-size:.72em}}
+  .layout-alive #dock-right{width:min(31vw,360px)}}
+/* The original's own phone rule: the plate gives up its floor and the time steps down, instead of
+   the whole thing being scaled to .72em and going unreadable next to a camera plate. */
+@media(max-width:520px){#time-dock{min-width:0;width:calc(100vw - 2*var(--m))}
+  #time-dock .clock-time{font-size:calc(var(--scale)*clamp(22px,7vw,34px))}}
 `;
 
 // ---------- upgraded DOM helper ----------
@@ -720,6 +740,7 @@ html.swae .scale-wrap{display:none}
     width: num("logo.w", 24, 6, 46),
     x: P.get("logo.x") != null ? num("logo.x", 50, 0, 100) : null,
     y: P.get("logo.y") != null ? num("logo.y", 6, 0, 100) : null,
+    mark: LOGO_MARKS.includes(P.get("logo.mark")) ? P.get("logo.mark") : "bot",
   });
   const renderLogo = (l) => { if (lockup) lockup.update(l || {}); };
 
@@ -1147,13 +1168,35 @@ html.swae .scale-wrap{display:none}
   if (P.get("clock") !== "0") {
     let zone = "";
     try { zone = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch { /* older engines */ }
-    const clockTime = h("div", "clock-time", "--:--:--");
+    const clockTime = h("time", "clock-time", "--- --, --:--:--");
+    const clockDay = h("span", "clock-day", "");
     root.append(h("div", { id: "time-dock" },
-      h("div", "clock-brand", "CYBER LIVE DESK"),
+      h("div", "clock-top",
+        h("span", "clock-brand", "CYBER LIVE DESK"),
+        h("span", "clock-zone-top", (zone || "LOCAL TIME").replace(/_/g, " / ").toUpperCase())),
       clockTime,
-      h("div", "clock-zone", zone ? zone.toUpperCase().replace(/_/g, " ") : "LOCAL TIME")));
-    const clockFormat = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-    const drawClock = () => { clockTime.textContent = clockFormat.format(new Date(serverNow())); };
+      h("div", "clock-detail",
+        clockDay,
+        h("i", { class: "clock-sep", "aria-hidden": "true" }),
+        h("span", "clock-zone", zone ? zone.replace(/_/g, " / ") : "Device time"))));
+
+    // Three formatters, one per line, because the original reads "Nov 05, 18:47:24" over
+    // "Wednesday, November 5" and neither is a substring of the other. en-GB gives the desk its
+    // 24-hour clock; the month and the weekday come from the same instant so the lines cannot
+    // disagree at a rollover.
+    const zoneOpts = { timeZone: zone || undefined };
+    const monthFormat = new Intl.DateTimeFormat("en-GB", { month: "short", ...zoneOpts });
+    const dayFormat = new Intl.DateTimeFormat("en-GB", { day: "2-digit", ...zoneOpts });
+    const hmsFormat = new Intl.DateTimeFormat("en-GB", {
+      hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, ...zoneOpts });
+    const longFormat = new Intl.DateTimeFormat("en-GB", {
+      weekday: "long", month: "long", day: "numeric", ...zoneOpts });
+    const drawClock = () => {
+      const now = new Date(serverNow());
+      clockTime.textContent = `${monthFormat.format(now)} ${dayFormat.format(now)}, ${hmsFormat.format(now)}`;
+      clockTime.dateTime = now.toISOString();
+      clockDay.textContent = longFormat.format(now);
+    };
     drawClock();
     const clockTimer = setInterval(drawClock, 1000);
     window.addEventListener("pagehide", () => clearInterval(clockTimer), { once: true });

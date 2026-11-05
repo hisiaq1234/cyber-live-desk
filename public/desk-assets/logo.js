@@ -1,37 +1,48 @@
-/* CYBER LIVE DESK — the desk lockup: the CRID robot, the wordmark, and the rule.
+/* CYBER LIVE DESK — the desk lockup: the plate, the mark, and the handle.
 
-   Why this file exists instead of a Lottie player:
+   Two renderers, one contract. The overlay hands state.logo to update() and does not care which
+   picture comes out:
 
-   The supplied animation (logo.json / otolorin_cyber*.json) is a 1920x1080 broadcast lower
-   third. Its only colours are #ff0000, #606060 and #000000 — pure red, which cyber-theme.js
-   reserves for meaning ("disputed, still owing, offline") and caps at ~2% of a frame. Red
-   baked into the animation data cannot be themed, so every theme showed the same red bar.
-   Its wordmark is a Lottie text layer pointing at Montserrat-Arabic-Bold, a font lottie-web
-   cannot load from a page, so the text never drew — which is why the last attempt stacked a
-   DOM wordmark on top of the broken one and squashed the scene into a 5.06:1 strip with
-   preserveAspectRatio="none". That is the miniature: a 16:9 comp, forced flat, under a
-   second copy of itself.
+     - The sting (logo-sting.js + logo-motion.js) plays the operator's own broadcast animation and
+       is what shows whenever it can load. The mark inside it switches between the goat and the
+       robot by replacing the one image asset the animation uses.
+     - This file is the vector machine: the same lockup drawn from tokens, choreographed by the
+       LOGO_LAYERS timeline below. It paints immediately, it is what Swae and low-power get, and it
+       is what stays on screen if the 300 KB player never arrives. It always draws the robot — the
+       goat only exists inside the operator's artwork, and keying it out of that artwork's black
+       plate would punch holes in its sunglasses.
 
-   So the layers here are first-class and choreographed instead:
+   Why the vector machine exists at all, and what it fixed:
 
-     - The mark is the mascot, drawn as vectors from the same geometry as crid-bot.js. It is
-       the largest element and it scales with everything else, so there is no miniature.
-     - The timeline (LOGO_LAYERS) gives each layer its own window. The gesture layer leaves
-       before the rule arrives, so all four are never on screen together.
-     - Colour only ever comes from --t-logo-* custom properties. Nothing in this file has a
-       hex in it. A theme that sets those five tokens recolours the whole lockup, red included.
-     - One font-size on the container is the only scale knob. Nothing is stretched: the SVG
-       keeps its own aspect ratio and the text is real text.
-     - prefers-reduced-motion, ?swae and ?power=low skip the intro and paint the rest state,
+   The supplied animation is a 1920x1080 broadcast comp whose artwork measures 1054x191 — 54.9%
+   wide, 17.7% tall. Rendered whole into a strip, the 16:9 canvas letterboxes and the lockup comes
+   out a fifth of the height it was asked for: the miniature. The sting solves it by cropping the
+   SVG viewBox to the measured box; the vector machine never had the problem because it draws only
+   the lockup.
+
+   Its colours are the other half. Pure red baked into layer data cannot be themed by CSS, so every
+   theme showed the same red bar. The vector machine takes every colour from --t-logo-* and
+   cyber-theme.js decides what those mean; the sting rewrites the four colours in its own copy of
+   the animation data, which reaches the same places the red was authored to reach and leaves the
+   composition otherwise untouched.
+
+     - One font-size on the container is the only scale knob in the vector machine, and one width
+       in the sting. Nothing is stretched: the SVG keeps its own aspect ratio and the text is real
+       text.
+     - prefers-reduced-motion, ?swae and ?power=low skip the arrival and paint the rest state,
        because Swae snapshots the page at 1/fps and animation there costs frames, not beauty.
 
    The server drives it through state.logo (see api/_desk-core.mjs), which the overlay hands to
-   update(); the keys are on, pos, x, y, width, layers and replay. */
+   update(); the keys are on, pos, x, y, width, layers, mark and replay. */
 
 const NS = "http://www.w3.org/2000/svg";
 
 // Where the lockup sits. "custom" takes x/y as percentages of the viewport.
 export const LOGO_POSITIONS = ["tl", "tc", "tr", "bl", "bc", "br", "custom"];
+
+// Whichever mascot is standing in the mark slot. Only the sting can show the goat; the vector
+// machine always draws the robot, so `mark` is a request the fallback answers with the bot.
+export const LOGO_MARKS = ["bot", "goat"];
 
 // The choreography. `at` is when a layer starts arriving, `inMs` how long the arrival takes,
 // `holdMs` how long it sits fully formed (null = forever), `outMs` how long it takes to leave.
@@ -87,7 +98,7 @@ const el = (tag, attrs = {}, ...kids) => {
 
 // A rounded rect centred on 0,0 — the same construction the mascot uses for its eyes, so the
 // logo's eyes are the bot's eyes rather than a drawing of them.
-const rr = (w, h, r) => {
+export const rr = (w, h, r) => {
   const rad = Math.min(r, h / 2);
   return `M${-w / 2} ${-h / 2 + rad}a${rad} ${rad} 0 0 1 ${rad} ${-rad}h${w - 2 * rad}` +
     `a${rad} ${rad} 0 0 1 ${rad} ${rad}v${h - 2 * rad}a${rad} ${rad} 0 0 1 ${-rad} ${rad}` +
@@ -97,33 +108,44 @@ const rr = (w, h, r) => {
 // Head, ears, screen, antenna and LED are the mascot's own path data and coordinates (see draw()
 // in crid-bot.js), cropped to a bust. The bust is cropped to them; the viewBox is what lets the
 // mark grow without ever going fuzzy. Everything, including the plate's stroke, fits inside it.
-const HEAD_D = "M34 34H104C112 34 116 40 116 48V97C116 104 110 108 102 108H39C29 108 24 103 24 93V50C24 41 28 34 34 34Z";
-const BUST = "2 -12 140 140";
-const PLATE = { x: 6, y: -8, width: 128, height: 128, rx: 26 };
+//
+// Exported because the sting has to draw the same robot as a standalone image — an <image> inside
+// the Lottie SVG is its own document and cannot be styled from here — and two copies of the path
+// data is how a mascot ends up with two faces.
+export const MARK_GEOMETRY = {
+  head: "M34 34H104C112 34 116 40 116 48V97C116 104 110 108 102 108H39C29 108 24 103 24 93V50C24 41 28 34 34 34Z",
+  bust: "2 -12 140 140",
+  plate: { x: 6, y: -8, width: 128, height: 128, rx: 26 },
+  // The desk's one hard offset shadow, in the same direction the rest of the brand uses.
+  shadow: { dx: 5, dy: 6 },
+  screen: { x: 34, y: 47, width: 72, height: 46, rx: 11 },
+  stem: "M97 38L104 14",
+  mouth: "M63 84Q73 92 83 84",
+  led: { cx: 104, cy: 9, r: 6 },
+  ears: [{ cx: 24, cy: 71, r: 6 }, { cx: 116, cy: 71, r: 6 }],
+  eyes: [57, 89],
+};
 
 function drawMark() {
-  const eye = (cx) => {
-    const path = el("path", { class: "lg-eye", d: rr(11, 17, 4), transform: `translate(${cx} 66)` });
-    return path;
-  };
+  const G = MARK_GEOMETRY;
+  const eye = (cx) => el("path", { class: "lg-eye", d: rr(11, 17, 4), transform: `translate(${cx} 66)` });
   const svg = el("svg", {
-    class: "lg-mark-svg", viewBox: BUST, "aria-hidden": "true", focusable: "false",
+    class: "lg-mark-svg", viewBox: G.bust, "aria-hidden": "true", focusable: "false",
   });
   // Back to front. The plate and its offset shadow are the first two children because SVG paints
   // in document order: appended last, the plate covered the robot and the mark read as an empty
   // box. The ears come after the head so they sit on it, the way the mascot draws them.
   svg.append(
-    el("rect", { class: "lg-plate-shadow", x: PLATE.x + 5, y: PLATE.y + 6, width: PLATE.width, height: PLATE.height, rx: PLATE.rx }),
-    el("rect", { class: "lg-plate", ...PLATE }),
+    el("rect", { class: "lg-plate-shadow", x: G.plate.x + G.shadow.dx, y: G.plate.y + G.shadow.dy, width: G.plate.width, height: G.plate.height, rx: G.plate.rx }),
+    el("rect", { class: "lg-plate", ...G.plate }),
     el("g", { class: "lg-antenna" },
-      el("path", { class: "lg-stem", d: "M97 38L104 14" }),
-      el("circle", { class: "lg-led", cx: 104, cy: 9, r: 6 })),
-    el("path", { class: "lg-head", d: HEAD_D }),
-    el("circle", { class: "lg-ear", cx: 24, cy: 71, r: 6 }),
-    el("circle", { class: "lg-ear", cx: 116, cy: 71, r: 6 }),
-    el("rect", { class: "lg-screen", x: 34, y: 47, width: 72, height: 46, rx: 11 }),
-    el("g", { class: "lg-eyes" }, eye(57), eye(89)),
-    el("path", { class: "lg-mouth", d: "M63 84Q73 92 83 84" }),
+      el("path", { class: "lg-stem", d: G.stem }),
+      el("circle", { class: "lg-led", ...G.led })),
+    el("path", { class: "lg-head", d: G.head }),
+    ...G.ears.map((e) => el("circle", { class: "lg-ear", ...e })),
+    el("rect", { class: "lg-screen", ...G.screen }),
+    el("g", { class: "lg-eyes" }, ...G.eyes.map(eye)),
+    el("path", { class: "lg-mouth", d: G.mouth }),
   );
   return { svg, eyes: svg.querySelectorAll(".lg-eye"), led: svg.querySelector(".lg-led") };
 }
@@ -147,6 +169,12 @@ const CSS = `
   /* The mascot's own sticker outline colour. Every line on the robot is bone, not off-white, so
      the mark reads as the same drawing as the bot in the corner rather than a relative of it. */
   --t-logo-bone:var(--indigo-300,#A98BFF);
+  /* The sting's baked red is themed from --accent directly, not from a logo token: a token here
+     would need its own fallback, and the only honest fallback is the accent's own default, which
+     would put a second copy of the meaning colour into the sheet. The animation carries pure red
+     in its own layer data, where no CSS can reach it, so logo-sting.js reads the accent and
+     rewrites the data with it. That colour is the one that made the composition look like a
+     stranger on the desk, and red on this desk is a meaning the theme already owns. */
   --logo-w:clamp(9rem,22vw,26rem);
   position:fixed;z-index:26;pointer-events:none;user-select:none;
   /* One font-size scales the whole lockup: the mark is sized in em, the text is text. */
@@ -207,6 +235,19 @@ const CSS = `
   background:var(--t-logo-gesture);
   transform:skewX(-18deg) translateX(-140%);opacity:0}
 
+/* ---- the sting: the operator's animation, when it loads ---- */
+/* The aspect is the cropped lockup, not the 16:9 comp: 1062x199 once the 4px antialiasing pad is
+   counted. logo-sting.js recomputes it from MOTION_BOX at mount time, so this number is the shape
+   the slot has before the animation arrives, not a second authority. */
+#desk-logo{--lg-motion-aspect:5.337}
+#desk-logo .lg-motion{display:none;width:var(--logo-w);aspect-ratio:var(--lg-motion-aspect);
+  position:relative}
+#desk-logo .lg-motion svg{display:block;width:100%;height:100%}
+/* Motion wins the slot: the vector body is hidden rather than removed, so if the player never
+   arrives the lockup is already painted underneath and nothing has to be rebuilt. */
+#desk-logo.has-motion .lg-motion{display:block}
+#desk-logo.has-motion .lg-body,#desk-logo.has-motion .lg-sweep{display:none}
+
 /* Static rest state: no intro, no idle. Swae snapshots this page at 1/fps and low power asks
    for the cheapest drawing, so animation here is switched off rather than slowed down. */
 html.swae #desk-logo .lg-sweep,html.low-power #desk-logo .lg-sweep{display:none}
@@ -221,6 +262,8 @@ export function createLogo({
   reduced = false,
   on = true,
   layers = null,
+  mark = "bot",
+  sting = true,
   x = null,
   y = null,
   word = "OTOLORIN",
@@ -377,11 +420,39 @@ export function createLogo({
   const setPos = (next) => {
     const pos = LOGO_POSITIONS.includes(next) ? next : "tl";
     host.dataset.pos = pos;
-    host.className = `pos-${pos}`;
+    // classList, not className: `has-motion` is added later by the sting and a wholesale assign
+    // would drop it on the next position change.
+    for (const p of LOGO_POSITIONS) host.classList.toggle(`pos-${p}`, p === pos);
     if (pos === "custom" && x != null && y != null) {
       host.style.setProperty("--lx", `${clamp(x, 0, 100)}%`);
       host.style.setProperty("--ly", `${clamp(y, 0, 100)}%`);
     }
+  };
+
+  // The sting is the operator's own animation, and it is what the lockup shows once it can draw.
+  // It is not awaited: the overlay polls before this resolves, so the vector machine paints the
+  // first frame and hands the slot over when the player arrives. In still mode it is not asked for
+  // at all — Swae snapshots the page once a second and 800 KB of player to render one frame is a
+  // bad trade, and the rest state underneath is already the same lockup.
+  let player = null;
+  let pendingMark = mark;
+  const mountSting = () => {
+    if (player || !sting || still) return;
+    import("./logo-sting.js").then(({ createSting, stingAspect }) => {
+      host.style.setProperty("--lg-motion-aspect", stingAspect().toFixed(3));
+      return createSting({ host, mark: pendingMark, visible: timeline.map((L) => L.id) });
+    }).then((p) => {
+      player = p;
+      host.classList.add("has-motion");
+    }).catch(() => { /* the vector machine already drew the lockup; leave it standing */ });
+  };
+
+  const setMark = (next) => {
+    if (!LOGO_MARKS.includes(next) || next === pendingMark) return;
+    pendingMark = next;
+    // Rebuild rather than re-point: the mark is baked into an <image> at load, so the only way to
+    // change it that the renderer cannot undo on the next frame is to load it again.
+    if (player) player.setMark(next);
   };
 
   setPos(position);
@@ -393,6 +464,7 @@ export function createLogo({
   host.hidden = !visible;
   play(timeline);
   startIdle();
+  mountSting();
 
   let lastReplay = 0;
 
@@ -407,6 +479,7 @@ export function createLogo({
         setPos(next.pos != null ? next.pos : (next.x != null && next.y != null ? "custom" : host.dataset.pos));
       }
       if (next.width != null) setWidth(next.width);
+      if (next.mark !== undefined) setMark(next.mark);
       if (next.layers !== undefined) {
         const defs = selectLayers(next.layers && next.layers.length ? next.layers : null, LOGO_LAYERS);
         // render() hands us the whole state.logo on every poll, so only a real change replays the
@@ -414,7 +487,8 @@ export function createLogo({
         const same = defs.length === timeline.length && defs.every((L, i) => L.id === timeline[i].id);
         if (!same) {
           timeline = defs;
-          play(timeline);
+          if (player) player.setVisible(timeline.map((L) => L.id));
+          else play(timeline);
         }
       }
       if (next.on != null && !!next.on !== visible) {
@@ -428,8 +502,12 @@ export function createLogo({
         if (visible) play(timeline);
       }
     },
-    replay: () => play(timeline),
+    replay: () => (player ? player.replay() : play(timeline)),
     get layers() { return timeline.map((L) => L.id); },
+    get mark() { return pendingMark; },
+    // Which renderer is holding the slot. The tests and the operator-facing docs both need to be
+    // able to say "the animation is on screen" without reading pixels.
+    get motion() { return !!player; },
     get still() { return still; },
     destroy() {
       clearInterval(blinkTimer);

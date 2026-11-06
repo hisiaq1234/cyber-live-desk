@@ -53,6 +53,7 @@ import {
 
 import {
   MARK_DEFAULTS,
+  MOTION_RULE_LAYERS,
   MOTION_SOURCE_COLORS,
   botMarkSvg,
   mixRgb,
@@ -456,6 +457,36 @@ test("themeMotion refuses to invent colours the composition does not use", () =>
   const map = { "1,2,3": [255, 255, 255] };
   const themed = themeMotion(LOGO_ANIM, map);
   assert.deepEqual([...collectColors(themed)], [...collectColors(LOGO_ANIM)]);
+});
+
+// The operator's ask: "the line going around the otolorin should be another colour, purple, as
+// this changes per theme". The outline and the handle are the same baked red in the source file,
+// so this is only possible if the filter can address a layer, not just a colour value.
+test("the outline and the handle split off one baked red, per layer", () => {
+  const ink = [0, 255, 0];
+  const rule = [10, 11, 12];
+  const map = { "255,0,0": ink, "92,57,57": [1, 2, 3], "96,96,96": [4, 5, 6], "0,0,0": [7, 8, 9] };
+  const layerMaps = Object.fromEntries(MOTION_RULE_LAYERS.map((nm) => [nm, { "255,0,0": rule }]));
+
+  for (const nm of MOTION_RULE_LAYERS) {
+    assert.ok(LOGO_ANIM.layers.some((l) => l.nm === nm), `${nm} is not a layer in the canonical file`);
+  }
+  const themed = themeMotion(LOGO_ANIM, map, layerMaps);
+  const byLayer = (nm) => collectColors(themed.layers.find((l) => l.nm === nm));
+
+  // Without the layer map both of these are the ink colour, which is what made them one colour.
+  const flat = collectColors(themeMotion(LOGO_ANIM, map));
+  assert.ok(flat.has("0,255,0"));
+  assert.ok(byLayer("Text 1").has("0,255,0"), "the handle must stay on the meaning colour");
+  for (const nm of MOTION_RULE_LAYERS) {
+    const paints = byLayer(nm);
+    assert.ok(paints.has("10,11,12"), `${nm} did not take the rule colour`);
+    assert.ok(!paints.has("0,255,0"), `${nm} is still painted with the accent`);
+  }
+  // A theme that never restates the rule token still gets a purple line, not the old red.
+  assert.match(source("public/desk-assets/logo.js"), /--t-logo-rule:var\(--indigo-500,#6531F8\)/);
+  // The third argument stays optional so every other caller is unaffected.
+  assert.ok(collectColors(themeMotion(LOGO_ANIM, map, null)).has("0,255,0"));
 });
 
 test("mixRgb is the distance-preserving half of the palette", () => {

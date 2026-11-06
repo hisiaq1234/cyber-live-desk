@@ -115,31 +115,39 @@ export function mixRgb(a, b, t) {
   return a.map((n, i) => Math.round(n + (b[i] - n) * t));
 }
 
-export function themeMotion(anim, map) {
+export function themeMotion(anim, map, layerMaps = null) {
   const keyOf = (c) => c.slice(0, 3).map((n) => Math.round(n * 255)).join(",");
-  const copy = (c) => {
+  const copier = (active) => (c) => {
     const k = keyOf(c);
-    if (!Object.hasOwn(map, k) || !MOTION_SOURCE_COLORS.includes(k)) return null;
-    const u = map[k].map((n) => n / 255);
+    if (!Object.hasOwn(active, k) || !MOTION_SOURCE_COLORS.includes(k)) return null;
+    const u = active[k].map((n) => n / 255);
     return [u[0], u[1], u[2], c.length === 4 ? c[3] : 1];
   };
 
-  function walk(node) {
-    if (Array.isArray(node)) return node.map(walk);
+  function walk(node, active) {
+    if (Array.isArray(node)) return node.map((v) => walk(v, active));
     if (!node || typeof node !== "object") return node;
     const out = {};
     for (const [k, v] of Object.entries(node)) {
       if ((k === "c" || k === "sc") && Array.isArray(v?.k)) {
-        out[k] = { ...v, k: walkColours(v.k) };
+        out[k] = { ...v, k: walkColours(v.k, active) };
         continue;
       }
-      out[k] = walk(v);
+      // A layer may override the palette for its own paints. The outline and the handle are the
+      // same baked red in the source file, so a colour-only map can never send them to different
+      // tokens — this is the only place the difference can be expressed.
+      if (k === "layers" && layerMaps && Array.isArray(v)) {
+        out[k] = v.map((l) => walk(l, { ...active, ...(layerMaps[l?.nm] || {}) }));
+        continue;
+      }
+      out[k] = walk(v, active);
     }
     return out;
   }
   // A colour is either a plain [r,g,b,a] or a keyframe list whose `s`/`c`/`e` carry one. The red
   // in this composition is animated, so both forms have to be reached or the rim keeps its colour.
-  function walkColours(k) {
+  function walkColours(k, active) {
+    const copy = copier(active);
     if (typeof k[0] === "number") return copy(k) ?? k;
     return k.map((kf) => {
       if (!kf || typeof kf !== "object") return kf;
@@ -149,7 +157,7 @@ export function themeMotion(anim, map) {
     });
   }
 
-  return walk(anim);
+  return walk(anim, map);
 }
 
 // The theme's own colours, resolved through the cascade by asking the browser to paint them.
@@ -185,6 +193,17 @@ export function motionPalette(host) {
     "96,96,96": edge,
     "0,0,0": plate,
   };
+}
+
+// The outline around the lockup is a stroke in `Lower`, and the accents under it are fills in
+// `Lower 3`. Both are painted with the same baked red as the handle, and both are structure rather
+// than meaning, so they take --t-logo-rule — the token that already drives every other line on the
+// logo, and which each theme restates — while the handle keeps --accent.
+export const MOTION_RULE_LAYERS = ["Lower", "Lower 3"];
+
+export function motionRuleMap(host) {
+  const rule = resolveColor(host, "--t-logo-rule", "#6531F8") ?? hexTriplet("#6531F8");
+  return Object.fromEntries(MOTION_RULE_LAYERS.map((nm) => [nm, { "255,0,0": rule }]));
 }
 
 // Read the theme's logo colours off the element the sting is being mounted into. Called at build
@@ -234,7 +253,7 @@ export async function createSting({ host, mark = "goat", visible = null } = {}) 
       renderer: "svg",
       loop: false,
       autoplay: false,
-      animationData: withMark(themeMotion(anim, motionPalette(host)), mark, markColors(host)),
+      animationData: withMark(themeMotion(anim, motionPalette(host), motionRuleMap(host)), mark, markColors(host)),
       rendererSettings: { preserveAspectRatio: "xMidYMid meet" },
     });
     return new Promise((resolve) => {

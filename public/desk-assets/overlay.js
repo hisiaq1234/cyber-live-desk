@@ -98,6 +98,7 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
   font-family:var(--brand);
   font-synthesis:none;text-rendering:optimizelegibility;-webkit-font-smoothing:antialiased;
   --m:clamp(12px,4vmin,32px);--identity-w:min(36vw,32rem);
+  --feed-fs:calc(var(--scale)*clamp(13px,1.8vmin,19px));
   --scale:1;
   font-size:calc(var(--scale)*clamp(15px,3.5vmin,26px));line-height:1.4}
 .slot{position:absolute;display:grid;width:min(calc(100vw - 2*var(--m)),56em)}
@@ -254,7 +255,7 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
   display:grid;grid-template-columns:minmax(0,1fr);align-items:center;gap:.28em;
   padding:.42em .68em;background:rgba(7,9,14,.88);border:1px solid rgba(102,139,179,.32);
   border-left:.28em solid #ff334d;border-radius:.9em;box-shadow:0 8px 24px rgba(0,0,0,.4);
-  font-size:clamp(13px,1.8vmin,19px);pointer-events:none;opacity:0;transform:translateY(8px);
+  font-size:var(--feed-fs);pointer-events:none;opacity:0;transform:translateY(8px);
   transition:opacity .25s ease,transform .25s ease}
 #auto-headlines[data-status="ready"],#auto-headlines[data-status="empty"],#auto-headlines[data-status="error"]{opacity:1;transform:none}
 .headline-feed-kicker{font-size:.68em;font-weight:900;letter-spacing:.08em;color:#ff5368;text-transform:uppercase;white-space:nowrap}
@@ -420,26 +421,29 @@ html[data-theme="torn-paper"] #desk{
 .layout-alive .summary,.layout-alive .source,.layout-alive .court-viewpoint .v-text,.layout-alive .ledger-entry{font-family:var(--brand)}
 .layout-alive .music-wrap{max-height:28dvh;overflow:auto}
 .music-empty{font-size:.78em;color:#9d9587;margin-top:.4em}
-/* The clock plate, sized and built to the operator's own timestamp (index (2).html), which is the
-   version they kept. The measurements below are that file's, not a paraphrase: a 390px floor, the
-   time at clamp(24px,2.35vw,43px) in a tabular mono with -.045em of tracking, a 3px accent rule on
-   the left edge only, and a radius that closes on the right. Every one of those is calc'd by
-   --scale so the desk's scale control still moves it, which is the one thing the original had no
-   reason to support. The purple pill it replaces was .72em at 900px and one third of the height. */
+/* The clock plate keeps the Black Market timestamp's anatomy (index (2).html) but not its absolute
+   numbers. That file is a solo overlay: 43px digits and a 390px plate are right when the timestamp
+   is the only thing in the frame, and lifting them straight into a frame that also carries the news
+   ticker made the timer the loudest element on screen. Everything below is em of --feed-fs, the
+   news ticker's own type size, so the digits hold 1.5x the headline text, the left bar is the same
+   weight as the ticker's, and the two plates stay balanced at every width and every --scale. The
+   reference's tabular mono, -.045em tracking, square-left/round-right corner and three-row rhythm
+   are kept as they were. */
 #time-dock{position:absolute;left:var(--m);bottom:var(--m);z-index:20;pointer-events:none;
-  min-width:min(390px,82vw);max-width:calc(100vw - 2*var(--m));box-sizing:border-box;overflow:hidden;
-  padding:calc(var(--scale)*16px) calc(var(--scale)*22px) calc(var(--scale)*17px) calc(var(--scale)*24px);
+  font-size:var(--feed-fs);
+  min-width:min(16em,64vw);max-width:calc(100vw - 2*var(--m));box-sizing:border-box;overflow:hidden;
+  padding:.72em .95em .78em 1.05em;
   border:1px solid var(--surface-line);border-left:.28em solid var(--accent);border-radius:0 .75em .75em 0;
   background:var(--glass);box-shadow:0 14px 40px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.05);
   color:var(--ink)}
 #time-dock .clock-top{display:flex;align-items:center;justify-content:space-between;gap:1.4em;
-  margin-bottom:.72em;font-family:var(--brand);font-size:calc(var(--scale)*clamp(10px,.72vw,13px));
+  margin-bottom:.5em;font-family:var(--brand);font-size:.62em;
   font-weight:600;letter-spacing:.18em;line-height:1;text-transform:uppercase;color:var(--ink-3,#9d9587)}
 #time-dock .clock-time{display:block;font-family:var(--mono);
-  font-size:calc(var(--scale)*clamp(24px,2.35vw,43px));font-weight:500;letter-spacing:-.045em;
+  font-size:1.5em;font-weight:500;letter-spacing:-.045em;
   line-height:1.05;white-space:nowrap;color:var(--ink);font-variant-numeric:tabular-nums lining-nums}
-#time-dock .clock-detail{display:flex;align-items:center;gap:.62em;margin-top:.75em;
-  font-family:var(--brand);font-size:calc(var(--scale)*clamp(11px,.8vw,14px));font-weight:500;
+#time-dock .clock-detail{display:flex;align-items:center;gap:.62em;margin-top:.55em;
+  font-family:var(--brand);font-size:.68em;font-weight:500;
   letter-spacing:.04em;color:var(--ink-3,#9d9587)}
 #time-dock .clock-sep{flex:0 0 auto;width:4px;height:4px;border-radius:50%;background:var(--accent)}
 html[data-crop="true"] #desk .mod::before{content:"";position:absolute;inset:-1px;border-radius:inherit;pointer-events:none;opacity:.34;
@@ -488,10 +492,13 @@ html.swae .scale-wrap{display:none}
 
 @media(max-width:900px){.layout-alive .slot{width:min(39vw,460px)}
   .layout-alive #dock-right{width:min(31vw,360px)}}
-/* The original's own phone rule: the plate gives up its floor and the time steps down, instead of
-   the whole thing being scaled to .72em and going unreadable next to a camera plate. */
-@media(max-width:520px){#time-dock{min-width:0;width:calc(100vw - 2*var(--m))}
-  #time-dock .clock-time{font-size:calc(var(--scale)*clamp(22px,7vw,34px))}}
+/* On a narrow phone the reference let the plate fill the frame, because in its own file nothing
+   else was there. Here the news ticker owns the bottom-right, so the clock keeps to its content
+   width and steps up above the ticker instead of being laid under it. Nothing else changes at that
+   width: the digits stay 1.5em of the same feed size, so the measured clock-to-headline ratio is
+   the same 1.83 on a phone as on a broadcast frame rather than a second number to keep honest. */
+@media(max-width:520px){#time-dock{min-width:0;
+  bottom:calc(var(--m) + 3.4em + env(safe-area-inset-bottom,0px))}}
 `;
 
 // ---------- upgraded DOM helper ----------

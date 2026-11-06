@@ -480,19 +480,45 @@ test("the robot arrives as literal colours because an image cannot see the page"
 
 // ---------- the clock ----------
 
-test("the clock is the operator's size, not a shrunk copy of it", () => {
+const emOf = (block, prop) => {
+  const m = block.match(new RegExp(`${prop}:(?:calc\\()?([\\d.]+)em`));
+  return m ? Number(m[1]) : null;
+};
+
+test("the clock shares the news ticker's type rhythm instead of a solo overlay's absolute px", () => {
   const css = source("public/desk-assets/overlay.js");
   const dock = css.match(/#time-dock\{[^}]*\}/)?.[0];
   assert.ok(dock, "could not find the clock block to check");
-  // The regression: a font-size on the container made every em inside it smaller than the
-  // reference page, which is the complaint "the time reader too is smaller than the original one".
-  assert.ok(!/font-size:[^;}]*\b0?\.\d+em/.test(dock), `the clock container shrinks itself: ${dock}`);
-  // The reference page's own numbers, scaled by the desk's one knob rather than by a second one.
-  assert.match(dock, /min-width:min\(390px,82vw\)/);
+
+  // The one token both plates read their ems from. index (2).html is a standalone timestamp, so
+  // its 43px digits and 390px plate are sized for an empty frame; the desk's frame also carries the
+  // ticker, and copying the solo numbers made the timer the loudest thing on screen.
+  assert.match(css, /#desk\{[^}]*--feed-fs:calc\(var\(--scale\)\*clamp\(13px,1\.8vmin,19px\)\)/s);
+  assert.match(dock, /font-size:var\(--feed-fs\)/);
+  assert.match(css, /#auto-headlines\{[^}]*font-size:var\(--feed-fs\)/s);
+
+  // No fixed pixel floor may survive on the plate: it has to be em or it stops tracking the feed.
+  assert.match(dock, /min-width:min\(16em,64vw\)/);
+  assert.ok(!/\b\d+px\b/.test(dock.match(/min-width:[^;]*/)[0]), "the plate still has a px floor");
+
+  // The balance itself: digits against the headline text they sit next to. The operator's older
+  // overlay measured about 1.7x; anything past ~2x is the timer shouting over the news.
+  const time = css.match(/\.clock-time\{[^}]*\}/)?.[0];
+  const title = css.match(/\.identity-row \.headline-feed-title\{[^}]*\}/)?.[0];
+  assert.ok(time && title, "could not find the time or headline rules");
+  const digits = emOf(time, "font-size");
+  const ratio = digits / emOf(title, "font-size");
+  assert.ok(ratio > 1.4 && ratio < 2.0, `clock-to-headline ratio is ${ratio.toFixed(2)}, outside balance`);
+  assert.equal(digits, 1.5);
+
+  // Same declaration as the ticker's own accent edge, so the two bars weigh the same at any width.
+  const ticker = css.match(/#auto-headlines\{[^}]*\}/)?.[0];
+  assert.equal(emOf(dock, "border-left"), emOf(ticker, "border-left"));
+
+  // The reference anatomy, kept.
   assert.match(css, /\.clock-time\{[^}]*font-family:var\(--mono\)/s);
-  assert.match(css, /\.clock-time\{[^}]*calc\(var\(--scale\)\*clamp\(24px,2\.35vw,43px\)\)/s);
-  // --mono only existed inside the creative and torn-paper themes, so on the default theme the
-  // time was set in the sans and read as a different object from the reference.
+  assert.match(css, /\.clock-time\{[^}]*letter-spacing:-\.045em/s);
+  assert.match(dock, /border-radius:0 \.75em \.75em 0/);
   assert.match(css, /#desk\{[^}]*--mono:/);
-  assert.match(css, /@media\(max-width:520px\)/);
+  assert.match(css, /@media\(max-width:520px\)\{#time-dock\{[^}]*bottom:calc/);
 });

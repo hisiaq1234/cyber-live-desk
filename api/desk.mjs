@@ -189,7 +189,11 @@ const handler = async (req) => {
       if (!cmd) throw new HttpError(422, "Not a recognized CRID command.");
       let actionBody = commandBody(cmd);
       if (!actionBody) throw new HttpError(422, "Command cannot be executed by voice.");
-      const safeActions = new Set(["next", "previous", "hold", "hide", "desk", "draw", "start-poll", "end-poll", "auto-play", "clip-create", "crid-open", "music-play", "music-pause", "music-next", "music-stop", "logo", "scene"]);
+      // Everything on this list moves something the streamer can already see and undo. The layout
+      // and the bot are here because an overlay that rearranges itself without answering back is a
+      // menu, not a companion: a gesture and an inset cost nothing on air, touch no credential, no
+      // feed and no queue, and are one word to reverse.
+      const safeActions = new Set(["next", "previous", "hold", "hide", "desk", "draw", "start-poll", "end-poll", "auto-play", "clip-create", "crid-open", "music-play", "music-pause", "music-next", "music-stop", "logo", "scene", "bot-react", "bot"]);
       if (!safeActions.has(actionBody.action)) throw new HttpError(403, "This command is not available by voice.");
       // Voice-opened CRID segments use a default title so the streamer can speak to open one.
       if (actionBody.action === "crid-open") {

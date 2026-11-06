@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import desk, { runVoiceMusicAction } from "../api/desk.mjs";
 import { HttpError } from "../api/_desk-core.mjs";
 
@@ -69,10 +70,11 @@ test("voice music explains the missing server-side YouTube key without revealing
   );
 });
 
-// The voice route checks its allowlist before any storage read, so these two assertions hold
-// without a live Redis: one proves a mascot gesture stays off voice, the other that "crid thought"
-// is recognised AND permitted (a later storage failure is not a 403 or a 422).
-test("a Thought War draw is speakable while a mascot gesture is not", async () => {
+// The voice route checks its allowlist before any storage read, so these assertions hold without a
+// live Redis. The operator's ask is an overlay that answers back, so the layout and a mascot
+// gesture are speakable; what stays refused is anything that reaches credentials, approval or the
+// queue, and that guard is asserted against the list itself rather than one example.
+test("the layout and a mascot gesture are speakable, and nothing that touches approval is", async () => {
   const saved = process.env.DESK_OPERATOR_TOKEN;
   process.env.DESK_OPERATOR_TOKEN = "route-test-only-token";
   const voice = (text) => desk.fetch(new Request("https://cyber-live-desk.vercel.app/api/desk/voice", {
@@ -81,14 +83,19 @@ test("a Thought War draw is speakable while a mascot gesture is not", async () =
     body: JSON.stringify({ text }),
   }));
   try {
-    assert.equal((await voice("crid bot wave")).status, 403, "a gesture is not a voice action");
+    for (const line of ["crid thought", "crid scene", "crid scene dual", "crid bot wave", "crid logo goat"]) {
+      const res = await voice(line);
+      assert.notEqual(res.status, 422, `${line} is a recognised command`);
+      assert.notEqual(res.status, 403, `${line} is allowed by voice`);
+    }
 
-    const drawn = await voice("crid thought");
-    assert.notEqual(drawn.status, 422, "crid thought is a recognised command");
-    assert.notEqual(drawn.status, 403, "and the deck draw is allowed by voice");
+    const safe = readFileSync(new URL("../api/desk.mjs", import.meta.url), "utf8")
+      .match(/const safeActions = new Set\(\[(.*?)\]\)/s)[1];
+    for (const danger of ["twitch-allow", "twitch-chat", "bulk-approval", "research-approval",
+      "auto-research", "ledger-add", "space-add", "crid-close", "court-verdict", "music-volume", "vote"]) {
+      assert.ok(!safe.includes(`"${danger}"`), `${danger} must never be voice-reachable`);
+    }
 
-    // An unknown verb is a desk name by design, and the server's desk list answers it after a
-    // state read, so these two stay in the route's own pre-storage checks instead.
     assert.equal((await voice("")).status, 422, "empty speech is refused");
     assert.equal((await voice("someone is raiding")).status, 422, "ordinary chat is never a voice command");
   } finally {

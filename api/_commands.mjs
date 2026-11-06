@@ -78,6 +78,18 @@ export function parseDeskCommand(line) {
     const pos = LOGO_POSITION_WORDS[asked];
     return pos ? { verb: "logo", pos } : null;
   }
+  // The frame layout. The technical name and the plain words both work, because mid-show nobody
+  // remembers whether the inset is called a pip — they know they are about to bring in a second
+  // camera, and that is the sentence they say.
+  if (verb === "scene" || verb === "layout") {
+    if (!rest) return { verb: "scene" };
+    const asked = rest.toLowerCase().replace(/[\s_-]+/g, "");
+    if (["pip", "dual", "dualcamera", "twocam", "twocameras", "secondcamera"].includes(asked)) {
+      return { verb: "scene", mode: "pip" };
+    }
+    if (["full", "single", "solo", "one", "onecamera"].includes(asked)) return { verb: "scene", mode: "full" };
+    return null;
+  }
   // Thought War: one word pulls a random dilemma off the deck. "crid random" shuffles whatever
   // desk is already on instead, so the operator can draw from Politics or the whole queue.
   if (verb === "thought") return rest ? null : { verb: "draw", category: THOUGHT_WAR_CATEGORY };
@@ -142,6 +154,7 @@ export const COMMAND_HELP =
   "crid auto on|off · crid music · crid music play [song or artist; unique queued track first, YouTube search on miss if configured; bare play uses default] · crid music pause|next|stop · " +
   `crid bot on|off · crid bot ${BOT_REACTS.join("|")} · ` +
   "crid logo on|off · crid logo top|bottom|topleft|topright|bottomleft|bottomright · crid logo big|small · crid logo replay · crid logo goat|bot · " +
+  "crid scene · crid scene dual|full · " +
   "crid streamers · crid movies · crid politics · crid business · crid trends · crid all";
 
 // Maps only implemented commands. Recognized-but-unimplemented verbs must never become
@@ -168,6 +181,11 @@ export const commandBody = (cmd) => {
     if (cmd.replay) body.replay = true;
     return body;
   }
+  if (cmd.verb === "scene") {
+    const body = { action: "scene" };
+    if (cmd.mode) body.mode = cmd.mode;
+    return body;
+  }
   const action = { next: "next", prev: "previous", hold: "hold", hide: "hide", stop: "end-poll" }[cmd.verb];
   return action ? { action } : null;
 };
@@ -182,6 +200,7 @@ export const commandText = (cmd) =>
     : cmd.verb === "bot" ? `crid bot${cmd.react ? ` ${cmd.react}` : cmd.value ? ` ${cmd.value}` : ""}`
     : cmd.verb === "logo"
       ? `crid logo${cmd.value ? ` ${cmd.value}` : cmd.pos ? ` ${cmd.pos}` : cmd.mark ? ` ${cmd.mark}` : cmd.size ? ` ${cmd.size}` : cmd.replay ? " replay" : ""}`
+    : cmd.verb === "scene" ? `crid scene${cmd.mode ? ` ${cmd.mode}` : ""}`
     : cmd.verb === "research" ? `crid research ${cmd.topic ?? ""}`.trim()
     : cmd.verb === "deeper" ? `crid deeper ${cmd.focus ?? ""}`.trim()
     : `crid ${cmd.verb}`;

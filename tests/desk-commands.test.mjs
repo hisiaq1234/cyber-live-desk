@@ -103,12 +103,37 @@ test("the help line names the verbs the parser knows", () => {
   assert.ok(COMMAND_HELP.includes("queued track"));
 });
 
+// Bringing in a second camera is the layout change a streamer makes while talking, so the words
+// they actually say have to reach it. "pip" is the technical name and stays valid, but nobody
+// mid-sentence says it.
+test("crid scene switches the frame layout in the words a streamer uses", () => {
+  assert.deepEqual(parseDeskCommand("crid scene"), { verb: "scene" }, "bare scene is the switch");
+  for (const line of ["crid scene pip", "crid scene dual", "crid scene dual camera", "crid scene two cameras",
+    "crid scene second camera", "crid layout pip", "crid scene PIP"]) {
+    assert.deepEqual(parseDeskCommand(line), { verb: "scene", mode: "pip" }, line);
+  }
+  for (const line of ["crid scene full", "crid scene single", "crid scene one camera", "crid scene solo", "crid layout full"]) {
+    assert.deepEqual(parseDeskCommand(line), { verb: "scene", mode: "full" }, line);
+  }
+  for (const line of ["crid scene sideways", "crid scene please", "crid scene top right"]) {
+    assert.equal(parseDeskCommand(line), null, `${line} is ordinary chat`);
+  }
+
+  assert.deepEqual(serverCommandBody({ verb: "scene" }), { action: "scene" });
+  assert.deepEqual(serverCommandBody({ verb: "scene", mode: "pip" }), { action: "scene", mode: "pip" });
+  assert.deepEqual(publicCommandBody({ verb: "scene", mode: "full" }), { action: "scene", mode: "full" });
+  assert.equal(commandText({ verb: "scene", mode: "pip" }), "crid scene pip");
+  assert.equal(commandText({ verb: "scene" }), "crid scene");
+  assert.match(COMMAND_HELP, /crid scene · crid scene dual\|full/);
+});
+
 test("server and browser parser copies agree; private research verbs never map to a chat action", () => {
   const lines = [
     "crid next", "crid previous", "crid hold", "crid hide", "crid stop", "crid all",
     "crid poll Q|A|B", "crid auto on", "crid music", "crid music play", "crid music play Burna Boy",
     "crid music pause", "crid music next", "crid music stop", "crid research", "crid research Lagos TikTok trends",
     "crid bot", "crid bot on", "crid bot off", "crid bot wave", "crid bot explode",
+    "crid scene", "crid scene pip", "crid scene dual", "crid scene two cameras", "crid scene full", "crid layout single",
     "crid deeper", "crid deeper local impact", "crid refresh", "crid read", "crid quiet", "ordinary chat", "desk next",
   ];
   for (const line of lines) assert.deepEqual(parseServerDeskCommand(line), parsePublicDeskCommand(line), line);

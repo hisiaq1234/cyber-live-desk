@@ -76,6 +76,18 @@ import { youtubeEmbedUrl } from "./youtube-embed.js";
     document.documentElement.style.setProperty("--pip-w", num("pip.w", 34, 10, 60) + "vw");
     document.documentElement.style.setProperty("--pip-h", num("pip.h", 34, 10, 60) + "vh");
   }
+  // state.scene wins over the URL above, because going dual-camera means bringing in a second
+  // camera, and nobody wants to stop the show to edit a browser-source URL to do it. A desk that
+  // has never been told leaves the URL in charge, so the old links keep working.
+  const renderScene = (s) => {
+    if (!s?.mode) return;
+    const html = document.documentElement;
+    if (s.mode === "pip") {
+      html.dataset.scene = "pip";
+      html.style.setProperty("--pip-w", `${s.w ?? 34}vw`);
+      html.style.setProperty("--pip-h", `${s.h ?? 34}vh`);
+    } else delete html.dataset.scene;
+  };
   const xMode = P.get("x.mode") || "";
   const xJPos = "top";
   const xJPollMs = num("x.jpoll", 60, 10, 3600) * 1000;
@@ -1089,6 +1101,7 @@ html.swae .scale-wrap{display:none}
     syncCridAudio(state.crid);
     renderModule(state);
     renderLogo(state.logo);
+    renderScene(state.scene);
     if (xMode && !xStarted) {
       xStarted = true;
       fetchXfeed();

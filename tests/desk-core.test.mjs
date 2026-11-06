@@ -13,6 +13,7 @@ import {
   HttpError,
   LIMITS,
   PER_FEED,
+  PIP_SIZE,
   RESEARCH_KEEP_MS,
   RESEARCH_MAX_PENDING,
   advanceIfExpired,
@@ -1428,4 +1429,33 @@ test("Gemini enrichment gives bare names context instructions and never returns 
     if (previousKey === undefined) delete process.env.GEMINI_API_KEY;
     else process.env.GEMINI_API_KEY = previousKey;
   }
+});
+
+// The layout switch is the one thing on this list a streamer reaches for while talking, so it gets
+// the same rules the lockup does: naming a size must not re-arm the inset, an invented mode is
+// refused rather than guessed, and a desk that was never told stays exactly as it was.
+test("the frame layout is server state, so it survives a reload and answers to one word", async () => {
+  const store = makeStore();
+  assert.equal((await publicState(store, null, NOW)).body.scene, null, "a desk never told has no layout");
+
+  const pip = await runAction(store, { action: "scene" }, NOW);
+  assert.deepEqual(pip.state.scene, { mode: "pip", w: PIP_SIZE.default, h: PIP_SIZE.default });
+  const back = await runAction(store, { action: "scene" }, NOW);
+  assert.equal(back.state.scene.mode, "full", "bare scene is the switch in both directions");
+
+  await runAction(store, { action: "scene", mode: "pip" }, NOW);
+  const sized = await runAction(store, { action: "scene", w: 40, h: 22 }, NOW);
+  assert.deepEqual(sized.state.scene, { mode: "pip", w: 40, h: 22 }, "a size keeps the mode it found");
+
+  const clamped = await runAction(store, { action: "scene", w: 900 }, NOW);
+  assert.equal(clamped.state.scene.w, PIP_SIZE.max, "an absurd inset is clamped, not obeyed");
+  assert.equal(clamped.state.scene.h, 22, "and clamping one axis must not reset the other");
+
+  await assert.rejects(runAction(store, { action: "scene", mode: "triangle" }, NOW),
+    (e) => e.status === 422 && /full, pip/.test(e.message));
+  const untouched = await readState(store);
+  assert.deepEqual(untouched.scene, clamped.state.scene, "a refused layout command changes nothing");
+
+  const seen = await publicState(store, null, NOW);
+  assert.deepEqual(seen.body.scene, { mode: "pip", w: PIP_SIZE.max, h: 22 }, "the overlay can read it");
 });

@@ -61,6 +61,11 @@ export const DEFAULT_STATE = {
   // layers is a subset of LOGO_LAYERS below; replay counts up so the same intro can be asked for
   // twice in a row. The choreography itself lives in public/desk-assets/logo.js.
   logo: null, // { on, pos, x, y, width, layers: string[]|null, replay: number }
+  // Which layout the frame is working in, so a streamer mid-broadcast can put a second camera on
+  // screen without editing a browser-source URL and reloading the page. null means "never told",
+  // which is the desk's own full-frame layout. The inset picture is drawn by the renderer; this
+  // only reserves the room for it.
+  scene: null, // { mode: "full"|"pip", w: vw, h: vh }
   autoPlay: false, // when on, an expired card advances to the next approved one by itself
   autoResearch: false, // when on, the scheduled run adds new research by itself
   // Research approval is a separate, persistent decision from whether the scheduler fetches at
@@ -82,6 +87,12 @@ export const LOGO_WIDTH = { min: 6, max: 46, default: 24, step: 6 }; // vw
 // The mascot inside the operator's animation. "bot" is the default because the vector fallback can
 // only draw the robot, so a sting that failed to load still shows something on-brand.
 export const LOGO_MARKS = ["bot", "goat"];
+
+// The layout the frame works in. `pip` reserves the bottom-right for a second camera and lifts the
+// news and the right column out of its way; `full` is the desk's own corners. The inset picture is
+// composited by the renderer, never by this page, so the desk only ever needs to know the room.
+export const SCENES = ["full", "pip"];
+export const PIP_SIZE = { min: 10, max: 60, default: 34 }; // vw and vh
 
 // CRID × Gemini — AI enrichment for social/trend cards
 export async function enrichWithGemini(headline, fallbackSummary = "", fetchFn = globalThis.fetch) {
@@ -1008,6 +1019,29 @@ export async function runAction(store, b, now = Date.now()) {
         next.mark = b.mark;
       }
       patch = { logo: next };
+      break;
+    }
+    // ---------- the frame layout ----------
+    case "scene": {
+      // A desk that has never been told otherwise is full-frame, so the defaults live here rather
+      // than in a stored document. Like the lockup, only what is sent gets written: naming a size
+      // must never put the inset back on after the operator took it off.
+      const next = { mode: "full", w: PIP_SIZE.default, h: PIP_SIZE.default, ...state.scene };
+      if (typeof b.value === "boolean") next.mode = b.value ? "pip" : "full";
+      // Bare `crid scene` is the switch, because the ask on stream is one word: go dual, go back.
+      else if (Object.keys(b).length === 1) next.mode = next.mode === "pip" ? "full" : "pip";
+      else if (b.value !== undefined) throw new HttpError(422, "value must be true or false.");
+      if (b.mode !== undefined) {
+        if (!SCENES.includes(b.mode)) throw new HttpError(422, `mode must be one of ${SCENES.join(", ")}.`);
+        next.mode = b.mode;
+      }
+      for (const axis of ["w", "h"]) {
+        if (b[axis] === undefined) continue;
+        const v = Number(b[axis]);
+        if (!Number.isFinite(v)) throw new HttpError(422, `${axis} must be a number of viewport units.`);
+        next[axis] = Math.min(PIP_SIZE.max, Math.max(PIP_SIZE.min, Math.round(v)));
+      }
+      patch = { scene: next };
       break;
     }
     default:

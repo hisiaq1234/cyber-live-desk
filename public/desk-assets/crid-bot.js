@@ -7,14 +7,14 @@
    between shapes he widens a little (STAGE_STRETCH) so every single sub is visible. The size is
    worked out from the sub total each time, so an overlay reload mid-stream restores it.
    Feed it with observe(state) where state.bot.subs is the sub count this stream, or call setSubs(n). */
-const NS="http://www.w3.org/2000/svg",PAL={onyx:"#1F1736",screen:"#0F0B17",edge:"#3A1D9E",indigo:"#6531F8",indigoDk:"#3A1D9E",mint:"#86F6BC",bone:"#A98BFF",ink:"#F4F0FF",red:"#FF5B57",dead:"#5E5873"},
+const NS="http://www.w3.org/2000/svg",PAL={onyx:"#151B23",screen:"#0D1117",edge:"#143B5D",indigo:"#2868A6",indigoDk:"#143B5D",mint:"#86F6BC",bone:"#F3F2F0",ink:"#F3F2F0",red:"#FF453A",dead:"#5E6570"},
 DOZE_AFTER_MS=12e4,BODIES=[3,0,5,1,2],ROT=7,ASSETS="./desk-assets/crid",AV=b=>`${ASSETS}/body-${b}-r${ROT}.png`,
-SUB_STEPS=[0,3,8,15,25],STAGE_STRETCH=.06,
+SUB_STEPS=[0,1,2,3,4],STAGE_STRETCH=.18,
 el=(t,a={},...k)=>{const e=document.createElementNS(NS,t);for(const[n,v]of Object.entries(a))e.setAttribute(n,v);for(const c of k)c&&e.append(c);return e},
 clamp=(n,lo,hi)=>Math.min(hi,Math.max(lo,n)),rand=(lo,hi)=>lo+Math.random()*(hi-lo),
 stageFor=n=>{n=Math.max(0,n|0);let i=0;for(let k=0;k<SUB_STEPS.length;k++)if(n>=SUB_STEPS[k])i=k;
   const last=i===SUB_STEPS.length-1,frac=last?clamp((n-SUB_STEPS[i])/35,0,1):(n-SUB_STEPS[i])/(SUB_STEPS[i+1]-SUB_STEPS[i]),
-  sx=1+STAGE_STRETCH*frac*(last?1.5:1);return{i,sx,sy:1+(sx-1)*.2}},
+  sx=1+STAGE_STRETCH*(i+frac)/(SUB_STEPS.length-1);return{i,sx,sy:1+(sx-1)*.55}},
 REST={on:{eyes:"open",gx:0,gy:0,mouth:"flat",hr:0,hy:0,by:0,bs:1,pr:0,mL:"down",mR:"down",led:"on",tr:0},doze:{eyes:"sleep",gx:0,gy:0,mouth:"flat",hr:3,hy:3,by:2,bs:1,pr:0,mL:"limp",mR:"limp",led:"dim",tr:0},dead:{eyes:"x",gx:0,gy:0,mouth:"dead",hr:0,hy:0,by:0,bs:1,pr:-84,mL:"limp",mR:"limp",led:"off",tr:0}},
 TALK=["t2","t1","t3","t1","t2","flat"],
 SEQ={blink:[{eyes:"half"},{eyes:"closed"},{eyes:"closed"}],doubleBlink:[{eyes:"half"},{eyes:"closed"},{eyes:"open"},{eyes:"half"},{eyes:"closed"}],glanceL:[{gx:-4},{gx:-4},{gx:-4,hr:-2}],glanceR:[{gx:4},{gx:4},{gx:4,hr:2}],lookUp:[{gy:-4,hr:3},{gy:-4,hr:3},{gy:-3}],sway:[{tr:7,hr:3},{tr:-6,hr:-3},{tr:3,hr:2}],ledBlink:[{led:"dim"},{led:"on"}],shrug:[{hy:-2,by:-2},{hy:-2,by:-2,mL:"wave",mR:"wave"}],
@@ -47,15 +47,15 @@ function draw(){
     el("circle",{cx:63,cy:54,r:2.8,fill:PAL.mint}),el("circle",{cx:77,cy:54,r:2.8,fill:PAL.mint}));
   const figG=el("g",{class:"fig"},avatar,ph),bodyG=el("g",{class:"body"},figG);
   const ticket=el("g",{class:"ticket",opacity:0});
-  const tkFill=[el("path",{d:"M100 4H138V22H100Z",fill:PAL.red,class:"ticket-fill"}),el("path",{d:"M108 22L106 31L118 22Z",fill:PAL.red,class:"ticket-fill"})];
-  const ticketText=el("text",{x:119,y:17.2,"text-anchor":"middle","font-size":10.5,"font-weight":800,"letter-spacing":.6,fill:PAL.onyx,"font-family":"ui-monospace,'SF Mono','JetBrains Mono',Menlo,Consolas,monospace"});
+  const tkFill=[el("path",{d:"M79 4H151V30H79Z",fill:PAL.red,class:"ticket-fill"}),el("path",{d:"M88 30L86 38L99 30Z",fill:PAL.red,class:"ticket-fill"})];
+  const ticketText=el("text",{x:115,y:22,"text-anchor":"middle","font-size":15.5,"font-weight":800,"letter-spacing":.35,fill:PAL.onyx,"font-family":"ui-monospace,'SF Mono','JetBrains Mono',Menlo,Consolas,monospace"});
   ticketText.textContent="";
-  ticket.append(el("path",{d:"M100 4H138V22H100ZM108 22L106 31L118 22Z",...sticker,"stroke-width":6}),...tkFill,ticketText);
+  ticket.append(el("path",{d:"M79 4H151V30H79ZM88 30L86 38L99 30Z",...sticker,"stroke-width":6}),...tkFill,ticketText);
   svg.append(shadow,bodyG,ticket);
   return{svg,parts:{ticket,ticketText,tkFill,shadow,bodyG,figG,avatar,ph}};
 }
 const CSS=`
-#crid-bot{--bw:clamp(60px,9vmin,120px);--bx:50%;--by:auto;position:fixed;z-index:27;width:var(--bw);aspect-ratio:160/168;pointer-events:none;
+#crid-bot{--bw:clamp(84px,10vw,160px);--bx:50%;--by:auto;position:fixed;z-index:27;width:var(--bw);aspect-ratio:160/168;pointer-events:none;
   left:var(--bx);margin-left:calc(var(--bw)/-2);bottom:calc(var(--m,16px) + env(safe-area-inset-bottom,0px));top:auto;
   transition:left .9s cubic-bezier(.2,.8,.2,1),top .9s cubic-bezier(.2,.8,.2,1),bottom .9s cubic-bezier(.2,.8,.2,1),width .6s ease,transform .18s ease}
 #crid-bot.pos-bl{--bx:calc(var(--m,16px) + 12em);margin-left:0}
@@ -67,25 +67,33 @@ html.low-power #crid-bot svg,html.swae #crid-bot svg{filter:none}
 #crid-bot[data-mode="dead"] .ticket-fill{fill:${PAL.dead}}
 #crid-bot[data-mode="dead"] .avatar{opacity:.55}
 #crid-bot[data-mode="doze"] .avatar{opacity:.88}
+#crid-bot .crid-event-tag{position:absolute;left:calc(100% + .24em);bottom:62%;max-width:min(10em,38vw);box-sizing:border-box;
+  padding:.3em .52em;border:.14em solid var(--danger,#FF5B57);border-radius:.38em;background:var(--onyx-950,#0D1117);
+  color:var(--ink-1,#F3F2F0);font:800 clamp(11px,1.05vw,15px)/1.1 system-ui,sans-serif;letter-spacing:.04em;text-transform:uppercase;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:.12em .15em 0 var(--indigo-700,#143B5D);opacity:0;visibility:hidden;
+  transform:translateY(2px);transition:opacity .12s ease,transform .12s ease;pointer-events:none}
+#crid-bot .crid-event-tag.is-visible{opacity:1;visibility:visible;transform:none}
 `;
 export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="bc",x=null,y=null,step=null}={}){
   if(!document.getElementById("crid-bot-css")){const st=document.createElement("style");st.id="crid-bot-css",st.textContent=CSS,document.head.append(st)}
-  const STEP=step!=null?step:swae?220:lowPower?260:140,reduced=typeof matchMedia=="function"&&matchMedia("(prefers-reduced-motion: reduce)").matches,{svg,parts}=draw(),host=document.createElement("div");
-  host.id="crid-bot",host.setAttribute("aria-hidden","true"),host.dataset.mode="dead";
+  const STEP=step!=null?step:swae?220:lowPower?260:140,JOB_STEP=step!=null?step:swae?90:STEP,reduced=typeof matchMedia=="function"&&matchMedia("(prefers-reduced-motion: reduce)").matches,{svg,parts}=draw(),host=document.createElement("div");
+  host.id="crid-bot",host.setAttribute("aria-hidden","true"),host.dataset.mode="on";
+  const banner=document.createElement("div");banner.className="crid-event-tag";banner.hidden=!0;banner.setAttribute("aria-hidden","true");
   if(x!=null&&y!=null){host.classList.add("pos-custom");host.style.setProperty("--bx",`${x}%`);host.style.setProperty("--by",`${y}%`)}
   else if(position=="bl"||position=="br")host.classList.add(`pos-${position}`);
   const homeCls=[...host.classList].filter(c=>c.startsWith("pos-"));
-  host.append(svg); root.append(host);
-  for(const b of BODIES){const im=new Image();im.src=AV(b)}
+  host.append(svg,banner); root.append(host);
+  if(!swae&&!lowPower)for(const b of BODIES){const im=new Image();im.src=AV(b)}
   parts.avatar.addEventListener("error",()=>{parts.avatar.setAttribute("display","none");parts.ph.removeAttribute("display")});
   parts.avatar.addEventListener("load",()=>{parts.ph.setAttribute("display","none");parts.avatar.removeAttribute("display")});
-  let mode="dead",tagText=null,talking=!1,grooving=!1,tickN=0,wait=6,idleQ=[],gestureQ=[],timer=null,frozen=!1,dying=!1;
+  let mode="on",tagText=null,talking=!1,grooving=!1,tickN=0,wait=6,idleQ=[],gestureQ=[],timer=null,frozen=!1,dying=!1,bannerTimer=null;
   const pendingReact=[]; let lastActive=Date.now(),prev=null,online=!0,lastReactN=null,lastSubN=null,bodyI=-1,growth={sx:1,sy:1},fx=1,walk=null,roamN=0,subs=0;
   const jobs=[]; let running=null; const flights=new WeakMap; let lastDrawn="";
   const setBody=i=>{if(i===bodyI)return; bodyI=clamp(i,0,BODIES.length-1); const src=AV(BODIES[bodyI]); parts.avatar.setAttribute("href",src);};
+  const showBanner=label=>{const value=String(label||"").trim();if(!value)return;banner.textContent=value.slice(0,28);banner.hidden=!1;banner.classList.add("is-visible");clearTimeout(bannerTimer);bannerTimer=setTimeout(()=>{banner.classList.remove("is-visible");banner.hidden=!0},3000)};
   const subCount=s=>{const b=s&&s.bot||{}; const n=b.subs??b.subCount??b.subN; return Number.isFinite(n)?n:null};
   const applySubs=(n,beat)=>{subs=Math.max(0,n|0); const st=stageFor(subs); setBody(st.i); growth={sx:st.sx,sy:st.sy}; lastDrawn="";
-    if(beat&&mode!=="dead"&&!dying){if(mode==="doze"){mode="on";lastActive=Date.now()} play(SEQ.sub,{urgent:!0}); lastActive=Date.now()}};
+    if(beat&&mode!=="dead"&&!dying){if(mode==="doze"){mode="on";lastActive=Date.now()} showBanner("+SUB");play(SEQ.sub,{urgent:!0}); lastActive=Date.now()}};
   const pct=r=>({x:(r.left+r.width/2)/innerWidth*100,y:r.top/innerHeight*100,h:r.height/innerHeight*100});
   const startWalk=(tx,ty)=>{if(reduced||mode!=="on"||walk)return; const r=pct(host.getBoundingClientRect());
     host.classList.remove(...homeCls); host.classList.add("roam"); host.style.left=`${r.x}%`; host.style.top=`${r.y}%`;
@@ -110,19 +118,22 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     if(r<.18)return SEQ.blink; if(r<.26)return SEQ.doubleBlink; if(r<.34)return rand(0,1)<.5?SEQ.glanceL:SEQ.glanceR;
     if(r<.42)return SEQ.lookUp; if(r<.5)return SEQ.sway; if(r<.58)return SEQ.read; if(r<.66)return SEQ.hop;
     if(r<.74)return SEQ.jump; if(r<.82)return SEQ.sit.concat(SEQ.stand); if(r<.9)return SEQ.crawl; if(r<.95)return SEQ.ledBlink; return SEQ.shrug};
-  const tick=()=>{if(frozen)return; timer=setTimeout(tick,STEP); tickN++; if(walk&&(jobs.length||running))goHome(); advanceJob(); advanceWalk();
+  const tick=()=>{if(frozen)return; timer=setTimeout(tick,(running||jobs.length||gestureQ.length)?JOB_STEP:STEP); tickN++; if(walk&&(jobs.length||running))goHome(); advanceJob(); advanceWalk();
     let frame=null; if(walk&&!walk.done&&!gestureQ.length)gestureQ.push(...SEQ.crawl);
     if(gestureQ.length)frame=gestureQ.shift(); else if(mode!=="dead"){if(!idleQ.length&&!walk&&--wait<=0){const q=pickIdle(); if(q===SEQ.crawl){crawlScreen();idleQ=[]}else idleQ=[...q]; wait=Math.round(rand(3,9)*(mode==="doze"?1.8:1)*(220/STEP))} frame=idleQ.shift()||null; if(mode==="on"&&Date.now()-lastActive>DOZE_AFTER_MS)setMode("doze")}
     render(compose(frame)); if(dying&&!gestureQ.length){mode="dead";dying=!1}else if(!running&&!jobs.length&&!gestureQ.length&&pendingReact.length)play(SEQ[pendingReact.shift()]||[])};
-  const play=(frames,{urgent=!1}={})=>{if(reduced)return; if(urgent)gestureQ=[]; gestureQ.push(...frames)};
+  const nudge=()=>{if(!swae||frozen)return;clearTimeout(timer);timer=setTimeout(tick,JOB_STEP)};
+  const play=(frames,{urgent=!1}={})=>{if(reduced)return; if(urgent)gestureQ=[]; gestureQ.push(...frames);nudge()};
   function setMode(next){if(next===mode&&!dying)return; const was=mode; idleQ=[]; if(next!=="on")goHome(); if(next==="dead"){if(was==="dead"||dying)return; cancelJobs(); pendingReact.length=0; dying=!0; play(SEQ.die,{urgent:!0}); if(reduced){mode="dead";dying=!1} return} dying=!1; mode=next; if(was==="dead")play(SEQ.wake,{urgent:!0}); lastActive=Date.now()}
-  const react=kind=>{if(mode==="dead"||dying||!SEQ[kind])return; if(mode==="doze"){mode="on";lastActive=Date.now()} if(running||jobs.length){if(pendingReact.length<3)pendingReact.push(kind); return} play(SEQ[kind],{urgent:!0})};
+  const react=(kind,label)=>{const motion=kind==="gift"||kind==="bits"?"sub":kind;if(mode==="dead"||dying||!SEQ[motion])return;
+    if(kind==="sub"||kind==="gift"||kind==="bits")showBanner(label||({sub:"+SUB",gift:"GIFT",bits:"BITS"}[kind]));
+    if(mode==="doze"){mode="on";lastActive=Date.now()} if(running||jobs.length){if(pendingReact.length<3)pendingReact.push(motion); return} play(SEQ[motion],{urgent:!0})};
   const centre=r=>({x:r.left+r.width/2,y:r.top+r.height/2});
   const setFlight=(node,f)=>{if(!f){for(const k of["transform","opacity","transition","zIndex","willChange","transformOrigin","visibility"])node.style[k]=""; if(flights.has(node)&&flights.get(node).madeRelative)node.style.position=""; flights.delete(node); return} node.style.transform=`translate(${f.tx}px,${f.ty}px) scale(${f.s}) rotate(${f.r}deg)`; node.style.opacity=f.o; node.style.visibility=f.o===0?"hidden":"visible"};
   const prepare=node=>{const info={madeRelative:!1}; node.style.transition="none"; node.style.willChange="transform"; node.style.transformOrigin="50% 50%"; node.style.zIndex="40"; if(getComputedStyle(node).position=="static"){node.style.position="relative"; info.madeRelative=!0} flights.set(node,info)};
   const pathAt=(from,to,p,s,r,o=1,inward=!1)=>{const arc=Math.sin(Math.PI*p)*46,k=inward?p:1-p; return{tx:(from.x-to.x)*k,ty:(from.y-to.y)*k-arc,s,r,o}};
-  const summon=(node,opts={})=>{if(!node||reduced||!(mode=="on"||mode=="doze")||!host.isConnected)return; prepare(node); setFlight(node,{tx:0,ty:0,s:1,r:0,o:0}); jobs.push({kind:"summon",node,opts})};
-  const dismiss=(node,done)=>{if(!node){done==null||done(); return} if(reduced||mode=="dead"||!host.isConnected){done==null||done(); return} prepare(node); jobs.push({kind:"dismiss",node,done})};
+  const summon=(node,opts={})=>{if(!node||reduced||!(mode==="on"||mode==="doze")||!host.isConnected)return; prepare(node); setFlight(node,{tx:0,ty:0,s:1,r:0,o:0}); jobs.push({kind:"summon",node,opts});nudge()};
+  const dismiss=(node,done)=>{if(!node){done==null||done(); return} if(reduced||mode==="dead"||!host.isConnected){done==null||done(); return} prepare(node); jobs.push({kind:"dismiss",node,done});nudge()};
   const cancel=node=>{for(let i=jobs.length-1;i>=0;i--)if(jobs[i].node===node)jobs.splice(i,1); if(running&&running.node===node)running=null; if(flights.has(node))setFlight(node,null)};
   function cancelJobs(){var _a,_b; for(const j of jobs.splice(0)){setFlight(j.node,null); (_a=j.done)==null||_a.call(j)} if(running){setFlight(running.node,null); (_b=running.done)==null||_b.call(running); running=null}}
   function advanceJob(){var _a,_b,_c; if(!running){if(gestureQ.length||dying||(running=jobs.shift()||null,!running))return; running.i=0; if(!running.node.isConnected){setFlight(running.node,null); (_a=running.done)==null||_a.call(running); running=null; return} running.node.style.transform="none"; running.from=centre(host.getBoundingClientRect()); running.to=centre(running.node.getBoundingClientRect()); running.fast=jobs.length>0}
@@ -135,9 +146,11 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     gestureQ=[{eyes:"happy",mouth:"grin",bs:1.04},{eyes:"open",mouth:"smile"}]; setFlight(j.node,null); (_c=j.done)==null||_c.call(j); running=null}
   const activityOf=s=>!!(s&&(s.visible&&s.card||s.poll&&s.poll.active!==!1||s.crid||s.court||s.music&&s.music.current||s.spaces&&s.spaces.length||s.riad&&s.riad.active));
   const power=()=>setMode(online?"on":"dead");
-  const observe=s=>{var _a,_b,_c; if(!s)return; const on=s.bot?s.bot.on!==!1:!0; if(on!==online){online=on;power()} if(!online){prev=s; return}
-    const reactN=(_c=(_b=(_a=s.bot)==null?void 0:_a.react)==null?void 0:_b.n)!=null?_c:0; if(lastReactN===null)lastReactN=reactN; else if(reactN!==lastReactN){lastReactN=reactN;react(s.bot.react.kind)}
-    const sn=subCount(s); if(sn!=null){if(lastSubN===null){lastSubN=sn;applySubs(sn,!1)}else if(sn!==lastSubN){const up=sn>lastSubN;lastSubN=sn;applySubs(sn,up)}}
+  const observe=s=>{var _a,_b,_c; if(!s)return; const on=s.bot?s.bot.on!==!1:!0; if(on!==online){online=on;power()}
+    const reaction=s.bot?.react||{},reactN=(_c=(_b=(_a=s.bot)==null?void 0:_a.react)==null?void 0:_b.n)!=null?_c:0,sn=subCount(s);
+    if(!online){lastReactN=reactN;if(sn!=null){lastSubN=sn;applySubs(sn,!1)}prev=s;return}
+    let engagementChanged=!1;if(lastReactN===null)lastReactN=reactN; else if(reactN!==lastReactN){lastReactN=reactN;engagementChanged=["sub","gift","bits"].includes(reaction.kind);react(reaction.kind,reaction.label)}
+    if(sn!=null){if(lastSubN===null){lastSubN=sn;applySubs(sn,!1)}else if(sn!==lastSubN){const up=sn>lastSubN;lastSubN=sn;applySubs(sn,up&&!engagementChanged)}}
     if(talking&&mode==="on"&&tickN%9===0)play(SEQ.read);
     if(activityOf(s)){lastActive=Date.now(); if(mode==="doze"){mode="on";play([{eyes:"wide",mouth:"o",hy:-2},{eyes:"open",mouth:"flat",hy:0}],{urgent:!0})}}
     const verdict=s.crid?s.crid.verdict:null; tagText=s.crid?(verdict===1?"PAID":"DUE"):null;
@@ -145,5 +158,5 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const watch=()=>{talking=host.classList.contains("is-active");grooving=host.classList.contains("music-playing")};
   const mo=typeof MutationObserver=="function"?new MutationObserver(watch):null; mo==null||mo.observe(host,{attributes:!0,attributeFilter:["class"]});
   applySubs(0,!1); render(compose(null)); timer=setTimeout(tick,STEP);
-  return{el:host,summon,dismiss,cancel,react,observe,setMode,setSubs:n=>{lastSubN=n|0;applySubs(n,!1)},setOnline(v){online=!!v;power()},get mode(){return mode},get subs(){return subs},freeze(pose={}){frozen=!0;clearTimeout(timer); if(pose.mode)mode=pose.mode; if(pose.tag!==void 0)tagText=pose.tag; if(pose.subs!=null)applySubs(pose.subs,!1); lastDrawn=""; render({...REST[mode],tag:tagText,fx:pose.fx||1,sx:growth.sx,sy:growth.sy,...pose})},destroy(){clearTimeout(timer); mo==null||mo.disconnect(); cancelJobs(); goHome(); host.remove()}}
+  return{el:host,summon,dismiss,cancel,react,observe,setMode,setSubs:n=>{lastSubN=n|0;applySubs(n,!1)},setOnline(v){online=!!v;power()},get mode(){return mode},get subs(){return subs},freeze(pose={}){frozen=!0;clearTimeout(timer); if(pose.mode)mode=pose.mode; if(pose.tag!==void 0)tagText=pose.tag; if(pose.subs!=null)applySubs(pose.subs,!1); lastDrawn=""; render({...REST[mode],tag:tagText,fx:pose.fx||1,sx:growth.sx,sy:growth.sy,...pose})},destroy(){clearTimeout(timer);clearTimeout(bannerTimer); mo==null||mo.disconnect(); cancelJobs(); goHome(); host.remove()}}
 }

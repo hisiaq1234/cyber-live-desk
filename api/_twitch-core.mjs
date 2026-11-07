@@ -112,6 +112,8 @@ export async function twitchStatus(store, state, { env = process.env, origin = "
     verified,
     tested,
     lastEventAt: status.lastEventAt ?? null,
+    lastEngagementAt: status.lastEngagementAt ?? null,
+    lastEngagement: status.lastEngagement ?? null,
     lastCommandAt: status.lastCommandAt ?? null,
     lastCommand: status.lastCommand ?? null,
     lastError: status.lastError ?? null,
@@ -231,8 +233,53 @@ export async function handleTwitchWebhook(store, req, { env = process.env, now =
     return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
   }
 
-  // Only chat messages can move this desk. Other subscriptions are acknowledged and ignored.
-  if (payload.subscription?.type !== "channel.chat.message") {
+  const subscriptionType = payload.subscription?.type;
+  if (subscriptionType !== "channel.chat.message") {
+    const kind = subscriptionType === "channel.subscribe" ? "sub"
+      : subscriptionType === "channel.subscription.gift" ? "gift"
+      : subscriptionType === "channel.cheer" ? "bits" : null;
+    if (!kind) return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
+    const cfg = twitchEnv(env);
+    if (!cfg.broadcasterId) {
+      await writeTwitchStatus(store, { lastError: "TWITCH_BROADCASTER_USER_ID is not configured." }, now);
+      return textResponse("Twitch broadcaster is not configured.", 503);
+    }
+    const event = payload.event ?? {};
+    if (String(event.broadcaster_user_id ?? "") !== cfg.broadcasterId) {
+      await writeTwitchStatus(store, { lastError: "Ignored a Twitch engagement event for a different broadcaster." }, now);
+      return textResponse("Wrong broadcaster.", 403);
+    }
+    // Gifted recipients may also produce channel.subscribe notifications. Count the aggregate
+    // channel.subscription.gift event once, rather than counting every recipient twice.
+    if (kind === "sub" && event.is_gift) return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
+    const rawCount = kind === "gift" ? Number(event.total) : kind === "bits" ? Number(event.bits) : 1;
+    if (kind === "bits" && (!Number.isSafeInteger(rawCount) || rawCount < 1)) {
+      return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
+    }
+    const count = Number.isSafeInteger(rawCount) && rawCount > 0 ? Math.min(rawCount, kind === "gift" ? 1000 : 1_000_000) : 1;
+    const claim = await claimTwitchEvent(store, { headerId: messageId }, now);
+    if (!claim.ok) return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
+    try {
+      await action(store, { action: "bot-engagement", kind, count }, now);
+      const lastEngagement = kind === "sub" ? "+SUB" : kind === "gift" ? `GIFT ×${count}` : `${count.toLocaleString("en-US")} BITS`;
+      try {
+        await writeTwitchStatus(store, { lastEventAt: now, lastEngagementAt: now, lastEngagement, lastError: null }, now);
+      } catch (statusErr) {
+        console.error("twitch eventsub status write failed", statusErr);
+      }
+      return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
+    } catch (err) {
+      await releaseTwitchEvent(store, claim.keys);
+      await writeTwitchStatus(store, { lastEventAt: now, lastError: err?.message ?? "engagement update failed" }, now)
+        .catch((statusErr) => console.error("twitch eventsub status write failed", statusErr));
+      if (err instanceof HttpError) return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
+      console.error("twitch eventsub engagement failed", err);
+      return textResponse("Webhook engagement failed.", 500);
+    }
+  }
+
+  // Chat messages remain subject to the separate server-control switch and sender allowlist.
+  if (subscriptionType !== "channel.chat.message") {
     return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
   }
 
@@ -301,9 +348,11 @@ export async function handleTwitchWebhook(store, req, { env = process.env, now =
 export const TWITCH_SETUP_HELP = [
   "Create a Twitch application at https://dev.twitch.tv/console/apps.",
   "Set the OAuth redirect URL to your Vercel deployment, e.g. https://cyber-live-desk.vercel.app/.",
-  "Generate user tokens with the scopes user:read:chat user:bot channel:bot.",
+  "Authorize the broadcaster with the scopes user:read:chat user:bot channel:bot channel:read:subscriptions bits:read.",
+  "Create webhook subscriptions with an App Access Token for channel.chat.message, channel.subscribe, channel.subscription.gift, and channel.cheer.",
+  "In /control → CRID — the mascot, set Current stream sub total to the current count (for example 42); new verified sub and gift events increment it.",
   "Add TWITCH_WEBHOOK_SECRET and TWITCH_BROADCASTER_USER_ID in Vercel environment variables. Optional: TWITCH_ALLOWED_USER_IDS, TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET, TWITCH_EVENTSUB_CALLBACK.",
-  "Create the channel.chat.message EventSub webhook subscription with callback https://cyber-live-desk.vercel.app/api/twitch/eventsub.",
+  "Use callback https://cyber-live-desk.vercel.app/api/twitch/eventsub and the same webhook secret for all four subscriptions.",
   "Enable Twitch chat control in the controller Settings tab (twitchChatEnabled must be on).",
 ];
 

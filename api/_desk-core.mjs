@@ -26,7 +26,7 @@ export const LIMITS = {
 export const CRID_KINDS = ["topic", "news", "debate", "music", "question"];
 export const VERDICTS = [0, 1]; // 1 = paid, 0 = still owing. Never anything else.
 // CRID can be told to perform on command, on top of the reactions it derives from the desk state.
-export const BOT_REACTS = ["wave", "cheer", "think", "surprise", "wince", "nod", "shrug"];
+export const BOT_REACTS = ["wave", "cheer", "think", "surprise", "wince", "nod", "shrug", "sub", "gift", "bits"];
 export const STORE_NAME = "cyber-live-desk";
 
 export const DEFAULT_STATE = {
@@ -55,7 +55,7 @@ export const DEFAULT_STATE = {
   // CRID, the on-screen mascot. null means "on, nothing pending", which is what a desk that has
   // never been told otherwise looks like. The overlay reads on to boot or kill the bot, and react
   // to fire one gesture; n counts up so the same reaction can be asked for twice in a row.
-  bot: null, // { on: boolean, react?: { kind: string, n: number } }
+  bot: null, // { on: boolean, subs?: number, react?: { kind: string, label?: string, n: number } }
   // The desk lockup — the robot, the wordmark and the rule. null means "on, and the operator has
   // changed nothing yet", which is what a desk that has never been told otherwise looks like.
   // layers is a subset of LOGO_LAYERS below; replay counts up so the same intro can be asked for
@@ -963,6 +963,26 @@ export async function runAction(store, b, now = Date.now()) {
     case "bot-react": {
       if (!BOT_REACTS.includes(b.kind)) throw new HttpError(422, `kind must be one of ${BOT_REACTS.join(", ")}.`);
       patch = { bot: { on: state.bot?.on ?? true, react: { kind: b.kind, n: (state.bot?.react?.n ?? 0) + 1 } } };
+      break;
+    }
+    case "bot-subs": {
+      const count = Number(b.count);
+      if (!Number.isSafeInteger(count) || count < 0 || count > 10_000_000) {
+        throw new HttpError(422, "count must be a whole number from 0 to 10,000,000.");
+      }
+      patch = { bot: { ...(state.bot ?? {}), on: state.bot?.on ?? true, subs: count } };
+      break;
+    }
+    case "bot-engagement": {
+      const kind = String(b.kind ?? "");
+      if (!["sub", "gift", "bits"].includes(kind)) throw new HttpError(422, "kind must be sub, gift, or bits.");
+      const requested = Number(b.count);
+      const max = kind === "gift" ? 1000 : kind === "bits" ? 1_000_000 : 1;
+      const count = Number.isFinite(requested) ? Math.min(max, Math.max(1, Math.trunc(requested))) : 1;
+      const delta = kind === "sub" ? 1 : kind === "gift" ? count : 0;
+      const currentSubs = Number.isFinite(state.bot?.subs) ? Math.max(0, Math.trunc(state.bot.subs)) : 0;
+      const label = kind === "sub" ? "+SUB" : kind === "gift" ? `GIFT ×${count}` : `${count.toLocaleString("en-US")} BITS`;
+      patch = { bot: { ...(state.bot ?? {}), on: state.bot?.on ?? true, ...(delta ? { subs: currentSubs + delta } : {}), react: { kind, label, n: (state.bot?.react?.n ?? 0) + 1 } } };
       break;
     }
     // ---------- the desk lockup ----------

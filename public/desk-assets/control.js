@@ -953,19 +953,28 @@ import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
 
   // ---------- CRID, the mascot ----------
   // The bot is drawn inside the overlay by the viewer page and reacts to the desk on his own.
-  // These are the only two things an operator needs from here: take him off the air, or ask for
-  // one gesture by hand. The gesture list comes from the command parser, so this panel and a typed
-  // "crid bot wave" can never offer the server a reaction it would reject.
+  // This panel controls visibility, the live subscription baseline and one-off gestures. The
+  // gesture list comes from the command parser, so a button cannot ask for a rejected reaction.
   const botPanel = h("section", "panel crid-bot-panel");
   const renderBotPanel = () => {
     const on = state?.bot?.on !== false;
     const last = state?.bot?.react;
+    const subs = Number.isSafeInteger(state?.bot?.subs) ? state.bot.subs : 0;
+    const subsInput = h("input", { type: "number", min: "0", max: "10000000", step: "1", value: String(subs), inputMode: "numeric", "aria-label": "Current stream subscriber total" });
     botPanel.replaceChildren(
       h("h2", {}, "CRID — the mascot", h("span", { class: on ? "chip ok" : "chip" }, on ? "ON AIR" : "OFF AIR")),
       h("p", "sub", "CRID lives in the overlay: he grooms, dozes and reacts to the desk on his own. The switch is the one the overlay reads. A reaction is a single gesture, and asking for the same one twice is two gestures, not one ignored."),
       h("div", "row",
         btn(on ? "Take CRID off the air" : "Put CRID back on the air", () => act("bot"), (on ? "danger " : "primary ") + "giant", "heavy"),
         last ? h("span", "sub", `Last sent: ${last.kind}`) : null),
+      h("p", "sub", "Set the current stream total (for example, 42). Each verified sub or gifted-sub event adds to it; Bits trigger the reaction without changing the sub count."),
+      h("div", "row",
+        h("label", "f", h("span", {}, "Current stream sub total"), subsInput),
+        btn("Save total", () => {
+          const count = subsInput.valueAsNumber;
+          if (!Number.isSafeInteger(count) || count < 0 || count > 10_000_000) return toast("Enter a whole-number total from 0 to 10,000,000.", true);
+          void act("bot-subs", { count });
+        }, "small")),
       h("div", "grid", ...BOT_REACTS.map((kind) =>
         btn(kind.toUpperCase(), () => act("bot-react", { kind }), "small"))));
   };

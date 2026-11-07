@@ -56,12 +56,12 @@ export function stingLayers(anim = LOGO_ANIM) {
 // never loaded the theme sheet — and the Node tests, which have no cascade at all — still get the
 // on-brand value rather than undefined.
 const MARK_COLORS = {
-  plate: { token: "--t-logo-plate", fallback: "#161025" },
-  shell: { token: "--t-logo-shell", fallback: "#6531F8" },
-  screen: { token: "--t-logo-screen", fallback: "#0F0B17" },
+  plate: { token: "--t-logo-plate", fallback: "#151B23" },
+  shell: { token: "--t-logo-shell", fallback: "#2868A6" },
+  screen: { token: "--t-logo-screen", fallback: "#0D1117" },
   eye: { token: "--t-logo-eye", fallback: "#86F6BC" },
-  edge: { token: "--t-logo-edge", fallback: "#3A1D9E" },
-  bone: { token: "--t-logo-bone", fallback: "#A98BFF" },
+  edge: { token: "--t-logo-edge", fallback: "#143B5D" },
+  bone: { token: "--t-logo-bone", fallback: "#F3F2F0" },
 };
 
 export const MARK_DEFAULTS = Object.fromEntries(
@@ -202,7 +202,7 @@ export function motionPalette(host) {
 export const MOTION_RULE_LAYERS = ["Lower", "Lower 3"];
 
 export function motionRuleMap(host) {
-  const rule = resolveColor(host, "--t-logo-rule", "#6531F8") ?? hexTriplet("#6531F8");
+  const rule = resolveColor(host, "--t-logo-rule", "#2868A6") ?? hexTriplet("#2868A6");
   return Object.fromEntries(MOTION_RULE_LAYERS.map((nm) => [nm, { "255,0,0": rule }]));
 }
 
@@ -224,6 +224,15 @@ function withMark(anim, mark, colors) {
   if (mark !== "bot" || !slot) return anim;
   const clone = { ...anim, assets: anim.assets.map((a) => (a === slot ? { ...a, p: asDataUrl(botMarkSvg(colors)) } : a)) };
   return clone;
+}
+
+export function playStingIntro(player, restFrame = MOTION_REST) {
+  if (!player) return;
+  player.goToAndStop(0, true);
+  player.addEventListener("complete", () => {
+    player.goToAndStop(restFrame, true);
+  }, { once: true });
+  player.playSegments([0, restFrame], true);
 }
 
 export async function createSting({ host, mark = "goat", visible = null } = {}) {
@@ -263,7 +272,7 @@ export async function createSting({ host, mark = "goat", visible = null } = {}) 
         const svg = stage.querySelector("svg");
         if (svg) svg.setAttribute("viewBox", box.viewBox);
         hideLayers();
-        player.goToAndStop(MOTION_REST, true);
+        playStingIntro(player);
         resolve();
       });
     });
@@ -294,11 +303,7 @@ export async function createSting({ host, mark = "goat", visible = null } = {}) 
     // so looping it would blink the channel identity off the overlay every five seconds.
     replay() {
       if (!player || holding) return;
-      player.goToAndStop(0, true);
-      player.addEventListener("complete", () => {
-        player.goToAndStop(MOTION_REST, true);
-      }, { once: true });
-      player.playSegments([0, MOTION_REST], true);
+      playStingIntro(player);
     },
     setVisible(ids) {
       visible = ids;

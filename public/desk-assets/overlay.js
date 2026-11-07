@@ -728,7 +728,7 @@ html.swae .scale-wrap{display:none}
   });
   // CRID, the mascot, replaces the sound orb: it grooms itself when idle, reacts to the desk and
   // pushes docked modules out of its own chest. ?bot=0 restores the orb, ?bot=bl|bc|br picks the
-  // spot (default bottom-right, immediately beside the lower-third identity strip), and
+  // spot (default bottom-left, clear of the clock and lower-third identity strip), and
   // ?bot.x= / ?bot.y= place it by percent. The two are independent — giving one anchors that axis
   // and leaves the other on its default — so a corner can be nudged without restating both.
   const BOT_ARG = P.get("bot");
@@ -737,7 +737,7 @@ html.swae .scale-wrap{display:none}
     root,
     swae: SWAE,
     lowPower: document.documentElement.classList.contains("low-power"),
-    position: ["bl", "bc", "br"].includes(BOT_ARG) ? BOT_ARG : "br",
+    position: ["bl", "bc", "br"].includes(BOT_ARG) ? BOT_ARG : "bl",
     x: botPlaced ? num("bot.x", 50, 0, 100) : null,
     y: botPlaced ? num("bot.y", 88, 0, 100) : null,
   });
@@ -1188,32 +1188,23 @@ html.swae .scale-wrap{display:none}
   if (P.get("clock") !== "0") {
     let zone = "";
     try { zone = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch { /* older engines */ }
-    const clockTime = h("time", "clock-time", "--- --, --:--:--");
+    const clockTime = h("time", "clock-time", "--:--:--");
     const clockDay = h("span", "clock-day", "");
-    root.append(h("div", { id: "time-dock" },
-      h("div", "clock-top",
-        h("span", "clock-brand", "CYBER LIVE DESK"),
-        h("span", "clock-zone-top", (zone || "LOCAL TIME").replace(/_/g, " / ").toUpperCase())),
-      clockTime,
+    root.append(h("div", { id: "time-dock" }, clockTime,
       h("div", "clock-detail",
         clockDay,
-        h("i", { class: "clock-sep", "aria-hidden": "true" }),
-        h("span", "clock-zone", zone ? zone.replace(/_/g, " / ") : "Device time"))));
+        h("i", { class: "clock-sep", "aria-hidden": "true" }))));
 
-    // Three formatters, one per line, because the original reads "Nov 05, 18:47:24" over
-    // "Wednesday, November 5" and neither is a substring of the other. en-GB gives the desk its
-    // 24-hour clock; the month and the weekday come from the same instant so the lines cannot
-    // disagree at a rollover.
+    // One short 24-hour time and one full date share a compact horizontal plate. Both come from
+    // the same server-adjusted instant and device zone, so the date cannot roll ahead of the time.
     const zoneOpts = { timeZone: zone || undefined };
-    const monthFormat = new Intl.DateTimeFormat("en-GB", { month: "short", ...zoneOpts });
-    const dayFormat = new Intl.DateTimeFormat("en-GB", { day: "2-digit", ...zoneOpts });
     const hmsFormat = new Intl.DateTimeFormat("en-GB", {
       hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, ...zoneOpts });
     const longFormat = new Intl.DateTimeFormat("en-GB", {
       weekday: "long", month: "long", day: "numeric", ...zoneOpts });
     const drawClock = () => {
       const now = new Date(serverNow());
-      clockTime.textContent = `${monthFormat.format(now)} ${dayFormat.format(now)}, ${hmsFormat.format(now)}`;
+      clockTime.textContent = hmsFormat.format(now);
       clockTime.dateTime = now.toISOString();
       clockDay.textContent = longFormat.format(now);
     };

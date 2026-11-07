@@ -12,7 +12,7 @@ const LEAVE_DESK = new Set(["all", "clear"]);
 // CRID, the mascot. Restated here rather than imported from _desk-core.mjs because this module is
 // also served to the browser, which cannot reach the api directory; the commands test asserts the
 // two lists still agree.
-export const BOT_REACTS = ["wave", "cheer", "think", "surprise", "wince", "nod", "shrug"];
+export const BOT_REACTS = ["wave", "cheer", "think", "surprise", "wince", "nod", "shrug", "sub", "gift", "bits"];
 
 // The Thought War deck's category, restated here for the same reason as BOT_REACTS: this module is
 // served to the browser, which cannot reach scripts/thought-war-deck.mjs. The commands test

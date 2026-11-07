@@ -808,9 +808,17 @@ test("the operator can take CRID off the air and fire one gesture at a time", as
   );
   await assert.rejects(() => runAction(store, { action: "bot-react", kind: "explode" }, NOW), /kind must be one of/);
 
-  // The overlay draws the bot from the viewer projection, so the switch must survive it.
+  const seeded = (await runAction(store, { action: "bot-subs", count: 42 }, NOW)).state;
+  assert.equal(seeded.bot.subs, 42, "the operator can set the current stream baseline");
+  assert.equal(seeded.bot.on, false, "setting the total does not switch CRID on");
+  assert.deepEqual(seeded.bot.react, { kind: "wave", n: 2 }, "setting the total does not replay a gesture");
+  await assert.rejects(() => runAction(store, { action: "bot-subs", count: 42.5 }, NOW), /whole number/);
+  await assert.rejects(() => runAction(store, { action: "bot-subs", count: 10_000_001 }, NOW), /whole number/);
+
+  // The overlay draws the bot from the viewer projection, so the switch and baseline survive it.
   const body = publicProjection((await runAction(store, { action: "bot", value: true }, NOW)).state);
   assert.equal(body.bot.on, true);
+  assert.equal(body.bot.subs, 42);
   assert.deepEqual(body.bot.react, { kind: "wave", n: 2 }, "a toggle does not discard the pending gesture");
 });
 

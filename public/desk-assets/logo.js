@@ -157,18 +157,18 @@ const CSS = `
    does below. Nothing here carries a literal red: the export this replaced had pure red inside its
    own layer data, where no CSS could reach it, and that is why every theme showed the same bar. */
 #desk-logo{
-  --t-logo-shell:var(--indigo-500,#6531F8);
-  --t-logo-plate:var(--onyx-900,#161025);
-  --t-logo-screen:var(--onyx-950,#0F0B17);
+  --t-logo-shell:var(--indigo-500,#2868A6);
+  --t-logo-plate:var(--onyx-900,#151B23);
+  --t-logo-screen:var(--onyx-950,#0D1117);
   --t-logo-eye:var(--mint,#86F6BC);
-  --t-logo-1:var(--ink-1,#F4F0FF);
+  --t-logo-1:var(--ink-1,#F3F2F0);
   --t-logo-2:var(--mint,#86F6BC);
-  --t-logo-rule:var(--indigo-500,#6531F8);
-  --t-logo-gesture:var(--indigo-300,#A98BFF);
-  --t-logo-edge:var(--indigo-700,#3A1D9E);
+  --t-logo-rule:var(--indigo-500,#2868A6);
+  --t-logo-gesture:var(--indigo-300,#93B9D9);
+  --t-logo-edge:var(--indigo-700,#143B5D);
   /* The mascot's own sticker outline colour. Every line on the robot is bone, not off-white, so
      the mark reads as the same drawing as the bot in the corner rather than a relative of it. */
-  --t-logo-bone:var(--indigo-300,#A98BFF);
+  --t-logo-bone:var(--ink-1,#F3F2F0);
   /* The sting's baked red is themed from --accent directly, not from a logo token: a token here
      would need its own fallback, and the only honest fallback is the accent's own default, which
      would put a second copy of the meaning colour into the sheet. The animation carries pure red

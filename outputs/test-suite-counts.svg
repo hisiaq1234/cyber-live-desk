@@ -1,56 +1,64 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="660" viewBox="0 0 1120 660" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="1160" height="820" viewBox="0 0 1160 820" role="img" aria-labelledby="title desc">
   <title id="title">Cyber Live Desk test items by file</title>
-  <desc id="desc">Node reported 160 passed, zero failed: 159 explicit test cases and one api/test.mjs route-module discovery.</desc>
-  <rect width="1120" height="660" rx="20" fill="#0b1020"/>
+  <desc id="desc">Node reported 179 passed and zero failed: 178 explicit test cases across 16 files plus one api/test.mjs route-module discovery.</desc>
+  <rect width="1160" height="820" rx="20" fill="#0b1020"/>
   <text x="36" y="48" fill="#f7f8fb" font-family="Arial, sans-serif" font-size="24" font-weight="700">CYBER LIVE DESK · TEST RUN</text>
-  <text x="36" y="77" fill="#aebbd0" font-family="Arial, sans-serif" font-size="14">Node --test · 2 Nov 2026 · distribution by discovered test file</text>
-  <rect x="806" y="27" width="278" height="54" rx="13" fill="#14263b" stroke="#274763"/>
-  <text x="828" y="51" fill="#75e0bd" font-family="Arial, sans-serif" font-size="20" font-weight="700">160 PASS</text>
-  <text x="828" y="69" fill="#d9e2ef" font-family="Arial, sans-serif" font-size="12">0 fail · 0 skipped · 100% pass</text>
+  <text x="36" y="77" fill="#aebbd0" font-family="Arial, sans-serif" font-size="14">Node --test · 3 Nov 2026 · distribution by discovered test file</text>
+  <rect x="848" y="27" width="270" height="54" rx="13" fill="#14263b" stroke="#274763"/>
+  <text x="870" y="51" fill="#75e0bd" font-family="Arial, sans-serif" font-size="20" font-weight="700">179 PASS</text>
+  <text x="870" y="69" fill="#d9e2ef" font-family="Arial, sans-serif" font-size="12">0 fail · 0 skipped · 100% pass</text>
   <text x="36" y="112" fill="#73839c" font-family="Arial, sans-serif" font-size="11">FILE</text>
-  <text x="389" y="112" fill="#73839c" font-family="Arial, sans-serif" font-size="11">RUNNER-COUNTED ITEMS</text>
+  <text x="400" y="112" fill="#73839c" font-family="Arial, sans-serif" font-size="11">RUNNER-COUNTED ITEMS</text>
   <g stroke="#26344a" stroke-width="1">
-    <line x1="390" y1="124" x2="390" y2="579"/>
-    <line x1="520" y1="124" x2="520" y2="579"/>
-    <line x1="650" y1="124" x2="650" y2="579"/>
-    <line x1="780" y1="124" x2="780" y2="579"/>
-    <line x1="910" y1="124" x2="910" y2="579"/>
+    <line x1="400" y1="124" x2="400" y2="714"/>
+    <line x1="532.5" y1="124" x2="532.5" y2="714"/>
+    <line x1="665" y1="124" x2="665" y2="714"/>
+    <line x1="797.5" y1="124" x2="797.5" y2="714"/>
+    <line x1="930" y1="124" x2="930" y2="714"/>
   </g>
   <g fill="#73839c" font-family="Arial, sans-serif" font-size="11" text-anchor="middle">
-    <text x="390" y="596">0</text><text x="520" y="596">25</text><text x="650" y="596">50</text><text x="780" y="596">75</text><text x="910" y="596">100</text>
+    <text x="400" y="730">0</text><text x="532.5" y="730">25</text><text x="665" y="730">50</text><text x="797.5" y="730">75</text><text x="930" y="730">100</text>
   </g>
-  <g font-family="Arial, sans-serif" font-size="13" fill="#e6edf6">
+  <g font-family="Arial, sans-serif" font-size="12.5" fill="#e6edf6">
     <text x="36" y="148">api/test.mjs*</text>
-    <text x="36" y="183">brief.test.mjs</text>
-    <text x="36" y="218">brief-guards.test.mjs</text>
-    <text x="36" y="253">desk-bulk-research.test.mjs</text>
-    <text x="36" y="288">desk-commands.test.mjs</text>
-    <text x="36" y="323">desk-core.test.mjs</text>
-    <text x="36" y="358">desk-headlines.test.mjs</text>
-    <text x="36" y="393">desk-hotkeys.test.mjs</text>
-    <text x="36" y="428">desk-route.test.mjs</text>
-    <text x="36" y="463">overlay-audio.test.mjs</text>
-    <text x="36" y="498">sound-orb.test.mjs</text>
-    <text x="36" y="533">twitch-eventsub.test.mjs</text>
-    <text x="36" y="568">x-feed.test.mjs · youtube-playlist.test.mjs</text>
+    <text x="36" y="182">brief.test.mjs</text>
+    <text x="36" y="216">brief-guards.test.mjs</text>
+    <text x="36" y="250">desk-bulk-research.test.mjs</text>
+    <text x="36" y="284">desk-commands.test.mjs</text>
+    <text x="36" y="318">desk-core.test.mjs</text>
+    <text x="36" y="352">desk-headlines.test.mjs</text>
+    <text x="36" y="386">desk-hotkeys.test.mjs</text>
+    <text x="36" y="420">desk-route.test.mjs</text>
+    <text x="36" y="454">overlay-audio.test.mjs</text>
+    <text x="36" y="488">overlay-contract.test.mjs</text>
+    <text x="36" y="522">sound-orb.test.mjs</text>
+    <text x="36" y="556">twitch-eventsub.test.mjs</text>
+    <text x="36" y="590">x-feed.test.mjs</text>
+    <text x="36" y="624">youtube-embed.test.mjs</text>
+    <text x="36" y="658">youtube-playlist.test.mjs</text>
+    <text x="36" y="692">youtube-search.test.mjs</text>
   </g>
   <g>
-    <rect x="390" y="134" width="5.2" height="18" rx="7" fill="#8190a8"/>
-    <rect x="390" y="169" width="31.2" height="18" rx="7" fill="#8bd9c9"/>
-    <rect x="390" y="204" width="15.6" height="18" rx="7" fill="#63c7c0"/>
-    <rect x="390" y="239" width="62.4" height="18" rx="7" fill="#efad5c"/>
-    <rect x="390" y="274" width="46.8" height="18" rx="7" fill="#53c9c3"/>
-    <rect x="390" y="309" width="499.2" height="18" rx="7" fill="#6da8ff"/>
-    <rect x="390" y="344" width="15.6" height="18" rx="7" fill="#60c5ee"/>
-    <rect x="390" y="379" width="10.4" height="18" rx="7" fill="#b89aff"/>
-    <rect x="390" y="414" width="10.4" height="18" rx="7" fill="#9d86df"/>
-    <rect x="390" y="449" width="26" height="18" rx="7" fill="#73d7a5"/>
-    <rect x="390" y="484" width="20.8" height="18" rx="7" fill="#ff536b"/>
-    <rect x="390" y="519" width="57.2" height="18" rx="7" fill="#ee87b4"/>
-    <rect x="390" y="554" width="31.2" height="18" rx="7" fill="#f08d75"/>
+    <rect x="400" y="134" width="5.3" height="18" rx="7" fill="#8190a8"/>
+    <rect x="400" y="168" width="31.8" height="18" rx="7" fill="#8bd9c9"/>
+    <rect x="400" y="202" width="15.9" height="18" rx="7" fill="#63c7c0"/>
+    <rect x="400" y="236" width="63.6" height="18" rx="7" fill="#efad5c"/>
+    <rect x="400" y="270" width="53" height="18" rx="7" fill="#53c9c3"/>
+    <rect x="400" y="304" width="524.7" height="18" rx="7" fill="#6da8ff"/>
+    <rect x="400" y="338" width="15.9" height="18" rx="7" fill="#60c5ee"/>
+    <rect x="400" y="372" width="10.6" height="18" rx="7" fill="#b89aff"/>
+    <rect x="400" y="406" width="26.5" height="18" rx="7" fill="#9d86df"/>
+    <rect x="400" y="440" width="26.5" height="18" rx="7" fill="#73d7a5"/>
+    <rect x="400" y="474" width="10.6" height="18" rx="7" fill="#93a2ff"/>
+    <rect x="400" y="508" width="21.2" height="18" rx="7" fill="#ff536b"/>
+    <rect x="400" y="542" width="58.3" height="18" rx="7" fill="#ee87b4"/>
+    <rect x="400" y="576" width="15.9" height="18" rx="7" fill="#f08d75"/>
+    <rect x="400" y="610" width="15.9" height="18" rx="7" fill="#edb95d"/>
+    <rect x="400" y="644" width="15.9" height="18" rx="7" fill="#74cbb0"/>
+    <rect x="400" y="678" width="37.1" height="18" rx="7" fill="#c083ff"/>
   </g>
   <g fill="#f7f8fb" font-family="Arial, sans-serif" font-size="12" font-weight="700">
-    <text x="401" y="148">1</text><text x="427" y="183">6</text><text x="411" y="218">3</text><text x="459" y="253">12</text><text x="444" y="288">9</text><text x="897" y="323">96</text><text x="411" y="358">3</text><text x="406" y="393">2</text><text x="406" y="428">2</text><text x="422" y="463">5</text><text x="416" y="498">4</text><text x="453" y="533">11</text><text x="427" y="568">3 + 3</text>
+    <text x="409" y="148">1</text><text x="436" y="182">6</text><text x="420" y="216">3</text><text x="468" y="250">12</text><text x="458" y="284">10</text><text x="933" y="318">99</text><text x="420" y="352">3</text><text x="415" y="386">2</text><text x="431" y="420">5</text><text x="431" y="454">5</text><text x="415" y="488">2</text><text x="426" y="522">4</text><text x="463" y="556">11</text><text x="420" y="590">3</text><text x="420" y="624">3</text><text x="420" y="658">3</text><text x="441" y="692">7</text>
   </g>
-  <text x="36" y="638" fill="#8291a7" font-family="Arial, sans-serif" font-size="11">159 explicit tests + 1 route-module discovery. The final row combines X-feed and YouTube-playlist suites (3 tests each).</text>
+  <text x="36" y="786" fill="#8291a7" font-family="Arial, sans-serif" font-size="11">178 explicit tests + 1 route-module discovery. Bars are item counts per file; the core suite contains 99 items.</text>
 </svg>

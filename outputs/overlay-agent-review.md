@@ -1,53 +1,55 @@
 # Cyber Live Desk — Swae overlay handoff
 
-**Updated:** 2 November 2026
+**Updated:** 3 November 2026  
+**Target:** 16:9 landscape Twitch stream through Swae. `/desk` is the public viewer overlay; `/control` is the private operator surface.
 
-**Target:** 16:9 landscape Twitch stream through Swae. `/desk` is the public viewer overlay; `/control` is the operator surface.
+## Current production status
 
-## Swae 401 status
+- [Open the public overlay](https://cyber-live-desk.vercel.app/desk)
+- [Open the operator controller](https://cyber-live-desk.vercel.app/control)
+- Voice-search app code is on `main` at `6e08900`; Vercel marked the Production deployment **Ready**. The Vercel project now lists `YOUTUBE_API_KEY` as a **Secret** scoped to **Production**. The value was not viewed or copied into source. A fresh production build is needed for a function deployment created before that environment-variable update to use it; verify the follow-up deployment before relying on voice search.
+- `GET /desk` and Swae's `HEAD /desk` check return **200**. `/control` returns **200**. Operator APIs still return the expected **401** without the operator token.
 
-The public widget URL is [https://cyber-live-desk.vercel.app/desk](https://cyber-live-desk.vercel.app/desk). The latest production commit, `1c9a615`, is marked **Ready** in Vercel. Live `GET /desk` and `HEAD /desk` both return **200**; the HEAD response has no body. Operator APIs were not opened: unauthenticated `GET /api/desk/cards` still returns the expected **401**.
+The Swae phone app itself is not available for a final tap/capture test. Reload or reselect the `/desk` Browser Widget/Web Page URL once in Swae to clear its previous result, then confirm it shows the latest design on the phone.
 
-The Swae app itself is not available for me to press its widget Save/Test control. Please reload or reselect the `/desk` URL once in Swae so it retries the now-working route. The server-side cause is fixed and verified; final phone-side confirmation remains outstanding.
+## What “non-interactive” means
 
-## Compact overlay and news
+The CRID mascot is a decorative `DIV`, not a button or control. Live production DOM verification found it at **60×63 px**, `aria-hidden=true`, `tabIndex=-1`, `pointer-events:none`, and with no button ancestor. A tap cannot start/stop music or open anything; screen readers skip it and keyboard focus cannot land on it. The separate private controller provides actual controls.
 
-The red/black orb with its blue-black sheen is a small decorative `DIV`, not a button: live DOM verification found `aria-hidden=true`, `tabIndex=-1`, no button ancestor, and `pointer-events:none`. The automatic lower-third showed a fresh RSS headline, publisher, relative age, and source label while preserving the landscape camera view.
+The overlay remains the existing JavaScript-driven `/desk` page; the provided HTML design and downloaded theme/bot/controller changes were ported into the real JS runtime rather than deployed as a second standalone page. The live root has the `layout-alive` class.
 
-The Nigeria RSS ticker runs automatically while `/desk` is open. The live endpoint returned **six** dated headlines with HTTPS source links and a CDN cache hit; the current overlay reported a sample item as 57 minutes old. If no fresh items can be fetched, the ticker reports an error instead of silently reusing stale news.
+## Automatic headlines and music
 
-This ticker is RSS-based; **it does not send every headline to Gemini for verification**. The private source-linked Gemini brief remains on-demand in `/control` and is not sent to Swae chat or the viewer overlay.
+The narrow lower-third RSS feed updates automatically while `/desk` is open. Its latest live response had six dated Nigeria-region headlines. It is **not Gemini-verified**; the private, source-linked Gemini brief remains on-demand in `/control` and is never pushed to the public overlay or Swae chat.
 
-## Control word and voice music
+Voice music commands now use `crid`:
 
-The shared spoken/chat command prefix is now **`crid`**, not `desk`. The deployed controller prompts and help use the new prefix. For example:
+- `crid music play` starts the current/first queued track; if there is none, it selects the default YE video **MAMA'S FAVORITE** (`8jDVdq70zUI`). This is command-triggered, not automatic page-load autoplay.
+- `crid music play <song or artist>` checks for one unique queued match first. If there is no match, it searches YouTube automatically through the server-only `YOUTUBE_API_KEY`, chooses one embeddable result and updates the now-playing state. Ambiguous queue matches are refused.
+- `crid music pause`, `crid music next`, and `crid music stop` control playback state.
 
-- `crid research Lagos TikTok trends` starts a private research brief.
-- `crid music play` resumes the current track or starts the queue head.
-- `crid music play <title or artist>` selects a unique match already in the Music Desk queue/current track.
-- `crid music pause`, `crid music next`, and `crid music stop` control that queue.
+The public overlay uses the official YouTube privacy-enhanced embed and never extracts audio. The video was not actively playing during the DOM check. **Swae may not mix iframe/browser-widget audio into the live broadcast**, and its snapshot mode may restrict autoplay; confirm on the phone. If sound is not carried, use a separate official YouTube player layer in Swae.
 
-Voice music is queue-based in this update: if a requested track is missing or ambiguous, it reports the problem and does not guess. It does **not** yet search YouTube automatically. The supplied `overlay-alive.html` is not deployed as a drop-in `/desk` replacement: it expects a playable video ID that the public state intentionally does not expose, and this change adds no YouTube search service or hard-coded fallback video. The official YouTube/YouTube Music playlist-player workflow remains a separate visible Swae layer.
+## Quick checks
 
-## Production checks
+| Check | Result |
+|---|---|
+| `GET /desk` / `HEAD /desk` | 200 / 200 (HEAD body empty) |
+| `/control` | 200 |
+| `/api/desk-headlines` | 200; six dated objects in the latest probe |
+| `/api/desk/cards` without token | 401, expected private gate |
+| `/api/desk/voice` without token | 401, expected private gate |
+| Live alive layout | Present |
+| Mascot semantics | Decorative non-button DIV, 60×63 px, hidden from assistive tech |
+| Full `node --test` | **179 passed, 0 failed** (178 explicit tests + one file-discovery item) |
+| JavaScript syntax | 43 files checked; browser/server parsers byte-identical |
 
-- [Open the public Swae overlay](https://cyber-live-desk.vercel.app/desk)
-- [Open the operator page](https://cyber-live-desk.vercel.app/control) — operator-only actions still require the private token
-- `GET /desk`: 200
-- `HEAD /desk`: 200, empty body
-- `GET /api/desk-headlines`: 200; six dated HTTPS items; Vercel cache hit
-- `GET /api/desk/state?since=-1`: 200; queue and audio URL not exposed
-- `GET /api/desk/cards` without token: 401, as intended
-- Live overlay: ticker status ready; orb is `aria-hidden`, non-interactive, and not a button
-- `node --test`: **160 passed, 0 failed** (159 explicit test cases plus one route-module discovery)
-- `node --check`: 36 JavaScript files; browser/server parser copies match
-
-The detailed [comprehensive test report](comprehensive-test-report.md) and [test-suite chart](test-suite-counts.svg) are included beside this handoff. Swae-device playback/crop and the orb’s actual music-playing state still need a phone-side test.
+See the [comprehensive test report](comprehensive-test-report.md) and [test distribution chart](test-suite-counts.svg) for the full breakdown.
 
 ## Use it
 
-1. In Swae, set the Browser Widget/Web Page URL to `/desk` above, then reload the saved widget to clear the old 401 check.
-2. Keep that page open during the stream for automatic, dated RSS headlines. They are not Gemini-verified.
-3. Use `/control` for the private brief and operator controls; keep its token private.
-4. For voice track control, add the track to Music Desk first, then say a `crid music ...` command. Automatic phrase-to-YouTube search is not included yet.
-5. Add the official playlist player separately if you need actual YouTube playback. The compact capsule reports now-playing metadata; it is not a full player.
+1. Add `/desk` as the Swae landscape Browser Widget/Web Page URL; reload the saved widget to retry the fixed availability check.
+2. Keep `/desk` open for compact automatic RSS headlines.
+3. Use `/control` for operator controls, one-shot voice input and private research; keep the operator token private.
+4. Say `crid music play` for the queue/default, or `crid music play <song>` for queue-first YouTube search after the Production environment has been redeployed with `YOUTUBE_API_KEY`.
+5. Confirm on-device whether Swae routes the official player audio into the broadcast; the public overlay itself does not guarantee that audio path.

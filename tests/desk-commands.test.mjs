@@ -46,6 +46,9 @@ test("the bot is one switch and a closed set of gestures, on both sides of the w
   assert.deepEqual(parseDeskCommand("crid bot off"), { verb: "bot", value: "off" });
   assert.deepEqual(parseDeskCommand("crid BOT on"), { verb: "bot", value: "on" });
   assert.deepEqual(parseDeskCommand("crid bot wave"), { verb: "bot", react: "wave" });
+  for (const kind of ["sub", "gift", "bits"]) {
+    assert.deepEqual(parseDeskCommand(`crid bot ${kind}`), { verb: "bot", react: kind });
+  }
   assert.equal(parseDeskCommand("crid bot explode"), null, "an invented gesture is not a command");
   assert.equal(parseDeskCommand("crid bot off please"), null, "a gesture takes no trailing words");
 

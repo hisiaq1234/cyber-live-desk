@@ -65,6 +65,11 @@ const message = (over = {}) => ({
   },
 });
 
+const engagement = (type, over = {}) => ({
+  subscription: { id: `sub-${type}`, type, version: "1", status: "enabled" },
+  event: { broadcaster_user_id: "111", ...over },
+});
+
 const signedRequest = ({ payload, messageType = "notification", messageId = "header-1", timestamp = iso(), secret = SECRET, signature }) => {
   const raw = JSON.stringify(payload);
   const sig = signature ?? "sha256=" + createHmac("sha256", secret).update(messageId + timestamp + raw).digest("hex");
@@ -218,6 +223,59 @@ test("control off, or an event for another broadcaster, is ignored", async () =>
   const other = await send(on, { payload: message({ broadcaster_user_id: "999" }) });
   assert.equal(other.status, 403);
   assert.equal((await readState(on)).activeCardId, "a");
+});
+
+test("verified sub, gift-sub and Bits events reach CRID once, update growth, and show useful labels", async () => {
+  const store = await readyStore();
+  await commitState(store, await readState(store), { twitchChatEnabled: false }, NOW);
+
+  assert.equal((await send(store, {
+    payload: engagement("channel.subscribe", { user_id: "222", user_name: "Viewer", is_gift: false }),
+    messageId: "sub-event-1",
+  })).status, 204);
+  let state = await readState(store);
+  assert.equal(state.bot.subs, 1);
+  assert.equal(state.bot.react.kind, "sub");
+  assert.equal(state.bot.react.label, "+SUB");
+
+  assert.equal((await send(store, {
+    payload: engagement("channel.subscription.gift", { user_id: "333", total: 3 }),
+    messageId: "gift-event-1",
+  })).status, 204);
+  state = await readState(store);
+  assert.equal(state.bot.subs, 4, "gift totals advance CRID by the number of subscriptions");
+  assert.equal(state.bot.react.kind, "gift");
+  assert.equal(state.bot.react.label, "GIFT ×3");
+
+  const bits = engagement("channel.cheer", { user_id: "444", bits: 500 });
+  assert.equal((await send(store, { payload: bits, messageId: "bits-event-1" })).status, 204);
+  state = await readState(store);
+  assert.equal(state.bot.subs, 4, "Bits do not change subscription growth");
+  assert.equal(state.bot.react.kind, "bits");
+  assert.equal(state.bot.react.label, "500 BITS");
+  const version = state.version;
+  assert.equal((await send(store, { payload: bits, messageId: "bits-event-1" })).status, 204);
+  assert.equal((await readState(store)).version, version, "a redelivery does not fire CRID twice");
+
+  const status = await twitchStatus(store, state, { env });
+  assert.equal(status.lastEngagement, "500 BITS");
+  assert.equal(status.lastEngagementAt, NOW);
+});
+
+test("gift-recipient subscribe notifications and engagement from another broadcaster are refused safely", async () => {
+  const store = await readyStore();
+  const before = await readState(store);
+  assert.equal((await send(store, {
+    payload: engagement("channel.subscribe", { user_id: "222", is_gift: true }),
+    messageId: "gift-recipient-event",
+  })).status, 204);
+  assert.equal((await readState(store)).version, before.version, "recipient notices are counted only by the aggregate gift event");
+
+  assert.equal((await send(store, {
+    payload: { ...engagement("channel.cheer", { bits: 100 }), event: { broadcaster_user_id: "999", bits: 100 } },
+    messageId: "other-broadcaster-bits",
+  })).status, 403);
+  assert.equal((await readState(store)).version, before.version);
 });
 
 test("revocation turns Ready off and a new verification turns it back on", async () => {

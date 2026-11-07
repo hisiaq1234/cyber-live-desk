@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>CRID audio</title>
+<!--
+  CRID segment audio, for a Swae web-page layer.
+
+  Swae mixes only the microphone into the broadcast, and its Browser Widget is a snapshot that
+  never receives taps, so audio placed in the overlay widget is silent on stream and cannot be
+  started. A web-page layer is a real, tappable web view: audio played here comes out of the
+  phone's speaker and the microphone picks it up.
+
+  This page holds no controls and no operator token. It reads the public state and follows it —
+  the desk still drives playback; the only thing done here is the single tap iOS requires before
+  a page may start audio. Add it as a web-page layer with ?poll=1 so it keeps up.
+-->
+<style>
+  html,body{margin:0;height:100%;background:transparent;overflow:hidden;
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif}
+  #arm{position:fixed;inset:0;display:grid;place-content:center;gap:.7em;border:0;margin:0;
+    background:#161025;color:#F4F0FF;font:inherit;text-align:center;padding:1.4em;cursor:pointer}
+  #arm h1{margin:0;font-size:clamp(15px,4.5vmin,22px);letter-spacing:.14em;text-transform:uppercase}
+  #arm p{margin:0 auto;max-width:26em;font-size:clamp(11px,3vmin,14px);line-height:1.45;color:#A98BFF}
+  /* armed: the tap target folds down to a status strip so the layer stops covering the overlay */
+  body.armed #arm{inset:auto 0 0 0;display:flex;align-items:center;justify-content:space-between;
+    gap:.8em;padding:.5em .85em;text-align:left}
+  body.armed #arm h1{font-size:clamp(11px,2.6vmin,14px)}
+  body.armed #arm p{display:none}
+  #title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    color:#C4BBE0;font-size:clamp(10px,2.4vmin,13px)}
+  #title[hidden]{display:none}
+  #state{flex:0 0 auto;font-size:clamp(10px,2.4vmin,13px);letter-spacing:.14em;text-transform:uppercase;color:#86F6BC}
+  body[data-state="waiting"] #state{color:#A98BFF}
+  body[data-state="muted"] #state{color:#A98BFF}
+  body[data-state="blocked"] #state,body[data-state="offline"] #state{color:#FF5B57}
+</style>
+</head>
+<body data-state="offline">
+  <button id="arm" type="button">
+    <h1>Tap to arm CRID audio</h1>
+    <p>iOS refuses to start audio without one tap per page load. After that this page follows the
+      desk on its own. Open the segment first, then tap once.</p>
+    <span id="title" hidden></span>
+    <span id="state">connecting</span>
+  </button>
+  <script type="module">
+    import { createCridAudioSync } from "/desk-assets/crid-audio.js";
+
+    // ?poll= seconds, clamped the same way the overlay clamps it so a typo cannot flood the API.
+    const asked = parseFloat(new URLSearchParams(location.search).get("poll"));
+    const pollMs = (Number.isFinite(asked) ? Math.min(30, Math.max(1, asked)) : 1) * 1000;
+
+    const arm = document.getElementById("arm");
+    const titleEl = document.getElementById("title");
+    const stateEl = document.getElementById("state");
+
+    const audio = new Audio();
+    audio.preload = "none";
+
+    let armed = false;   // the single gesture iOS asks for, once per page load
+    let primed = false;  // a play() that ran inside that gesture, so later ones are allowed
+    let blocked = false; // playback was refused; the operator has to tap again
+    let version = 0;
+    let crid = null;
+
+    const paint = () => {
+      const playing = armed && Boolean(crid?.audioPlaying);
+      const muted = Boolean(crid?.audioMuted);
+      document.body.classList.toggle("armed", armed && !blocked);
+      document.body.dataset.state = blocked ? "blocked" : !armed ? "idle"
+        : playing ? (muted ? "muted" : "playing") : "waiting";
+      stateEl.textContent = blocked ? "tap to arm again"
+        : !armed ? "waiting for a tap"
+        : playing ? (muted ? "playing · muted" : "playing")
+        : primed ? "armed · waiting" : "armed · open the segment, then tap";
+      const name = crid?.title || crid?.kind || "";
+      titleEl.textContent = name;
+      titleEl.hidden = !name;
+    };
+
+    const sync = createCridAudioSync(audio, () => {
+      blocked = true;
+      armed = false;
+      paint();
+    });
+
+    // Called straight from the click, so play() runs inside the gesture. Once that call has been
+    // allowed the document is unlocked and sync() can start playback on its own from then on.
+    const prime = async () => {
+      if (primed || !audio.src) return;
+      try {
+        await audio.play();
+        primed = true;
+      } catch {
+        primed = false;
+      }
+      sync(crid);
+      paint();
+    };
+
+    arm.addEventListener("click", () => {
+      armed = true;
+      blocked = false;
+      void prime();
+      sync(crid);
+      paint();
+    });
+
+    const poll = async () => {
+      try {
+        const res = await fetch("/api/desk/state?since=" + version, { cache: "no-store" });
+        if (res.status === 204) return;
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const body = await res.json();
+        version = body.version ?? version;
+        crid = body.crid || null;
+        sync(crid);
+        paint();
+      } catch {
+        document.body.dataset.state = "offline";
+        stateEl.textContent = "offline";
+      }
+    };
+
+    paint();
+    await poll();
+    setInterval(poll, pollMs);
+  </script>
+</body>
+</html>

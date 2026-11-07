@@ -14,8 +14,12 @@
            Instrument Serif italic for the voice: the question put to chat.
            System sans for everything dense. Fonts are self-hosted in /desk-assets/fonts/.
 
-   SHAPE   Big radius, flat fills, one hard offset shadow in deep indigo. No blur, no glow, no
-           gradients: it matches the bot's sticker drawing and is cheap to snapshot on Swae.
+   SHAPE   Big radius, flat fills, one hard offset shadow in deep indigo. No blur and no glow: it
+           matches the bot's sticker drawing and is cheap to snapshot on Swae. Panel surfaces stay
+           flat; the one gradient is a mint highlight travelling inside the poll leader's bar, which
+           reads as motion rather than as a surface. Each panel family leans up to half a degree on
+           the individual rotate property and cuts one corner to .42em, so the desk looks placed by
+           hand without any panel moving off its anchor.
 
    SCENES  ?scene=pip reserves the bottom-right dual-camera inset (?pip.w= ?pip.h= in vw/vh,
            default 34 x 34) and stacks the right column above it.                              */
@@ -40,9 +44,23 @@ ${T} #desk{
 
 /* ---- panels: onyx body, indigo outline, one hard shadow ---- */
 ${T} #desk :is(${PANEL}){
-  background:var(--onyx-900);border:.14em solid var(--indigo-500);border-radius:1.5em;
-  box-shadow:var(--sticker);backdrop-filter:none;-webkit-backdrop-filter:none;color:var(--ink-1)}
-${T} #desk .card{padding:1.1em 1.4em 1.15em}
+  background:var(--onyx-900);border:.14em solid var(--indigo-500);border-radius:var(--chaos-radius,1.5em);
+  box-shadow:var(--sticker);backdrop-filter:none;-webkit-backdrop-filter:none;color:var(--ink-1);
+  rotate:var(--lean,0deg);
+  transition:rotate .5s cubic-bezier(.2,.8,.2,1),border-radius .5s cubic-bezier(.2,.8,.2,1),
+    box-shadow .5s cubic-bezier(.2,.8,.2,1),opacity .24s cubic-bezier(.2,.8,.2,1),transform .24s cubic-bezier(.2,.8,.2,1)}
+${T} #desk .card{padding:1.1em 1.4em 1.15em;--lean:-.3deg;--chaos-radius:1.5em 1.5em 1.5em .42em}
+
+/* The hand. Each family leans on the individual rotate property so the lean composes with the
+   arrival animation instead of overwriting its transform. Tilts stay inside half a degree, one
+   corner is cut to .42em, and the shadow depth says how heavy the panel is. The clock, ticker,
+   lockup, mascot and CRID bug are pinned to the frame and never lean. */
+${T} #desk .court-wrap,${T} #desk .riad-wrap{--lean:.4deg;--chaos-radius:1.5em 1.5em .42em 1.5em;
+  --sticker:.34em .4em 0 var(--indigo-700)}
+${T} #desk .music-wrap,${T} #desk .space-wrap{--lean:-.55deg;--chaos-radius:.42em 1.5em 1.5em 1.5em;
+  --sticker:.2em .24em 0 var(--indigo-700)}
+${T} #desk .ledger-wrap{--lean:.3deg;--chaos-radius:1.5em 1.5em 1.5em .42em}
+${T} #desk #x-jumbotron{--lean:0deg;--chaos-radius:1.5em}
 
 /* label pill: category on indigo, confidence nested inside it */
 ${T} #desk .meta{display:inline-flex;align-items:center;gap:.6em;margin:0 0 .65em;padding:.2em .25em .2em .9em;
@@ -77,9 +95,21 @@ ${T} #desk .opt .pct{font-family:var(--display);font-weight:400;letter-spacing:.
 ${T} #desk .opt.lead .pct{color:var(--mint)}
 ${T} #desk .poll-state{color:var(--ink-3);letter-spacing:.14em}
 
-/* CRID segment bug */
+/* Two live marks, both cheap: the pill says the desk is receiving, and one mint pass travels the
+   leader's bar. The sweep lives on the fill, not the option — the option's own animation is off. */
+${T} #desk .meta::after{content:"";width:.42em;height:.42em;border-radius:50%;background:var(--mint);
+  margin-left:.15em;animation:chaos-tick 2.6s ease-in-out infinite}
+${T} #desk .opt.lead .fill::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent,rgba(134,246,188,.28),transparent);
+  animation:chaos-sweep 2.8s linear infinite}
+@keyframes chaos-tick{0%,100%{opacity:.35}50%{opacity:1}}
+@keyframes chaos-sweep{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+
+/* CRID segment bug. The breathe is an opacity pulse, so the theme lets it run; taking the stage
+   lifts the badge onto a deeper cut than the resting sticker. */
 ${T} #desk #crid-jumbotron{background:var(--onyx-900);border:.14em solid var(--indigo-500);box-shadow:var(--sticker);
-  backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
+  backdrop-filter:none;-webkit-backdrop-filter:none}
+${T} #desk #crid-jumbotron.in{box-shadow:.4em .46em 0 var(--indigo-700)}
 ${T} #desk .crid-logo{background:var(--onyx-950);border:.14em solid var(--indigo-500)}
 ${T} #desk .crid-logo:not(img){font-family:var(--display);font-weight:400;letter-spacing:.08em;color:var(--mint)}
 
@@ -140,7 +170,29 @@ ${T} #time-dock .clock-time{font-family:var(--display);font-weight:400;letter-sp
 ${T} #swae-chat .swae-chat-user{color:var(--indigo-300)}
 ${T} #swae-chat .swae-chat-text{color:var(--ink-1)}
 
+/* ---- the mascot: presence first, then an answer ----
+   The pose engine owns every inner <g> and never writes the host's transform, so the host and the
+   root svg are the only safe places to add motion. The bottom-centre anchor uses margin-left, not
+   a transform, so nothing here may translate on X. */
+${T} #desk #crid-bot{--bw:clamp(64px,7.2vw,104px)}
+${T} #desk #crid-bot svg{filter:drop-shadow(calc(var(--bw)*.031) calc(var(--bw)*.038) 0 var(--indigo-700))}
+${T} #desk #crid-bot[data-mode="on"]{animation:bot-idle 4.5s ease-in-out infinite}
+${T} #desk #crid-bot.music-playing svg{animation:bot-groove 1.6s ease-in-out infinite}
+${T} #desk #crid-bot.is-active svg{animation:bot-answer .8s ease-out}
+@keyframes bot-idle{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+@keyframes bot-groove{0%,100%{transform:scale(1)}50%{transform:scale(1.035)}}
+@keyframes bot-answer{0%,100%{transform:scale(1)}40%{transform:scale(1.09) translateY(-3px)}}
+/* The theme's selector out-specifies the bot module's own swae/low-power filter:none, and the
+   blanket swae guard only kills transition and animation — so the shadow has to be waived here. */
+html.swae ${T} #desk #crid-bot svg,html.low-power ${T} #desk #crid-bot svg{filter:none}
+
 /* ---- scene: dual-camera PiP. The inset owns the bottom-right; the right column stacks above it ---- */
 html[data-scene="pip"] #auto-headlines{right:var(--m);bottom:calc(var(--m) + var(--pip-h,34vh));width:var(--pip-w,34vw)}
 html[data-scene="pip"] #dock-right{max-height:calc(100dvh - var(--pip-h,34vh) - 2*var(--m) - 6em)}
+
+@media (prefers-reduced-motion:reduce){
+${T} #desk #crid-bot,${T} #desk #crid-bot svg{animation:none}
+${T} #desk :is(${PANEL}){rotate:0deg;transition:none}
+${T} #desk .meta::after,${T} #desk .opt.lead .fill::after{animation:none}
+}
 `;

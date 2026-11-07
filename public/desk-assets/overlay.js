@@ -123,7 +123,7 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
   padding:1.3em 1.6em 1.2em;opacity:0;transform:translateY(11px) scale(.985);
   width:100%;max-height:34dvh;
   box-shadow:0 10px 30px #00000045,inset 0 1px #ffffff14;
-  transition:opacity .24s cubic-bezier(.2,.8,.2,1),transform .24s cubic-bezier(.2,.8,.2,1),filter .24s ease}
+  transition:opacity .24s cubic-bezier(.2,.8,.2,1),transform .24s cubic-bezier(.2,.8,.2,1)}
 .anim-slide .card{transform:translateY(11px) scale(.985)}
 .card.in{opacity:1;transform:none}
 .card.out{opacity:0;transform:translateY(-10px) scale(.97)}
@@ -206,8 +206,8 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
   box-shadow: 0 10px 30px rgba(0,0,0,0.4), inset 0 1px rgba(255,255,255,0.1);
   display: flex; align-items: center; gap: 1em;
   opacity: 0; transform: translateX(-20px) scale(0.96);
-  transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 0.55s cubic-bezier(0.2, 0.9, 0.25, 1),
+              transform 0.55s cubic-bezier(0.2, 0.9, 0.25, 1);
 }
 #crid-jumbotron.in { opacity: 1; transform: translateX(0) scale(1); animation: bug-breathe 4s ease-in-out infinite; }
 #crid-jumbotron.out { opacity: 0; transform: translateX(-20px) scale(0.96); }
@@ -225,7 +225,7 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 .crid-v-1 { background: var(--accent); color: #111214; }
 .crid-v-0 { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
 .crid-v-none { color: #8E8E93; font-size: 0.75em; font-weight: 600; text-transform: uppercase; }
-@keyframes bug-breathe { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.05); } }
+@keyframes bug-breathe { 0%,100% { opacity: 1; } 50% { opacity: .94; } }
 
 /* Compact sound/music identity mark; always decorative and never a control. */
 #sound-orb{position:fixed;right:calc(var(--m) + var(--identity-w) + .45em);bottom:calc(var(--m) + .45em + env(safe-area-inset-bottom,0px));z-index:26;
@@ -357,18 +357,18 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 /* Distinct, state-driven motion: slide has weight, fade stays truly still, none stays still. */
 .anim-fade .card{transform:none}
 .anim-fade .card.out{transform:none}
-.anim-slide .card.in{animation:stage-arrive .44s cubic-bezier(.2,1.12,.32,1) both}
+.anim-slide .card.in{animation:stage-arrive .5s cubic-bezier(.2,.8,.2,1) both}
 .anim-slide .card.out{animation:stage-leave .24s cubic-bezier(.4,0,.8,.4) both}
 .anim-none .card{animation:none}
 #desk.anim-none .opt{animation:none!important;transition:none}
 @keyframes stage-arrive{
-  0%{opacity:0;filter:blur(2px) brightness(1.08);transform:translate3d(0,16px,0) scale(.975)}
-  72%{opacity:1;filter:blur(0) brightness(1);transform:translate3d(0,-2px,0) scale(1.006)}
-  100%{opacity:1;filter:none;transform:translate3d(0,0,0) scale(1)}
+  0%{opacity:0;transform:translate3d(0,14px,0) scale(.975)}
+  70%{opacity:1;transform:translate3d(0,-2px,0) scale(1.004)}
+  100%{opacity:1;transform:translate3d(0,0,0) scale(1)}
 }
 @keyframes stage-leave{
   0%{opacity:1;transform:translate3d(0,0,0) scale(1)}
-  100%{opacity:0;filter:blur(1px);transform:translate3d(0,-9px,0) scale(.985)}
+  100%{opacity:0;transform:translate3d(0,-9px,0) scale(.985)}
 }
 #modules>*{animation:dock-arrive .32s cubic-bezier(.2,.8,.2,1) both}
 #modules>*:nth-child(2){animation-delay:.035s}

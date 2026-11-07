@@ -459,7 +459,7 @@ test("themeMotion refuses to invent colours the composition does not use", () =>
   assert.deepEqual([...collectColors(themed)], [...collectColors(LOGO_ANIM)]);
 });
 
-// The operator's ask: "the line going around the otolorin should be another colour, blue, as
+// The operator's ask: "the line going around the otolorin should be another colour, purple, as
 // this changes per theme". The outline and the handle are the same baked red in the source file,
 // so this is only possible if the filter can address a layer, not just a colour value.
 test("the outline and the handle split off one baked red, per layer", () => {
@@ -483,8 +483,8 @@ test("the outline and the handle split off one baked red, per layer", () => {
     assert.ok(paints.has("10,11,12"), `${nm} did not take the rule colour`);
     assert.ok(!paints.has("0,255,0"), `${nm} is still painted with the accent`);
   }
-  // A theme that never restates the rule token still gets a blue line, not the old red.
-  assert.match(source("public/desk-assets/logo.js"), /--t-logo-rule:var\(--indigo-500,#2868A6\)/);
+  // A theme that never restates the rule token still gets a purple line, not the old red.
+  assert.match(source("public/desk-assets/logo.js"), /--t-logo-rule:var\(--indigo-500,#6531F8\)/);
   // The third argument stays optional so every other caller is unaffected.
   assert.ok(collectColors(themeMotion(LOGO_ANIM, map, null)).has("0,255,0"));
 });
@@ -495,7 +495,7 @@ test("mixRgb is the distance-preserving half of the palette", () => {
   assert.deepEqual(mixRgb([255, 0, 0], [0, 0, 0], 0.5), [128, 0, 0]);
   // The dark red under the rim has to stay the same distance from the accent on a mint theme as on
   // a red one, which is why it is mixed rather than hard-coded.
-  assert.deepEqual(mixRgb([0, 255, 188], [21, 27, 35], 0.62), [13, 114, 93]);
+  assert.deepEqual(mixRgb([0, 255, 188], [22, 16, 37], 0.62), [14, 107, 94]);
 });
 
 test("the robot arrives as literal colours because an image cannot see the page", () => {

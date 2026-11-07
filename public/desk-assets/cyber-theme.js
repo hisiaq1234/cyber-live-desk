@@ -1,11 +1,11 @@
 /* CYBER LIVE DESK — "Cyber" theme. One system, applied on purpose.
 
    COLOUR  60 / 30 / 10, taken from the palette cards in the reference
-     60  Onyx            #0D1117 family   every panel surface, the bot's body and face
-     30  Signal Blue     #2868A6 family   structure only: panel outlines, label pills, poll bars,
+     60  Onyx            #0F0B17 family   every panel surface, the bot's body and face
+     30  Electric Indigo #6531F8 family   structure only: panel outlines, label pills, poll bars,
                                           the hard shadow, the bot's shell
      10  Tropical Mint   #86F6BC          the one thing to look at: the chat prompt, live signals,
-     the poll leader's percentage, "paid", the bot's eyes
+                                          the poll leader's percentage, "paid", the bot's eyes
      Text is a tinted off-white. Red (#FF5B57) is not a theme colour: it is reserved for
      meaning (disputed, still owing, offline) and stays under ~2% of any frame.
      Contrast on onyx: body 16.5:1, secondary 10.2:1, tertiary 6.2:1, mint 14:1.
@@ -14,7 +14,7 @@
            Instrument Serif italic for the voice: the question put to chat.
            System sans for everything dense. Fonts are self-hosted in /desk-assets/fonts/.
 
-   SHAPE   Big radius, flat fills, one hard offset shadow in deep blue. No blur and no glow: it
+   SHAPE   Big radius, flat fills, one hard offset shadow in deep indigo. No blur and no glow: it
            matches the bot's sticker drawing and is cheap to snapshot on Swae. Panel surfaces stay
            flat; the one gradient is a mint highlight travelling inside the poll leader's bar, which
            reads as motion rather than as a surface. Each panel family leans up to half a degree on
@@ -32,17 +32,17 @@ export const CYBER_CSS = `
 @font-face{font-family:"Instrument Serif";src:url(/desk-assets/fonts/instrument-serif-latin-400-italic.woff2) format("woff2");font-weight:400;font-style:italic;font-display:swap}
 
 ${T} #desk{
-  --onyx-950:#0D1117;--onyx-900:#151B23;--onyx-800:#202B36;
-  --indigo-500:#2868A6;--indigo-700:#143B5D;--indigo-300:#93B9D9;--indigo-100:#DDEAF4;
+  --onyx-950:#0F0B17;--onyx-900:#161025;--onyx-800:#1F1736;
+  --indigo-500:#6531F8;--indigo-700:#3A1D9E;--indigo-300:#A98BFF;--indigo-100:#E4DBFF;
   --mint:#86F6BC;
-  --ink-1:#F3F2F0;--ink-2:#C8D0D8;--ink-3:#94A2AE;--danger:#FF5B57;
+  --ink-1:#F4F0FF;--ink-2:#C4BBE0;--ink-3:#9A90B8;--danger:#FF5B57;
   --accent:var(--mint);--ink:var(--ink-1);--glass:var(--onyx-900);--surface-line:var(--indigo-500);--radius:1.5em;
   --display:"Anton","Arial Narrow",Impact,"Haettenschweiler",sans-serif;
   --voice:"Instrument Serif","Iowan Old Style",Georgia,serif;
   --sticker:.28em .32em 0 var(--indigo-700);
   color:var(--ink-1)}
 
-/* ---- panels: onyx body, blue outline, one hard shadow ---- */
+/* ---- panels: onyx body, indigo outline, one hard shadow ---- */
 ${T} #desk :is(${PANEL}){
   background:var(--onyx-900);border:.14em solid var(--indigo-500);border-radius:var(--chaos-radius,1.5em);
   box-shadow:var(--sticker);backdrop-filter:none;-webkit-backdrop-filter:none;color:var(--ink-1);
@@ -62,7 +62,7 @@ ${T} #desk .music-wrap,${T} #desk .space-wrap{--lean:-.55deg;--chaos-radius:.42e
 ${T} #desk .ledger-wrap{--lean:.3deg;--chaos-radius:1.5em 1.5em 1.5em .42em}
 ${T} #desk #x-jumbotron{--lean:0deg;--chaos-radius:1.5em}
 
-/* label pill: category on blue, confidence nested inside it */
+/* label pill: category on indigo, confidence nested inside it */
 ${T} #desk .meta{display:inline-flex;align-items:center;gap:.6em;margin:0 0 .65em;padding:.2em .25em .2em .9em;
   border-radius:99px;background:var(--indigo-500);color:var(--ink-1);
   font-family:var(--brand);font-size:.62em;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
@@ -86,7 +86,7 @@ ${T} #desk .ask{position:relative;margin:1em 0 0;padding:1.75em 0 0;background:n
 ${T} #desk .ask::before{content:"ASK CHAT";position:absolute;top:.6em;left:0;
   font:400 .5em/1 var(--display);font-style:normal;letter-spacing:.2em;color:var(--indigo-300)}
 
-/* poll: blue bars for everyone, the leader earns the mint outline and number */
+/* poll: indigo bars for everyone, the leader earns the mint outline and number */
 ${T} #desk .opt{border-radius:.8em;background:var(--onyx-800);border:.1em solid var(--indigo-700);
   font-family:var(--brand);font-weight:700;color:var(--ink-1);animation:none}
 ${T} #desk .opt .fill{background:var(--indigo-500);opacity:1}
@@ -121,7 +121,7 @@ ${T} #desk-logo{
   --t-logo-shell:var(--indigo-500);--t-logo-plate:var(--onyx-900);--t-logo-screen:var(--onyx-950);
   --t-logo-edge:var(--indigo-700);--t-logo-eye:var(--mint);--t-logo-rule:var(--indigo-500);
   --t-logo-gesture:var(--indigo-300);--t-logo-1:var(--ink-1);--t-logo-2:var(--mint);
-  --t-logo-bone:var(--ink-1)}
+  --t-logo-bone:var(--indigo-300)}
 ${T} #desk .crid-brand{color:var(--mint);font-family:var(--display);font-weight:400;font-size:1.3em;letter-spacing:.14em}
 ${T} #desk .crid-kind{background:var(--indigo-500);color:var(--ink-1);border-radius:99px}
 ${T} #desk .crid-title{font-family:var(--display);font-weight:400;font-size:1.3em;letter-spacing:.02em;text-transform:uppercase;color:var(--ink-1)}
@@ -152,26 +152,21 @@ ${T} #desk .x-item .x-text{color:var(--ink-2)}
 ${T} #auto-headlines,${T} #swae-chat{
   background:var(--onyx-900);border:.14em solid var(--indigo-500);border-left-width:.5em;border-radius:1em;
   box-shadow:.22em .26em 0 var(--indigo-700);backdrop-filter:none;-webkit-backdrop-filter:none}
-/* The clock is a compact, horizontal red stamp in the bottom-left corner. Red is reserved for
-   the timestamp and other meaning signals; the surrounding mascot and overlay keep their blue,
-   mint and onyx palette. */
+/* The clock keeps the plate but not its outline colour: the heavy left edge is the one place on
+   this desk that carries the meaning token, and it is square on the left because it is a bar the
+   frame sits against, not a corner. That is the operator's original timestamp shape, drawn with
+   cyber's own fills, radii and single hard shadow. */
 ${T} #time-dock{
-  left:var(--m);right:auto;bottom:calc(var(--m) + env(safe-area-inset-bottom,0px));width:max-content;min-width:0;
-  max-width:calc(100vw - 2*var(--m));display:flex;align-items:baseline;gap:.62em;
-  padding:.42em .72em;background:var(--onyx-900);border:.12em solid var(--danger);border-left:.38em solid var(--danger);
-  border-radius:.28em;box-shadow:.14em .17em 0 var(--indigo-700);backdrop-filter:none;-webkit-backdrop-filter:none}
-${T} #time-dock .clock-top{display:none}
-${T} #time-dock .clock-time{font-family:var(--display);font-weight:400;font-size:clamp(.9em,1.15vw,1.12em);
-  letter-spacing:.035em;line-height:1;white-space:nowrap;color:var(--danger)}
-${T} #time-dock .clock-detail{display:flex;align-items:center;gap:.45em;margin:0;font-size:.72em;letter-spacing:.025em;color:var(--danger)}
-${T} #time-dock .clock-day{white-space:nowrap;color:var(--danger)}
-${T} #time-dock .clock-sep{display:inline-block;width:.34em;height:.34em;vertical-align:.1em;background:var(--danger)}
-${T} #time-dock .clock-zone,${T} #time-dock .clock-zone-top{display:none}
+  background:var(--onyx-900);border:.14em solid var(--indigo-500);border-left:.5em solid var(--accent);
+  border-radius:0 1em 1em 0;box-shadow:.22em .26em 0 var(--indigo-700);
+  backdrop-filter:none;-webkit-backdrop-filter:none}
 ${T} .headline-feed-kicker{font-family:var(--display);font-weight:400;letter-spacing:.16em;color:var(--indigo-300)}
 ${T} .identity-row .headline-feed-title{font-family:var(--brand);font-weight:700;color:var(--ink-1)}
 ${T} .identity-row .headline-feed-meta{color:var(--ink-3)}
 ${T} .identity-music{border-bottom-color:var(--indigo-700)}
 ${T} .identity-music .headline-feed-kicker{color:var(--mint)}
+${T} #time-dock .clock-brand,${T} #time-dock .clock-zone{color:var(--indigo-300)}
+${T} #time-dock .clock-time{font-family:var(--display);font-weight:400;letter-spacing:.06em;color:var(--ink-1)}
 ${T} #swae-chat .swae-chat-user{color:var(--indigo-300)}
 ${T} #swae-chat .swae-chat-text{color:var(--ink-1)}
 
@@ -179,7 +174,7 @@ ${T} #swae-chat .swae-chat-text{color:var(--ink-1)}
    The pose engine owns every inner <g> and never writes the host's transform, so the host and the
    root svg are the only safe places to add motion. The bottom-centre anchor uses margin-left, not
    a transform, so nothing here may translate on X. */
-${T} #desk #crid-bot{--bw:clamp(84px,10vw,160px)}
+${T} #desk #crid-bot{--bw:clamp(64px,7.2vw,104px)}
 ${T} #desk #crid-bot svg{filter:drop-shadow(calc(var(--bw)*.031) calc(var(--bw)*.038) 0 var(--indigo-700))}
 ${T} #desk #crid-bot[data-mode="on"]{animation:bot-idle 4.5s ease-in-out infinite}
 ${T} #desk #crid-bot.music-playing svg{animation:bot-groove 1.6s ease-in-out infinite}

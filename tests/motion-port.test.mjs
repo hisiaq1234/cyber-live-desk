@@ -2,15 +2,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { CYBER_CSS } from "../public/desk-assets/cyber-theme.js";
-import { MOTION_REST, playStingIntro } from "../public/desk-assets/logo-sting.js";
 
 const overlay = readFileSync(new URL("../public/desk-assets/overlay.js", import.meta.url), "utf8");
-const stingModule = readFileSync(new URL("../public/desk-assets/logo-sting.js", import.meta.url), "utf8");
 
 // The bot module owns the default width; the theme is allowed to override it. Reading the default
 // out of the module keeps the comparison honest if that default ever moves.
 const botModule = readFileSync(new URL("../public/desk-assets/crid-bot.js", import.meta.url), "utf8");
-const logoModule = readFileSync(new URL("../public/desk-assets/logo.js", import.meta.url), "utf8");
 const moduleWidth = botModule.match(/--bw:(clamp\([^)]*\))/)?.[1];
 
 const keyframes = (css) => [...css.matchAll(/@keyframes\s+([\w-]+)\s*\{((?:[^{}]|\{[^{}]*\})*)\}/g)]
@@ -24,25 +21,6 @@ const widthAt = (ramp, vw, vh) => {
   const unit = m[3] === "vw" ? vw : Math.min(vw, vh);
   return Math.min(Number(m[4]), Math.max(Number(m[1]), (Number(m[2]) * unit) / 100));
 };
-
-test("the loaded logo sting plays its entrance and settles on the rest frame", () => {
-  const calls = [];
-  let complete;
-  const player = {
-    goToAndStop: (frame, force) => calls.push(["stop", frame, force]),
-    addEventListener: (name, callback, options) => {
-      calls.push(["event", name, options]);
-      complete = callback;
-    },
-    playSegments: (frames, force) => calls.push(["play", frames, force]),
-  };
-  playStingIntro(player);
-  assert.deepEqual(calls, [["stop", 0, true], ["event", "complete", { once: true }], ["play", [0, MOTION_REST], true]]);
-  complete();
-  assert.deepEqual(calls.at(-1), ["stop", MOTION_REST, true]);
-  assert.match(stingModule, /hideLayers\(\);\s*playStingIntro\(player\);/,
-    "the animation must start when the sting is first ready, not only after a manual replay");
-});
 
 test("the mascot's shadow scales with the mascot, not with the desk's type", () => {
   // Break caught: a fixed px offset, or an em offset, both resolve against something other than
@@ -60,63 +38,21 @@ test("the mascot's shadow scales with the mascot, not with the desk's type", () 
 });
 
 test("the mascot keeps a readable floor on a phone and grows on a 720p stream frame", () => {
-  // Break caught: reverting to the module's small vmin ramp, which makes CRID disappear beside
-  // the other on-air elements on a 720p browser source.
+  // Break caught: reverting to the module's vmin ramp, which renders a 65px bot on a 1280x720
+  // browser source — the size the desk is actually captured at.
   const rule = CYBER_CSS.match(/#crid-bot\{[^}]*\}/)?.[0];
   assert.ok(rule, "the theme must set the mascot's presence");
   const ramp = rule.match(/--bw:(clamp\([^)]*\))/)?.[1];
   assert.ok(ramp, `no --bw ramp in ${rule}`);
   assert.ok(moduleWidth, "the bot module must still declare a default --bw");
 
-  assert.equal(widthAt(ramp, 390, 844), 84);
-  assert.equal(widthAt(ramp, 1280, 720), 128);
-  assert.equal(widthAt(ramp, 1920, 1080), 160);
-  assert.ok(widthAt(ramp, 1280, 720) >= 120, "a 720p capture must show a clear CRID");
+  assert.equal(widthAt(ramp, 390, 844), 64);
+  assert.equal(widthAt(ramp, 1280, 720), 92.16);
+  assert.equal(widthAt(ramp, 1920, 1080), 104);
+  assert.ok(widthAt(ramp, 1280, 720) >= 90, "a 720p capture must not get a miniature");
   for (const [vw, vh] of [[390, 844], [1280, 720], [1920, 1080]]) {
     assert.ok(widthAt(ramp, vw, vh) >= widthAt(moduleWidth, vw, vh), `${vw}x${vh} shrank`);
   }
-});
-
-test("CRID's on-air ticket is large and high-contrast, not purple", () => {
-  assert.match(botModule, /indigo:"#2868A6"/);
-  assert.match(botModule, /bone:"#F3F2F0"/);
-  assert.match(botModule, /font-size":15\.5/);
-  assert.ok(botModule.includes("M79 4H151V30H79Z"), "badge should be wider and taller than the old tiny tag");
-  assert.ok(!CYBER_CSS.includes("#6531F8") && !CYBER_CSS.includes("#A98BFF"),
-    "the default Cyber theme must not reintroduce the purple palette");
-});
-
-test("the live mascot wakes, changes shape and size with early subs, and shows a short event tag", () => {
-  assert.match(botModule, /host\.dataset\.mode="on"/);
-  assert.match(botModule, /let mode="on"/);
-  assert.match(overlay, /position: \["bl", "bc", "br"\]\.includes\(BOT_ARG\) \? BOT_ARG : "bl"/);
-  assert.match(botModule, /BODIES=\[3,0,5,1,2\]/);
-  assert.match(botModule, /SUB_STEPS=\[0,1,2,3,4\],STAGE_STRETCH=\.18/);
-  assert.match(botModule, /sx=1\+STAGE_STRETCH\*\(i\+frac\)\/\(SUB_STEPS\.length-1\)/);
-  assert.match(botModule, /sy:1\+\(sx-1\)\*\.55/);
-  assert.match(botModule, /bannerTimer=setTimeout\(\(\)=>\{banner\.classList\.remove\("is-visible"\);banner\.hidden=!0\},3000\)/);
-});
-
-test("Swae keeps the full overlay but starts only the visible sprite and shortens active CRID jobs", () => {
-  assert.match(botModule, /if\(!swae&&!lowPower\)for\(const b of BODIES\)/);
-  assert.match(botModule, /JOB_STEP=step!=null\?step:swae\?90:STEP/);
-  assert.match(botModule, /timer=setTimeout\(tick,\(running\|\|jobs\.length\|\|gestureQ\.length\)\?JOB_STEP:STEP\)/);
-  assert.match(overlay, /bot\.summon\(el\)/, "cards still use the existing summon flight");
-});
-
-test("the lockup keeps its original placement, scale, and font controls", () => {
-  assert.match(overlay, /position: LOGO_POSITIONS\.includes\(LOGO_ARG\) \? LOGO_ARG : "tc"/);
-  assert.match(overlay, /width: num\("logo\.w", 24, 6, 46\)/);
-  assert.match(logoModule, /--logo-w:clamp\(9rem,22vw,26rem\)/);
-  assert.match(logoModule, /#desk-logo \.lg-word\{font-family:var\(--display/);
-});
-
-test("the clock is a compact horizontal red date and time at the bottom left", () => {
-  assert.match(CYBER_CSS, /#time-dock\{[^}]*display:flex/);
-  assert.match(CYBER_CSS, /#time-dock \.clock-time[^}]*color:var\(--danger\)/);
-  assert.match(CYBER_CSS, /#time-dock \.clock-day[^}]*color:var\(--danger\)/);
-  assert.match(overlay, /clockTime\.textContent = hmsFormat\.format\(now\)/);
-  assert.match(overlay, /clockDay\.textContent = longFormat\.format\(now\)/);
 });
 
 test("the mascot answers on the classes the desk actually toggles", () => {

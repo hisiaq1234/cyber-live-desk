@@ -1,3 +1,4 @@
+
 /* CYBER LIVE DESK — private controller. Served at /control.
    Strict iOS Broadcast Doctrine: haptic feedback, spring physics, glass compositing, zero-precision touch targets.
    Operate it from a second device. Every request carries the operator token
@@ -6,6 +7,7 @@
 import { BOT_REACTS, COMMAND_HELP, commandText, parseAllowIds, parseDeskCommand, validatePollDraft } from "./desk-commands.js";
 import { deskHotkeyAction } from "./desk-hotkeys.js";
 import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
+import { createCridVoice } from "./crid-voice.js";
 
 (() => {
   "use strict";
@@ -53,6 +55,22 @@ import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
       if (type === 'error') navigator.vibrate([50, 50, 50]);
     } catch { /* ignore */ }
   };
+
+  const voice = createCridVoice({
+    onHeard: (text) => toast("Heard: " + text),
+    onError: (err) => toast("Voice: " + err, true),
+  });
+
+  const startVoice = () => {
+    if (!token) return toast("Log in first", true);
+    voice.start();
+    toast("CRID is listening");
+  };
+  const stopVoice = () => {
+    voice.stop();
+    toast("CRID stopped listening");
+  };
+
 
   const h = (tag, props, ...kids) => {
     const e = document.createElement(tag);
@@ -511,116 +529,14 @@ import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
   const srcBtn = btn("Show source", () => act("source"));
   const modeBtn = btn("X feed", () => act("mode", { mode: state?.mode === "x-following" ? "cards" : "x-following" }));
 
-  // Voice runs only after an explicit button press and captures one utterance per press.
-  const keyboardStatus = h("p", "sub", "Keyboard shortcuts are off.");
-  const keyboardButton = btn("Enable shortcuts", () => {
-    keyboardEnabled = !keyboardEnabled;
-    keyboardButton.textContent = keyboardEnabled ? "Disable shortcuts" : "Enable shortcuts";
-    keyboardButton.classList.toggle("primary", keyboardEnabled);
-    keyboardStatus.textContent = keyboardEnabled ? "Shortcuts are enabled for this tab only." : "Keyboard shortcuts are off.";
-  }, "small");
-  const voiceStatus = h("p", "sub", "Voice is off. Press the button to capture one command.");
-  const voiceButton = btn("Listen for one command", () => listenForVoiceCommand(), "small primary");
-  let voiceRecognition = null;
-  let voiceListening = false;
-  let voiceCancelled = false;
-  const setVoiceStatus = (message, status) => {
-    voiceStatus.textContent = message;
-    voiceStatus.dataset.voiceState = status;
-  };
-  const listenForVoiceCommand = () => {
-    if (voiceListening && voiceRecognition) {
-      voiceListening = false;
-      voiceCancelled = true;
-      voiceRecognition.abort();
-      voiceButton.textContent = "Listen for one command";
-      setVoiceStatus("Voice listening cancelled.", "ready");
-      return;
-    }
-    const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognitionClass) {
-      const message = "Voice commands are not supported by this browser. Try a current Chromium browser, or use the keyboard shortcuts.";
-      setVoiceStatus(message, "error");
-      toast(message, true);
-      return;
-    }
-    voiceRecognition = new SpeechRecognitionClass();
-    voiceCancelled = false;
-    voiceRecognition.lang = "en-NG";
-    voiceRecognition.continuous = false;
-    voiceRecognition.interimResults = false;
-    voiceRecognition.maxAlternatives = 1;
-    voiceRecognition.onstart = () => {
-      voiceListening = true;
-      voiceButton.textContent = "Cancel listening";
-      setVoiceStatus("Listening once — say a command beginning with CRID.", "listening");
-    };
-    voiceRecognition.onresult = async (event) => {
-      const phrase = event.results?.[0]?.[0]?.transcript?.trim();
-      if (!phrase) {
-        setVoiceStatus("No speech was recognized. Press again to retry.", "error");
-        return;
-      }
-      setVoiceStatus(`Heard: “${phrase}” — checking command…`, "processing");
-      const localCommand = parseDeskCommand(phrase);
-      if (localCommand && BRIEF_VERBS.has(localCommand.verb)) {
-        try {
-          const ok = await runBriefCommand(localCommand);
-          setVoiceStatus(ok ? `Executed: ${commandText(localCommand)}` : "Not executed. Check the private research panel.", ok ? "success" : "error");
-        } catch (error) {
-          setVoiceStatus(`Not executed: ${error.message}`, "error");
-        }
-        return;
-      }
-      try {
-        const result = await api("/api/desk/voice", { text: phrase });
-        state = result.state;
-        offset = result.serverNow - Date.now();
-        renderLive();
-        renderApp();
-        setVoiceStatus(`Executed: ${result.command}`, "success");
-        toast(`Voice command: ${result.command}`);
-      } catch (error) {
-        setVoiceStatus(`Not executed: ${error.message}`, "error");
-        toast(error.message, true);
-      }
-    };
-    voiceRecognition.onerror = (event) => {
-      if (voiceCancelled && event.error === "aborted") { voiceCancelled = false; return; }
-      const detail = event.error === "not-allowed" ? "Microphone permission was denied." : `Voice recognition error: ${event.error || "unknown error"}.`;
-      setVoiceStatus(detail, "error");
-    };
-    voiceRecognition.onend = () => {
-      voiceListening = false;
-      voiceCancelled = false;
-      voiceButton.textContent = "Listen for one command";
-      if (voiceStatus.dataset.voiceState === "listening") setVoiceStatus("Listening ended. Press again for another command.", "ready");
-    };
-    try {
-      voiceRecognition.start();
-      voiceListening = true;
-      voiceButton.textContent = "Cancel listening";
-      setVoiceStatus("Starting microphone…", "listening");
-    } catch (error) {
-      voiceListening = false;
-      voiceButton.textContent = "Listen for one command";
-      setVoiceStatus(`Could not start voice recognition: ${error.message}`, "error");
-    }
-  };
-  document.addEventListener("visibilitychange", () => {
-    if (!document.hidden || !voiceListening) return;
-    voiceListening = false;
-    voiceCancelled = true;
-    voiceRecognition?.abort();
-    voiceButton.textContent = "Listen for one command";
-    setVoiceStatus("Voice listening stopped because this page was hidden.", "ready");
-  });
-  window.addEventListener("pagehide", () => voiceRecognition?.abort(), { once: true });
   const voicePanel = h("section", "panel voice-panel",
     h("h2", {}, "Voice & keyboard controls"),
+    h("p", "sub", "CRID voice control. Press “CRID Listen” to capture a command; press “Stop Listen” to cancel."),
+    h("div", "row",
+      btn("CRID Listen", startVoice, "primary"),
+      btn("Stop Listen", stopVoice),
+    ),
     h("p", "sub", "Voice is opt-in and one-shot. It listens only to the controller device after you press the button; it does not listen to Swae’s broadcast audio. Use a separate device while streaming, or type the topic. Browser speech recognition may process audio using its own provider; only recognized text is sent to the authenticated controller API."),
-    voiceStatus,
-    h("div", "row", voiceButton),
     h("p", "sub", "For private research, say “crid research” plus a topic, then “crid deeper” and an optional angle, “crid refresh”, “crid read”, or “crid quiet”. These are not public Swae chat commands and never publish to the viewer overlay."),
     h("p", "sub", "Music voice commands: “crid music play” starts the first queued track, or YE — MAMA'S FAVORITE if the queue is empty. “crid music play” plus a song or artist uses one unique queue match first, then searches YouTube automatically on a miss when the server-only YOUTUBE_API_KEY is configured. “crid music pause”, “crid music next”, and “crid music stop” control playback."),
     h("p", "sub", "Other actions still use the server’s voice safety list."),

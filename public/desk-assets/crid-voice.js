@@ -1,4 +1,5 @@
-import { parseDeskCommand, commandBody } from "./desk-commands.js";
+import { parseDeskCommand } from "./desk-commands.js";
+import { commandBody } from "../../api/_commands.mjs";
 
 const TOKEN_KEY = "desk.token";
 

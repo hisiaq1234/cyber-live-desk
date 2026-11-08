@@ -1,12 +1,541 @@
-const NS="http://www.w3.org/2000/svg",PAL={onyx:"#1F1736",screen:"#0F0B17",edge:"#3A1D9E",indigo:"#6531F8",indigoDk:"#3A1D9E",mint:"#86F6BC",bone:"#A98BFF",ink:"#F4F0FF",red:"#FF5B57",dead:"#5E5873"},DOZE_AFTER_MS=12e4,el=(tag,attrs={},...kids)=>{const e=document.createElementNS(NS,tag);for(const[k,v]of Object.entries(attrs))e.setAttribute(k,v);for(const k of kids)k&&e.append(k);return e},clamp=(n,lo,hi)=>Math.min(hi,Math.max(lo,n)),rand=(lo,hi)=>lo+Math.random()*(hi-lo),rr=(w,h,r,dy=0)=>(r=Math.min(r,h/2,w/2),`M${-w/2} ${-h/2+dy+r}a${r} ${r} 0 0 1 ${r} ${-r}h${w-2*r}a${r} ${r} 0 0 1 ${r} ${r}v${h-2*r}a${r} ${r} 0 0 1 ${-r} ${r}h${-(w-2*r)}a${r} ${r} 0 0 1 ${-r} ${-r}Z`),EYES={open:()=>({d:rr(11,17,4),fill:1}),half:()=>({d:rr(11,9,3,3),fill:1}),closed:()=>({d:rr(12,3,1.5,5),fill:1}),wide:()=>({d:rr(13,21,5),fill:1}),spark:()=>({d:rr(4,4,2),fill:1}),dim:()=>({d:rr(10,2,1,4),fill:1}),happy:()=>({d:"M-7 4Q0 -9 7 4",fill:0,w:4}),sleep:()=>({d:"M-7 0Q0 7 7 0",fill:0,w:3.5}),x:()=>({d:"M-6 -6L6 6M6 -6L-6 6",fill:0,w:4}),mad:s=>{const m=x=>s<0?x:-x;return{d:`M${m(-7)} -9L${m(7)} -3L${m(7)} 8L${m(-7)} 8Z`,fill:1}},wince:s=>{const m=x=>s<0?x:-x;return{d:`M${m(-5)} -7L${m(5)} 0L${m(-5)} 7`,fill:0,w:4}}},MOUTHS={flat:{d:"M-6 0H6",fill:0,w:3},smile:{d:"M-8 -1Q0 7 8 -1",fill:0,w:3},grin:{d:"M-9 -2H9Q9 8 0 8Q-9 8 -9 -2Z",fill:1,w:1.5},o:{d:"M-3.5 0a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0 -7 0Z",fill:1,w:1},t1:{d:rr(12,3,1.5),fill:1,w:1},t2:{d:rr(12,7,3),fill:1,w:1},t3:{d:rr(12,11,4),fill:1,w:1},wavy:{d:"M-9 0q3 -4 6 0t6 0t6 0",fill:0,w:3},dead:{d:"M-6 0H6",fill:0,w:3}},TALK=["t2","t1","t3","t1","t2","flat"],MITTS={down:s=>({y:0,r:0}),up:s=>({y:-26,r:-12*s*-1}),push:s=>({y:-18,r:8*s}),wave:s=>({y:-22,r:26*s}),slam:s=>({y:-4,r:0}),limp:s=>({y:12,r:-6*s})},REST={on:{eyes:"open",gx:0,gy:0,mouth:"flat",hr:0,hy:0,by:0,bs:1,mL:"down",mR:"down",led:"on",tr:0},doze:{eyes:"sleep",gx:0,gy:0,mouth:"flat",hr:3,hy:3,by:2,bs:1,mL:"limp",mR:"limp",led:"dim",tr:0},dead:{eyes:"x",gx:0,gy:0,mouth:"dead",hr:-9,hy:16,by:26,bs:.94,mL:"limp",mR:"limp",led:"off",tr:0}},SEQ={blink:[{eyes:"half"},{eyes:"closed"},{eyes:"closed"}],doubleBlink:[{eyes:"half"},{eyes:"closed"},{eyes:"open"},{eyes:"half"},{eyes:"closed"}],glanceL:[{gx:-4},{gx:-4},{gx:-4,hr:-2}],glanceR:[{gx:4},{gx:4},{gx:4,hr:2}],lookUp:[{gy:-4,hr:3},{gy:-4,hr:3},{gy:-3}],sway:[{tr:7},{tr:-6},{tr:3}],ledBlink:[{led:"dim"},{led:"on"}],shrug:[{hy:-2,by:-2},{hy:-2,by:-2,mL:"wave",mR:"wave"}],wake:[{led:"on",eyes:"dim"},{led:"off",eyes:"spark"},{led:"on",eyes:"dim",hy:10,by:14,hr:-6},{eyes:"half",hy:6,by:6,hr:-4,bs:.97},{eyes:"wide",mouth:"o",hy:-3,by:-2,hr:4,tr:9,bs:1.03},{eyes:"open",mouth:"smile",hy:0,by:0,hr:-2,tr:-6,bs:1},{hr:0,tr:3}],die:[{eyes:"wide",mouth:"o",hy:-3,tr:10},{eyes:"wince",mouth:"wavy",hy:2,hr:-4,bs:.97,led:"dim"},{eyes:"x",mouth:"dead",hy:10,hr:-8,by:14,bs:.95,led:"off",mL:"limp",mR:"limp"}],cheer:[{eyes:"happy",mouth:"grin",mL:"up",mR:"up",by:-3},{by:0,hr:-4,tr:8},{by:-3,hr:4,tr:-8,mL:"wave"},{by:0,hr:-4,mR:"wave",tr:8},{by:-3,hr:0,mL:"up",mR:"up",tr:0},{eyes:"happy",mouth:"smile",mL:"down",mR:"down",by:0}],wince:[{eyes:"wince",mouth:"wavy",hr:-6,hy:-2,bs:.95},{hr:-8,tr:12},{hr:-6,tr:-6},{eyes:"half",mouth:"flat",hr:-3,tr:0}],think:[{gx:4,gy:-4,hr:5},{gx:4,gy:-4,hr:5,tr:10},{gx:-3,gy:-5,hr:4,tr:-8},{gx:4,gy:-4,hr:6},{gx:0,gy:0,hr:0,tr:0}],surprise:[{eyes:"wide",mouth:"o",hy:-4,tr:14,by:-4},{eyes:"wide",mouth:"o",hy:-2,tr:-10},{eyes:"open",mouth:"flat",hy:0,tr:0,by:0}],paid:[{eyes:"half",hy:-6,hr:-6,mR:"up"},{eyes:"happy",hy:8,mR:"slam",tag:"PAID",tr:16},{hy:6,mR:"slam"},{hy:0,mR:"down",mouth:"grin"},{mouth:"smile",tr:0}],due:[{eyes:"mad",hy:-4,mR:"up"},{eyes:"mad",hy:8,mR:"slam",tag:"DUE",tr:-16},{hy:6,mR:"slam"},{hy:0,mR:"down"},{eyes:"open",tr:0}],nod:[{hy:5,hr:2},{hy:0,hr:0}],wave:[{eyes:"happy",mouth:"smile",mR:"up",hy:-2,hr:3},{mR:"wave",hr:4},{mR:"up",hr:-3},{mR:"wave",hr:4},{mR:"up",hr:-3},{eyes:"happy",mouth:"grin",mR:"up",hr:0},{mR:"down",eyes:"open",mouth:"smile",hy:0,hr:0}]};function draw(uid){const sticker={fill:PAL.bone,stroke:PAL.bone,"stroke-width":9,"stroke-linejoin":"round","stroke-linecap":"round"},both=(d,fill,extra={})=>[el("path",{d,...sticker,...extra}),el("path",{d,fill,...extra})],headD="M34 34H104C112 34 116 40 116 48V97C116 104 110 108 102 108H39C29 108 24 103 24 93V50C24 41 28 34 34 34Z",bodyD="M20 160C20 128 40 112 70 112C100 112 120 128 120 160Z",mittD="M-11 2C-11 -8 -3 -11 3 -10C10 -9 12 -2 11 4C10 10 0 12 -6 10C-10 9 -11 6 -11 2Z",svg=el("svg",{viewBox:"-6 -4 160 168","aria-hidden":"true",focusable:"false"}),tagG=el("g",{class:"tag"}),led=el("circle",{cx:104,cy:9,r:5.5,fill:PAL.mint,stroke:PAL.bone,"stroke-width":2.5}),ledGlint=el("circle",{cx:102,cy:7,r:1.4,fill:PAL.bone}),ticket=el("g",{class:"ticket"}),ticketBody=[el("path",{d:"M104 20H136V37H104Z",...sticker,"stroke-width":6}),el("path",{d:"M104 20H136V37H104Z",fill:PAL.red,class:"ticket-fill"}),el("circle",{cx:109.5,cy:25,r:1.7,fill:PAL.onyx})],ticketText=el("text",{x:122,y:33.2,"text-anchor":"middle","font-size":10.5,"font-weight":800,"letter-spacing":.6,fill:PAL.onyx,"font-family":"ui-monospace,'SF Mono','JetBrains Mono',Menlo,Consolas,monospace"});ticketText.textContent="DUE",ticket.append(el("path",{d:"M104 14L108 21",stroke:PAL.bone,"stroke-width":3,fill:"none","stroke-linecap":"round"}),...ticketBody,ticketText),tagG.append(el("path",{d:"M97 38L104 14",stroke:PAL.bone,"stroke-width":9,fill:"none","stroke-linecap":"round"}),el("path",{d:"M97 38L104 14",stroke:PAL.indigoDk,"stroke-width":4,fill:"none","stroke-linecap":"round"}),el("circle",{cx:104,cy:9,r:9,fill:PAL.bone}),led,ledGlint,ticket);const bodyG=el("g",{class:"body"}),neck=[el("rect",{x:58,y:100,width:24,height:16,rx:3,fill:PAL.indigoDk,stroke:PAL.bone,"stroke-width":3})],bodyShapes=both(bodyD,PAL.onyx),chest=[el("rect",{x:46,y:128,width:48,height:22,rx:6,fill:PAL.indigo}),el("rect",{x:53,y:135,width:34,height:6,rx:3,fill:PAL.onyx}),el("path",{d:"M58 138H82",stroke:PAL.bone,"stroke-width":1.6,"stroke-dasharray":"5 3",fill:"none"})],headG=el("g",{class:"head"}),clip=el("clipPath",{id:`hc-${uid}`},el("path",{d:headD})),headShapes=[el("path",{d:headD,...sticker}),el("path",{d:headD,fill:PAL.indigo}),el("g",{"clip-path":`url(#hc-${uid})`},el("path",{d:headD,fill:PAL.onyx,transform:"translate(4 5)"})),el("circle",{cx:24,cy:71,r:4.5,fill:PAL.indigoDk,stroke:PAL.bone,"stroke-width":2}),el("circle",{cx:116,cy:71,r:4.5,fill:PAL.indigoDk,stroke:PAL.bone,"stroke-width":2})],screen=[el("rect",{x:34,y:47,width:72,height:46,rx:11,fill:PAL.screen,stroke:PAL.edge,"stroke-width":2}),el("path",{d:"M40 51H60L51 63H40Z",fill:PAL.ink,opacity:.08})],eyeL=el("path",{class:"eye","stroke-linejoin":"round","stroke-linecap":"round"}),eyeR=el("path",{class:"eye","stroke-linejoin":"round","stroke-linecap":"round"}),eyesG=el("g",{class:"eyes"},el("g",{transform:"translate(57 66)"},eyeL),el("g",{transform:"translate(89 66)"},eyeR)),mouth=el("path",{class:"mouth","stroke-linejoin":"round","stroke-linecap":"round"}),mouthG=el("g",{transform:"translate(73 84)"},mouth),faceG=el("g",{class:"face"},eyesG,mouthG);headG.append(clip,...headShapes,...screen,faceG);const mittL=el("g",{class:"mittL"}),mittR=el("g",{class:"mittR"});for(const m of[mittL,mittR])m.append(el("path",{d:mittD,...sticker,"stroke-width":7}),el("path",{d:mittD,fill:PAL.onyx}),el("path",{d:"M-5 -3Q0 -7 5 -3",stroke:PAL.indigo,"stroke-width":2.4,fill:"none","stroke-linecap":"round"}));return bodyG.append(...bodyShapes,...neck,...chest,headG,mittL,mittR),svg.append(tagG,bodyG),{svg,parts:{tagG,ticket,ticketText,ticketFill:ticketBody[1],led,bodyG,headG,eyeL,eyeR,eyesG,mouth,mouthG,mittL,mittR}}}const CSS=`
-#crid-bot{--bw:clamp(60px,9vmin,120px);position:fixed;z-index:27;width:var(--bw);aspect-ratio:160/168;pointer-events:none;
-  left:50%;margin-left:calc(var(--bw)/-2);bottom:calc(var(--m,16px) + env(safe-area-inset-bottom,0px))}
-#crid-bot.pos-bl{left:calc(var(--m,16px) + 12em);margin-left:0}
-#crid-bot.pos-br{left:auto;margin-left:0;right:calc(var(--m,16px) + var(--identity-w,24em) + .6em)}
-#crid-bot.pos-custom{left:var(--bx);top:var(--by);bottom:auto;right:auto;margin-left:calc(var(--bw)/-2)}
-#crid-bot svg{width:100%;height:100%;display:block;overflow:visible;filter:drop-shadow(3px 4px 0 ${PAL.indigoDk})}
-html.low-power #crid-bot svg,html.swae #crid-bot svg{filter:none}
-#crid-bot .eye,#crid-bot .mouth{transition:none}
-#crid-bot[data-mode="dead"] .eye,#crid-bot[data-mode="dead"] .mouth{stroke:${PAL.dead}!important;fill:${PAL.dead}}
-#crid-bot[data-mode="dead"] .ticket-fill{fill:${PAL.dead}}
-`;export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="bc",x=null,y=null,step=null}={}){if(!document.getElementById("crid-bot-css")){const st=document.createElement("style");st.id="crid-bot-css",st.textContent=CSS,document.head.append(st)}const STEP=step!=null?step:swae?220:lowPower?260:140,reduced=typeof matchMedia=="function"&&matchMedia("(prefers-reduced-motion: reduce)").matches,uid=Math.random().toString(36).slice(2,8),{svg,parts}=draw(uid),host=document.createElement("div");host.id="crid-bot",host.setAttribute("aria-hidden","true"),host.dataset.mode="dead",x!=null&&y!=null?(host.classList.add("pos-custom"),host.style.setProperty("--bx",`${x}%`),host.style.setProperty("--by",`${y}%`)):(position==="bl"||position==="br")&&host.classList.add(`pos-${position}`),host.append(svg),root.append(host);let mode="dead",tagText="DUE",talking=!1,grooving=!1,tickN=0,wait=6,idleQ=[],gestureQ=[],timer=null,frozen=!1,dying=!1;const pendingReact=[];let lastActive=Date.now(),prev=null,online=!0,lastReactN=null;const jobs=[];let running=null;const flights=new WeakMap;let lastDrawn="";const render=p=>{const sig=JSON.stringify(p);if(sig===lastDrawn)return;lastDrawn=sig;const eyeFor=(pose,s)=>(EYES[pose]||EYES.open)(s),[le,re]=Array.isArray(p.eyes)?p.eyes:[p.eyes,p.eyes];for(const[node,name,s]of[[parts.eyeL,le,-1],[parts.eyeR,re,1]]){const e=eyeFor(name,s);node.setAttribute("d",e.d),node.setAttribute("fill",e.fill?PAL.mint:"none"),node.setAttribute("stroke",PAL.mint),node.setAttribute("stroke-width",e.fill?1.4:e.w)}parts.eyesG.setAttribute("transform",`translate(${p.gx} ${p.gy})`);const m=MOUTHS[p.mouth]||MOUTHS.flat;parts.mouth.setAttribute("d",m.d),parts.mouth.setAttribute("fill",m.fill?PAL.mint:"none"),parts.mouth.setAttribute("stroke",PAL.mint),parts.mouth.setAttribute("stroke-width",m.w),parts.mouthG.setAttribute("transform",`translate(${73+p.gx*.35} ${84+p.gy*.25})`),parts.bodyG.setAttribute("transform",`translate(0 ${p.by}) translate(70 160) scale(${(1+(1-p.bs)*.6).toFixed(3)} ${p.bs}) translate(-70 -160)`),parts.headG.setAttribute("transform",`translate(0 ${p.hy}) rotate(${p.hr} 70 104)`);for(const[node,name,s,cx]of[[parts.mittL,p.mL,-1,14],[parts.mittR,p.mR,1,126]]){const mp=(MITTS[name]||MITTS.down)(s);node.setAttribute("transform",`translate(${cx} 140) translate(0 ${mp.y}) rotate(${mp.r})`)}parts.tagG.setAttribute("transform",`rotate(${p.tr*.5} 97 38)`),parts.ticket.setAttribute("transform",`rotate(${p.tr} 104 15)`),parts.ticketText.textContent=p.tag;const paid=p.tag==="PAID";parts.ticketFill.setAttribute("fill",paid?PAL.mint:PAL.red),parts.led.setAttribute("fill",p.led==="on"?PAL.mint:p.led==="dim"?PAL.edge:PAL.dead),host.dataset.mode=mode},compose=frame=>{const p={...REST[mode],tag:tagText,...frame||{}};return(!frame||frame.mouth===void 0)&&talking&&mode==="on"&&(p.mouth=TALK[tickN%TALK.length]),grooving&&mode==="on"&&!frame&&(p.hr=tickN%4<2?-3:3,p.hy=tickN%2?2:0,p.eyes="happy"),!frame&&mode==="doze"&&(p.hr=[3,5,7,5][Math.floor(tickN/3)%4]),p},pickIdle=()=>{const r=Math.random();return mode==="doze"?r<.5?[{led:"on"},{led:"dim"}]:[]:r<.46?SEQ.blink:r<.58?SEQ.doubleBlink:r<.7?rand(0,1)<.5?SEQ.glanceL:SEQ.glanceR:r<.78?SEQ.lookUp:r<.9?SEQ.sway:r<.95?SEQ.ledBlink:SEQ.shrug},tick=()=>{if(frozen)return;timer=setTimeout(tick,STEP),tickN++,advanceJob();let frame=null;gestureQ.length?frame=gestureQ.shift():mode!=="dead"&&(!idleQ.length&&--wait<=0&&(idleQ=[...pickIdle()],wait=Math.round(rand(3,9)*(mode==="doze"?1.8:1)*(220/STEP))),frame=idleQ.shift()||null,mode==="on"&&Date.now()-lastActive>DOZE_AFTER_MS&&setMode("doze")),render(compose(frame)),dying&&!gestureQ.length?(mode="dead",dying=!1):!running&&!jobs.length&&!gestureQ.length&&pendingReact.length&&play(SEQ[pendingReact.shift()]||[])},play=(frames,{urgent=!1}={})=>{reduced||(urgent&&(gestureQ=[]),gestureQ.push(...frames))};function setMode(next){if(next===mode&&!dying)return;const was=mode;if(idleQ=[],next==="dead"){if(was==="dead"||dying)return;cancelJobs(),pendingReact.length=0,dying=!0,play(SEQ.die,{urgent:!0}),reduced&&(mode="dead",dying=!1);return}dying=!1,mode=next,was==="dead"&&play(SEQ.wake,{urgent:!0}),lastActive=Date.now()}const react=kind=>{if(!(mode==="dead"||dying||!SEQ[kind])){if(mode==="doze"&&(mode="on",lastActive=Date.now()),running||jobs.length){pendingReact.length<3&&pendingReact.push(kind);return}play(SEQ[kind],{urgent:!0})}},centre=r=>({x:r.left+r.width/2,y:r.top+r.height/2}),setFlight=(node,f)=>{if(!f){for(const k of["transform","opacity","transition","zIndex","willChange","transformOrigin","visibility"])node.style[k]="";flights.has(node)&&flights.get(node).madeRelative&&(node.style.position=""),flights.delete(node);return}node.style.transform=`translate(${f.tx}px,${f.ty}px) scale(${f.s}) rotate(${f.r}deg)`,node.style.opacity=f.o,node.style.visibility=f.o===0?"hidden":"visible"},prepare=node=>{const info={madeRelative:!1};node.style.transition="none",node.style.willChange="transform",node.style.transformOrigin="50% 50%",node.style.zIndex="40",getComputedStyle(node).position==="static"&&(node.style.position="relative",info.madeRelative=!0),flights.set(node,info)},pathAt=(from,to,p,s,r,o=1,inward=!1)=>{const arc=Math.sin(Math.PI*p)*46,k=inward?p:1-p;return{tx:(from.x-to.x)*k,ty:(from.y-to.y)*k-arc,s,r,o}},summon=(node,opts={})=>{!node||reduced||!(mode==="on"||mode==="doze")||!host.isConnected||(prepare(node),setFlight(node,{tx:0,ty:0,s:1,r:0,o:0}),jobs.push({kind:"summon",node,opts}))},dismiss=(node,done)=>{if(!node){done==null||done();return}if(reduced||mode==="dead"||!host.isConnected){done==null||done();return}prepare(node),jobs.push({kind:"dismiss",node,done})},cancel=node=>{for(let i=jobs.length-1;i>=0;i--)jobs[i].node===node&&jobs.splice(i,1);running&&running.node===node&&(running=null),flights.has(node)&&setFlight(node,null)};function cancelJobs(){var _a,_b;for(const j of jobs.splice(0))setFlight(j.node,null),(_a=j.done)==null||_a.call(j);running&&(setFlight(running.node,null),(_b=running.done)==null||_b.call(running),running=null)}function advanceJob(){var _a,_b,_c;if(!running){if(gestureQ.length||dying||(running=jobs.shift()||null,!running))return;if(running.i=0,!running.node.isConnected){setFlight(running.node,null),(_a=running.done)==null||_a.call(running),running=null;return}running.node.style.transform="none",running.from=centre(host.getBoundingClientRect()),running.to=centre(running.node.getBoundingClientRect()),running.fast=jobs.length>0}const j=running;if(!j.node.isConnected){setFlight(j.node,null),(_b=j.done)==null||_b.call(j),running=null;return}const look=clamp((j.to.x-j.from.x)/60,-5,5);if(j.kind==="summon"){const F=j.fast?[[{eyes:"mad",hy:4,bs:.95,gx:look},[0,0,0,0,0]],[{eyes:"wide",mouth:"o",mL:"push",mR:"push",hy:-2,bs:1.03,gx:look},[.4,.55,8,1,1]],[{eyes:"open",mouth:"smile",mL:"down",mR:"down",gx:0},[.85,1.05,-2,1,1]]]:[[{eyes:"mad",hy:5,bs:.94,hr:look<0?3:-3,gx:look},[0,0,0,0,0]],[{eyes:"wide",mouth:"o",mL:"up",mR:"up",hy:-3,bs:1.04,gx:look},[.15,.3,-12,1,1]],[{mL:"push",mR:"push",hy:-1},[.45,.62,7,1,1]],[{eyes:"open",mouth:"smile",mL:"down",mR:"down",hy:0,bs:1,hr:0,gx:look*.4},[.78,1.06,-3,1,1]],[{eyes:"happy",mouth:"smile",gx:0},[1,1.02,0,1,1]]];if(j.i<F.length){const[bf,[p,s,r,,o]]=F[j.i];gestureQ=[bf],j.i===0?setFlight(j.node,{tx:0,ty:0,s:.2,r:0,o:0}):setFlight(j.node,pathAt(j.from,j.to,p,s,r,o)),j.i++;return}setFlight(j.node,null),gestureQ=[{eyes:"open",mouth:"smile"}],running=null;return}const D=[[.35,.82,5],[.7,.46,-8],[.95,.16,6]];if(j.i<D.length){const[p,s,r]=D[j.i];gestureQ=[{eyes:"wide",mouth:"o",mL:"push",mR:"push",hy:-2}],setFlight(j.node,pathAt(j.from,j.to,p,s,r,1,!0)),j.i++;return}gestureQ=[{eyes:"happy",mouth:"grin",bs:1.04},{eyes:"open",mouth:"smile"}],setFlight(j.node,null),(_c=j.done)==null||_c.call(j),running=null}const activityOf=s=>!!(s.visible&&s.card||s.poll&&s.poll.active!==!1||s.crid||s.court||s.music&&s.music.current||s.spaces&&s.spaces.length||s.riad&&s.riad.active),power=()=>setMode(online?"on":"dead"),observe=s=>{var _a,_b,_c;if(!s)return;const on=s.bot?s.bot.on!==!1:!0;if(on!==online&&(online=on,power()),!online){prev=s;return}const reactN=(_c=(_b=(_a=s.bot)==null?void 0:_a.react)==null?void 0:_b.n)!=null?_c:0;lastReactN===null?lastReactN=reactN:reactN!==lastReactN&&(lastReactN=reactN,react(s.bot.react.kind)),activityOf(s)&&(lastActive=Date.now(),mode==="doze"&&(mode="on",play([{eyes:"wide",mouth:"o",hy:-2},{eyes:"open",mouth:"flat",hy:0}],{urgent:!0})));const verdict=s.crid?s.crid.verdict:null;if(tagText=verdict===1?"PAID":"DUE",prev){const pv=prev.crid?prev.crid.verdict:null;verdict===1&&pv!==1?react("paid"):verdict===0&&pv!==0&&react("due");const pollNow=s.poll&&s.poll.active!==!1,pollBefore=prev.poll&&prev.poll.active!==!1;pollNow&&!pollBefore?react("think"):!pollNow&&pollBefore&&s.poll&&s.poll.options&&react("cheer"),s.card&&s.card.confidence==="disputed"&&!(prev.card&&prev.card.id===s.card.id)&&react("wince")}prev=s},watch=()=>{talking=host.classList.contains("is-active"),grooving=host.classList.contains("music-playing")},mo=typeof MutationObserver=="function"?new MutationObserver(watch):null;return mo==null||mo.observe(host,{attributes:!0,attributeFilter:["class"]}),render(compose(null)),timer=setTimeout(tick,STEP),{el:host,summon,dismiss,cancel,react,observe,setMode,setOnline(v){online=!!v,power()},get mode(){return mode},freeze(pose={}){frozen=!0,clearTimeout(timer),pose.mode&&(mode=pose.mode),pose.tag&&(tagText=pose.tag),lastDrawn="",render({...REST[mode],tag:tagText,...pose})},destroy(){clearTimeout(timer),mo==null||mo.disconnect(),cancelJobs(),host.remove()}}}
+/* CRID Bitmoji — overlay-compatible, starts awake, no purple */
+const NS = "http://www.w3.org/2000/svg";
+const PAL = {
+  onyx: "#1a1a1a",
+  indigoDk: "#2a2a2a",
+  mint: "#7dcea0",
+  bone: "#e8e0d0",
+  red: "#c0392b",
+  dead: "#555555"
+};
+
+const BODIES = [3, 0, 5, 1, 2];
+const ROT = 7;
+const ASSETS = "./desk-assets/crid";
+const AV = b => `${ASSETS}/body-${b}-r${ROT}.png`;
+const SUB_STEPS = [0, 3, 8, 15, 25];
+
+const el = (t, a = {}, ...k) => {
+  const e = document.createElementNS(NS, t);
+  for (const [n, v] of Object.entries(a)) e.setAttribute(n, v);
+  for (const c of k) c && e.append(c);
+  return e;
+};
+const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+const rand = (lo, hi) => lo + Math.random() * (hi - lo);
+
+function stageFor(n) {
+  n = Math.max(0, n | 0);
+  let i = 0;
+  for (let k = 0; k < SUB_STEPS.length; k++) if (n >= SUB_STEPS[k]) i = k;
+  const last = i === SUB_STEPS.length - 1;
+  const frac = last ? clamp((n - SUB_STEPS[i]) / 40, 0, 1) : (n - SUB_STEPS[i]) / (SUB_STEPS[i + 1] - SUB_STEPS[i]);
+  const sx = 1 + 0.08 * frac * (last ? 1.5 : 1);
+  return { i, sx, sy: 1 + (sx - 1) * 0.25, heavy: i >= 3 };
+}
+
+function draw() {
+  const svg = el("svg", { viewBox: "-8 -6 170 178", "aria-hidden": "true" });
+  const shadow = el("ellipse", { class: "shadow", cx: 76, cy: 166, rx: 36, ry: 6, fill: "#000", opacity: 0.35 });
+  const avatar = el("image", {
+    class: "avatar",
+    x: 10, y: 6, width: 140, height: 154,
+    preserveAspectRatio: "xMidYMax meet"
+  });
+  const figG = el("g", { class: "fig" }, avatar);
+  const bodyG = el("g", { class: "body" }, figG);
+  const ticket = el("g", { class: "ticket", opacity: 0 });
+  const ticketText = el("text", {
+    x: 128, y: 16, "text-anchor": "middle", "font-size": 13, "font-weight": 800,
+    fill: PAL.onyx, "font-family": "ui-monospace, Consolas, monospace"
+  });
+  ticket.append(
+    el("path", { d: "M108 2H148V20H108Z", fill: PAL.red, stroke: PAL.bone, "stroke-width": 5 }),
+    ticketText
+  );
+  svg.append(shadow, bodyG, ticket);
+  return { svg, parts: { ticket, ticketText, shadow, bodyG, figG, avatar } };
+}
+
+const CSS = `
+#crid-bot {
+  --bw:clamp(64px, 7.2vw, 104px);
+  --bx: 50%; --by: auto;
+  position: fixed; z-index: 28;
+  width: var(--bw); aspect-ratio: 160/168;
+  pointer-events: none;
+  left: var(--bx); margin-left: calc(var(--bw) / -2);
+  bottom: calc(var(--m, 16px) + env(safe-area-inset-bottom, 0px));
+  top: auto; right: auto;
+}
+#crid-bot.pos-bl { --bx: calc(var(--m, 16px) + 12em); margin-left: 0; }
+#crid-bot.pos-br { left: auto; margin-left: 0; right: calc(var(--m, 16px) + var(--identity-w, 24em) + .6em); }
+#crid-bot.pos-custom {
+  left: var(--bx); top: var(--by); bottom: auto; right: auto;
+  margin-left: calc(var(--bw) / -2);
+}
+#crid-bot svg { width:100%; height:100%; overflow:visible; filter: drop-shadow(4px 6px 0 #111); }
+html.low-power #crid-bot svg, html.swae #crid-bot svg { filter: none; }
+#crid-bot .avatar { image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges; }
+#crid-bot[data-mode="dead"] .avatar { opacity: .5; }
+#crid-bot[data-mode="doze"] .avatar { opacity: .82; }
+`;
+
+export function createCridBot({
+  root = document.body,
+  swae = false,
+  lowPower = false,
+  position = "br",
+  x = null,
+  y = null,
+  step = null
+} = {}) {
+  if (!document.getElementById("crid-bot-css")) {
+    const st = document.createElement("style");
+    st.id = "crid-bot-css";
+    st.textContent = CSS;
+    document.head.append(st);
+  }
+
+  const STEP = step != null ? step : swae ? 220 : lowPower ? 260 : 140;
+  const reduced = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const { svg, parts } = draw();
+  const host = document.createElement("div");
+  host.id = "crid-bot";
+  host.setAttribute("aria-hidden", "true");
+  // Start ready so first observe() can wake it
+  host.dataset.mode = "on";
+
+  if (x != null && y != null) {
+    host.classList.add("pos-custom");
+    host.style.setProperty("--bx", `${x}%`);
+    host.style.setProperty("--by", `${y}%`);
+  } else if (position === "bl" || position === "br") {
+    host.classList.add(`pos-${position}`);
+  }
+
+  host.append(svg);
+  root.append(host);
+
+  for (const b of BODIES) new Image().src = AV(b);
+  parts.avatar.addEventListener("error", () => parts.avatar.setAttribute("opacity", "0"));
+
+  // Start online and awake so summon works on first cards
+  let mode = "on", tagText = null, online = true, subs = 0, bodyI = -1, energy = 100, baseTag = null, transientTag = null, transientTimer = null;
+  let growth = { sx: 1, sy: 1, heavy: false };
+  let gestureQ = [], timer = null, tickN = 0, wait = 6, frozen = false, dying = false;
+  let lastActive = Date.now(), lastDrawn = "", lastSubN = null, prev = null;
+  const jobs = []; let running = null;
+  const flights = new WeakMap();
+
+  const SEQ = {
+    blink:    [{ by: -2 }, { by: 0 }],
+    hop:      [{ by: 3, bs: 0.94 }, { by: -10, bs: 1.05 }, { by: 2, bs: 0.96 }, { by: 0, bs: 1 }],
+    cheer:    [{ by: -8, bs: 1.06 }, { by: 0, hr: -5 }, { by: -5, hr: 5 }, { by: 0, bs: 1 }],
+    wave:     [{ hr: 6 }, { hr: -6 }, { hr: 5 }, { hr: 0 }],
+    nod:      [{ hy: 4 }, { hy: 0 }],
+    think:    [{ hr: 5, hy: -2 }, { hr: 4 }, { hr: 0 }],
+    surprise: [{ by: -6, bs: 1.05 }, { by: 0, bs: 1 }],
+    wince:    [{ by: 2, bs: 0.95, hr: -4 }, { by: 0, bs: 1, hr: 0 }],
+    shrug:    [{ hy: -3, hr: 3 }, { hy: -2, hr: -3 }, { hy: 0, hr: 0 }],
+    paid:     [{ by: -10, bs: 1.07 }, { by: 0, bs: 1 }],
+    due:      [{ by: 4, bs: 0.96 }, { by: 0, bs: 1 }],
+    gift:     [{ by: -12, bs: 1.08 }, { by: -4, bs: 1.03 }, { by: 0, bs: 1 }],
+    bits:     [{ by: -9, bs: 1.06 }, { hr: 8 }, { hr: -6 }, { by: 0, hr: 0, bs: 1 }],
+    sub:      [{ by: -14, bs: 1.1 }, { by: -6, bs: 1.04 }, { by: 0, bs: 1 }],
+    jump:     [{ by: 5, bs: 0.88, hy: 4 }, { by: -30, bs: 1.08, hy: -6 }, { by: -26, bs: 1.06, hy: -4 }, { by: 4, bs: 0.9, hy: 3 }, { by: 0, bs: 1, hy: 0 }],
+    hang:     [{ eyes: "wide", sy: 1.18, by: -4 }, { eyes: "wide", sy: 1.15, by: -2 }, { eyes: "wide", sy: 1.12 }],
+    drop:     [{ by: 18, bs: 0.9, mL: "limp", mR: "limp" }, { by: 8, bs: 0.95 }, { by: 0, bs: 1 }],
+    dejected: [{ pr: 18, hy: 4, mL: "limp", mR: "limp" }, { pr: 22, hy: 6, hr: 4 }, { pr: 18, hy: 4, hr: -4 }, { pr: 20, hy: 5 }],
+    climb: [
+      { by: 4, bs: 0.92 },
+      { by: -16, bs: 1.06, hy: -4 },
+      { by: -8, bs: 1.02, hy: -2 },
+      { by: 0, bs: 1, hy: 0 }
+    ],
+    kick: [
+      { hr: -8, by: 2 },
+      { hr: 14, by: -4, bs: 1.04 },
+      { hr: -4, by: 0, bs: 1 }
+    ],
+    weighted: [
+      { by: 6, bs: 0.9 },
+      { by: 10, bs: 0.88 },
+      { by: 4, bs: 0.94 },
+      { by: 0, bs: 1 }
+    ],
+    peek: [{ hy: -3, hr: 4 }, { hy: -2, hr: 2 }, { hy: 0, hr: 0 }],
+    sideeye: [{ hr: 6 }, { hr: -4 }, { hr: 0 }],
+    salute: [{ hy: -4, mR: "up" }, { hy: -2 }, { hy: 0, mR: "down" }]
+  };
+
+  let lastReactN = null;
+
+  const react = kind => {
+    if (!SEQ[kind] || mode === "dead") return;
+    play(SEQ[kind], true);
+    lastActive = Date.now();
+    if (mode === "doze") setMode("on");
+  };
+
+  const flashTag = (label, ms = 1800) => {
+    transientTag = label;
+    tagText = label;
+    lastDrawn = "";
+    clearTimeout(transientTimer);
+    transientTimer = setTimeout(() => {
+      transientTag = null;
+      tagText = baseTag;
+      lastDrawn = "";
+    }, ms);
+  };
+
+    let affectTimer = null;
+  const affectLayer = (node, type) => {
+    if (!node) return;
+    node.classList.remove("crid-climbed", "crid-weighted", "crid-kicked");
+    node.classList.add(type);
+    clearTimeout(affectTimer);
+    affectTimer = setTimeout(() => node.classList.remove(type), type === "crid-kicked" ? 900 : 1600);
+  };
+
+  // --- personality layer ---
+  let mood = "idle";
+  let bubbleTimer = null;
+  let mischiefTimer = null;
+
+  const WHIMSY_LINES = {
+    idle:     ["rent is always due", "Omooo", "hm.", "no notes", "I saw that"],
+    curious:  ["what's this then?", "new card", "hold on—", "ooh."],
+    delighted:["PAID.", "yes!", "get in jorr", "called it"],
+    alarmed:  ["uh oh", "disputed", "hm hm", "signal's gone"],
+    dozing:   ["zzz", "five more", "wake me for food"],
+    proud:    ["my desk", "tidy.", "look at it"],
+    cheeky:   ["wasn't me", "oops", "just a nudge", "you saw nothing"]
+  };
+
+  const setMood = (m) => {
+    if (!WHIMSY_LINES[m]) return;
+    mood = m;
+    host.dataset.mood = m;
+    const desk = document.getElementById("desk");
+    if (desk) desk.dataset.botMood = m;
+  };
+
+  const say = (text, ms = 1800) => {
+    if (!text || reduced) return;
+    let b = host.querySelector(".bot-bubble");
+    if (!b) {
+      b = document.createElement("div");
+      b.className = "bot-bubble";
+      host.append(b);
+    }
+    b.textContent = text;
+    b.style.opacity = "1";
+    clearTimeout(bubbleTimer);
+    bubbleTimer = setTimeout(() => { b.style.opacity = "0"; }, ms);
+  };
+
+  const nudge = (node) => {
+    if (!node || reduced || document.documentElement.classList.contains("swae")) return;
+    node.classList.add("chaos-nudged");
+    clearTimeout(mischiefTimer);
+    mischiefTimer = setTimeout(() => node.classList.remove("chaos-nudged"), 700);
+  };
+
+  const randomLine = (m = mood) => {
+    const list = WHIMSY_LINES[m] || WHIMSY_LINES.idle;
+    return list[Math.floor(Math.random() * list.length)];
+  };
+  // --- end personality layer ---
+
+  const setBody = i => {
+    if (i === bodyI) return;
+    bodyI = clamp(i, 0, BODIES.length - 1);
+    parts.avatar.setAttribute("href", AV(BODIES[bodyI]));
+    parts.avatar.setAttribute("opacity", "1");
+  };
+
+  const applySubs = (n, beat = false) => {
+    subs = Math.max(0, n | 0);
+    const st = stageFor(subs);
+    setBody(st.i);
+    growth = st;
+    lastDrawn = "";
+    if (beat && mode !== "dead") play([{ by: -6, bs: 1.04 }, { by: 0, bs: 1 }], true);
+  };
+
+  const centre = r => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+
+  const setFlight = (node, f) => {
+    if (!f) {
+      for (const k of ["transform", "opacity", "transition", "zIndex", "willChange", "transformOrigin", "visibility"]) {
+        node.style[k] = "";
+      }
+      if (flights.has(node) && flights.get(node).madeRelative) node.style.position = "";
+      flights.delete(node);
+      return;
+    }
+    node.style.transform = `translate(${f.tx}px, ${f.ty}px) scale(${f.s}) rotate(${f.r}deg)`;
+    node.style.opacity = f.o;
+    node.style.visibility = f.o === 0 ? "hidden" : "visible";
+  };
+
+  const prepare = node => {
+    const info = { madeRelative: false };
+    node.style.transition = "none";
+    node.style.willChange = "transform";
+    node.style.transformOrigin = "50% 50%";
+    node.style.zIndex = "40";
+    if (getComputedStyle(node).position === "static") {
+      node.style.position = "relative";
+      info.madeRelative = true;
+    }
+    flights.set(node, info);
+  };
+
+  const pathAt = (from, to, p, s, r, o = 1, inward = false) => {
+    const arc = Math.sin(Math.PI * p) * 46;
+    const k = inward ? p : 1 - p;
+    return { tx: (from.x - to.x) * k, ty: (from.y - to.y) * k - arc, s, r, o };
+  };
+
+  const render = p => {
+    const sig = JSON.stringify(p) + bodyI;
+    if (sig === lastDrawn) return;
+    lastDrawn = sig;
+    parts.ticketText.textContent = p.tag || "";
+    parts.ticket.setAttribute("opacity", p.tag ? 1 : 0);
+    const col = p.tag === "PAID" ? PAL.mint : PAL.red;
+    parts.ticket.querySelector("path").setAttribute("fill", col);
+    const bs = p.bs || 1, by = p.by || 0, hy = p.hy || 0, hr = p.hr || 0;
+    parts.bodyG.setAttribute("transform", `translate(0 ${by}) translate(80 162) scale(${(1 + (1 - bs) * 0.55).toFixed(3)} ${bs}) translate(-80 -162)`);
+    parts.figG.setAttribute("transform", `translate(0 ${hy * 0.5}) translate(80 160) rotate(${hr}) scale(${growth.sx} ${growth.sy}) translate(-80 -160)`);
+    host.dataset.mode = mode;
+  };
+
+  const play = (frames, urgent = false) => {
+    if (reduced) return;
+    if (urgent) gestureQ = [];
+    gestureQ.push(...frames);
+  };
+
+  function setMode(next) {
+    if (next === mode && !dying) return;
+    const was = mode;
+    if (next === "dead") {
+      if (was === "dead" || dying) return;
+      cancelJobs();
+      dying = true;
+      play([{ by: 8, bs: 0.94 }], true);
+      if (reduced) { mode = "dead"; dying = false; }
+      return;
+    }
+    dying = false;
+    mode = next;
+    if (was === "dead") play([{ by: -4, bs: 1.03 }, { by: 0, bs: 1 }], true);
+    lastActive = Date.now();
+  }
+
+  const summon = (node) => {
+    if (!node || reduced || mode === "dead" || !host.isConnected) return;
+    const failChance = growth.heavy ? 0.45 : energy < 40 ? 0.35 : 0.12;
+    if (Math.random() < failChance) {
+      energy = clamp(energy - 12, 15, 100);
+      play([...SEQ.jump.slice(0, 2), ...SEQ.hang, ...SEQ.drop, ...SEQ.dejected], true);
+    } else {
+      energy = clamp(energy - (growth.heavy ? 8 : 4), 15, 100);
+      play(growth.heavy ? SEQ.hop : SEQ.jump, true);
+    }
+    prepare(node);
+    setFlight(node, { tx: 0, ty: 0, s: 1, r: 0, o: 0 });
+      jobs.push({ kind: "summon", node });
+    affectLayer(node, Math.random() < failChance ? "crid-weighted" : (Math.random() < 0.35 ? "crid-climbed" : "crid-weighted"));
+    if (Math.random() < failChance) {
+      setTimeout(() => {
+        node.classList.remove("crid-weighted", "crid-climbed");
+        node.classList.add("crid-settled");
+      }, 1400);
+    }
+  };
+
+  const dismiss = (node, done) => {
+    if (!node) { done?.(); return; }
+    if (reduced || mode === "dead" || !host.isConnected) { done?.(); return; }
+    prepare(node);
+    jobs.push({ kind: "dismiss", node, done });
+  };
+
+  const cancel = (node) => {
+    for (let i = jobs.length - 1; i >= 0; i--) {
+      if (jobs[i].node === node) jobs.splice(i, 1);
+    }
+    if (running && running.node === node) running = null;
+    if (flights.has(node)) setFlight(node, null);
+  };
+
+  function cancelJobs() {
+    for (const j of jobs.splice(0)) {
+      setFlight(j.node, null);
+      j.done?.();
+    }
+    if (running) {
+      setFlight(running.node, null);
+      running.done?.();
+      running = null;
+    }
+  }
+
+  function advanceJob() {
+    if (!running) {
+      if (gestureQ.length || dying) return;
+      running = jobs.shift() || null;
+      if (!running) return;
+      running.i = 0;
+      if (!running.node.isConnected) {
+        setFlight(running.node, null);
+        running.done?.();
+        running = null;
+        return;
+      }
+      running.node.style.transform = "none";
+      running.from = centre(host.getBoundingClientRect());
+      running.to = centre(running.node.getBoundingClientRect());
+    }
+    const j = running;
+    if (!j.node.isConnected) {
+      setFlight(j.node, null);
+      j.done?.();
+      running = null;
+      return;
+    }
+
+    if (j.kind === "summon") {
+      const frames = [
+        [0, 0.2, 0, 0],
+        [0.25, 0.55, -10, 1],
+        [0.55, 0.9, 6, 1],
+        [0.85, 1.04, -2, 1],
+        [1, 1, 0, 1]
+      ];
+      if (j.i < frames.length) {
+        const [p, s, r, o] = frames[j.i];
+        setFlight(j.node, pathAt(j.from, j.to, p, s, r, o));
+        j.i++;
+        return;
+      }
+      setFlight(j.node, null);
+      running = null;
+      return;
+    }
+
+    const D = [[0.3, 0.8, 4], [0.65, 0.4, -6], [0.95, 0.15, 3]];
+    if (j.i < D.length) {
+      const [p, s, r] = D[j.i];
+      setFlight(j.node, pathAt(j.from, j.to, p, s, r, 1, true));
+      j.i++;
+      return;
+    }
+    setFlight(j.node, null);
+    j.done?.();
+    running = null;
+  }
+
+  const observe = s => {
+    if (!s) return;
+    const on = s.bot ? s.bot.on !== false : true;
+    if (on !== online) {
+      online = on;
+      setMode(online ? "on" : "dead");
+    } else if (online && mode === "dead") {
+      // First observe while already online — wake immediately
+      setMode("on");
+    }
+    if (!online) { prev = s; return; }
+
+
+    const sn = s.bot?.subs ?? s.bot?.subCount ?? null;
+    if (Number.isFinite(sn)) {
+      if (lastSubN === null) { lastSubN = sn; applySubs(sn, false); }
+      else if (sn !== lastSubN) { const up = sn > lastSubN; lastSubN = sn; applySubs(sn, up); }
+    }
+    // Gesture / event reaction
+    const reactN = s.bot?.react?.n ?? 0;
+    if (lastReactN === null) lastReactN = reactN;
+    else if (reactN !== lastReactN) {
+      lastReactN = reactN;
+      const reaction = s.bot?.react;
+      const kind = reaction?.kind;
+      react(kind);
+      if (kind === "bits" || kind === "gift" || kind === "sub") {
+        const fallback = kind === "bits" ? "BITS" : kind === "gift" ? "GIFT" : "+SUB";
+        flashTag(reaction?.label || fallback);
+      }
+      if (kind === "climb") affectLayer(s.bot?.target || null, "crid-climbed");
+      if (kind === "kick") affectLayer(s.bot?.target || null, "crid-kicked");
+      if (kind === "weighted" || kind === "sit") affectLayer(s.bot?.target || null, "crid-weighted");
+    }
+
+
+    const verdict = s.crid?.verdict;
+    const next = s.crid ? (verdict === 1 ? "PAID" : "DUE") : null;
+    if (next !== baseTag) {
+      baseTag = next;
+      if (!transientTag) {
+        tagText = next;
+        if (next === "PAID") play(SEQ.paid, true);
+        else if (next === "DUE") play(SEQ.due, true);
+      }
+    }
+    if (transientTag) tagText = transientTag;
+    if (s.card || s.poll || s.visible) lastActive = Date.now();
+    prev = s;
+  };
+
+  const tick = () => {
+    if (frozen) return;
+    timer = setTimeout(tick, STEP);
+    tickN++;
+    advanceJob();
+    let frame = null;
+    if (gestureQ.length) frame = gestureQ.shift();
+    else if (mode !== "dead" && --wait <= 0) {
+      if (Math.random() < 0.4) play([{ by: -4, bs: 1.03 }, { by: 0, bs: 1 }]);
+      wait = Math.round(rand(5, 11));
+    }
+    render({ ...(frame || {}), tag: tagText });
+    if (dying && !gestureQ.length) { mode = "dead"; dying = false; }
+    if (mode === "on" && Date.now() - lastActive > 120000) setMode("doze");
+    energy = clamp(energy + 0.08, 15, 100);
+  };
+
+  applySubs(0, false);
+  render({ tag: tagText });
+  timer = setTimeout(tick, STEP);
+
+    return {
+    el: host,
+    summon,
+    dismiss,
+    cancel,
+    observe,
+    setMode,
+    setOnline(v) { online = !!v; setMode(online ? "on" : "dead"); },
+    setSubs: n => { lastSubN = n | 0; applySubs(n, false); },
+    flashTag,
+    react,
+    affectLayer,
+    poke: () => { play(SEQ.wince, true); energy = clamp(energy - 6, 15, 100); },
+    setMood,
+    say,
+    nudge,
+    randomLine,
+    get mode() { return mode; },
+    destroy() {
+      clearTimeout(timer);
+      clearTimeout(transientTimer);
+      cancelJobs();
+      host.remove();
+    }
+  };

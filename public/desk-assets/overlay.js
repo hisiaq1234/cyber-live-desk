@@ -24,6 +24,8 @@ import { createCridAudioSync } from "./crid-audio.js";
      logo=0 | tl|tc|tr|bl|bc|br|custom   (desk lockup, see ./logo.js; 0 hides it; default tc)
      logo.w=6–46               (lockup width in vw; the server's state.logo wins over this)
      logo.x= logo.y=0–100      (percent placement, with logo=custom)
+     lat= lon= alt= place=     (where the creator is: the readout top-right and the clock's topline;
+                                falls back to the desk state, then to the browser's geolocation)
      Add a card type: DeskOverlay.register("my-type", (card, opts) => HTMLElement)  */
 import { createSoundOrbSync } from "./sound-orb.js";
 import { createCridBot } from "./crid-bot.js";
@@ -93,6 +95,81 @@ import { youtubeEmbedUrl } from "./youtube-embed.js";
   const xJPos = "top";
   const xJPollMs = num("x.jpoll", 60, 10, 3600) * 1000;
   const xUserId = P.get("x.userId") || "";
+
+  // ---------- location ----------
+  // Where the creator is. One source, several consumers — the readout top-right, the clock's
+  // topline, and next the centre of his map — resolved in this order, first available wins:
+  //   1. ?lat=&lon=&alt=&place= on this page. The URL travels with the frame, so it works in a
+  //      Swae widget box and in a browser-source URL, where nobody can tap "allow".
+  //   2. the point the operator stored in desk state.
+  //   3. navigator.geolocation, when this browser has been granted permission.
+  //   4. nothing at all: no readout, no label change, no error, no waiting. A refused prompt is
+  //      the normal case here, not a failure — this page is drawn by three different renderers.
+  const LOCATION_RANK = { geo: 1, control: 2, url: 3 };
+  const PLACE_MAX = 80;
+  const numOrNaN = (v) => (v == null || v === "" ? NaN : Number(v));
+
+  // The nearest named place for a coordinate. Today the only name it can produce is one that
+  // travelled with the coordinate, because the archive that answers this from coordinates alone —
+  // his own unilag.pmtiles — is not in the repo yet. That is the seam: when it lands, look the
+  // point up between the `given` check and the empty return, and every consumer below (the
+  // readout, the clock topline, and next the map's centre) picks it up without changing.
+  const nearestPlace = (lat, lon, given) => {
+    const named = typeof given === "string" ? given.trim() : "";
+    return named ? named.slice(0, PLACE_MAX) : "";
+  };
+
+  // A location is only a location if it carries a coordinate: everything else is optional, so a
+  // URL with a place and no numbers (or the other way round) degrades to what it actually has.
+  const readLocation = (raw, source) => {
+    if (!raw) return null;
+    const lat = numOrNaN(raw.lat);
+    const lon = numOrNaN(raw.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+    const alt = numOrNaN(raw.alt);
+    const updatedAt = numOrNaN(raw.updatedAt);
+    return {
+      lat,
+      lon,
+      alt: Number.isFinite(alt) ? Math.round(alt) : null,
+      place: nearestPlace(lat, lon, raw.place),
+      source,
+      updatedAt: Number.isFinite(updatedAt) ? updatedAt : Date.now(),
+    };
+  };
+
+  const URL_LOCATION = readLocation({
+    lat: P.get("lat"), lon: P.get("lon"), alt: P.get("alt"), place: P.get("place"),
+  }, "url");
+  let currentLocation = URL_LOCATION;
+  let locationRank = URL_LOCATION ? LOCATION_RANK.url : 0;
+
+  // Only a source that outranks what is already on screen can replace it: a browser fix that lands
+  // after the operator's own point must not overwrite it, and nothing overwrites the URL. The same
+  // source only replaces a different reading of itself, so a new operator point lands and a repeat
+  // of the one already on screen does not redraw the frame.
+  const useLocation = (next) => {
+    if (!next) return;
+    const rank = LOCATION_RANK[next.source] ?? 0;
+    if (rank < locationRank) return;
+    if (rank === locationRank && currentLocation &&
+      currentLocation.lat === next.lat && currentLocation.lon === next.lon &&
+      currentLocation.alt === next.alt && currentLocation.place === next.place) return;
+    currentLocation = next;
+    locationRank = rank;
+    renderLocation();
+  };
+
+  // The clock's topline is one line of tracked caps, so a long place is trimmed at a word boundary
+  // rather than wrapped inside the plate. The readout above keeps the whole name.
+  const clockLabel = (place, max = 26) => {
+    const p = place.trim();
+    if (p.length <= max) return p;
+    const cut = p.slice(0, max - 1);
+    const at = Math.max(cut.lastIndexOf(","), cut.lastIndexOf(" "));
+    return `${(at > 8 ? cut.slice(0, at) : cut).trim()}…`;
+  };
 
   // ---------- styles ----------
   // "cyber" is the desk's own palette: onyx surfaces, indigo structure, mint for the single
@@ -509,6 +586,26 @@ html.swae .scale-wrap{display:none}
 #swae-chat .swae-chat-text{color:#e7ecf2;flex:1 1 auto;min-width:0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
+/* Where the creator is, top-right, in the clock's Black Market language rather than the desk's
+   cyber palette: the same dark plate, a crimson edge, IBM Plex Mono numerals, because it is the
+   same fact about the same moment as the timestamp. It is the first item of the right column, so
+   the corner stays his and a module arriving underneath can never land on top of it. No blur: on
+   Swae this is drawn once per snapshot, and nothing here animates or transitions. */
+#dock-right>#location-readout{align-self:flex-end;width:fit-content;max-width:100%;
+  display:flex;flex-direction:column;align-items:flex-end;gap:5px;text-align:right;
+  box-sizing:border-box;padding:9px 14px 10px 16px;
+  border:1px solid rgba(247,243,234,.14);border-right:3px solid #dc143c;border-radius:12px 0 0 12px;
+  background:rgba(8,11,16,.84);color:#f7f3ea;
+  box-shadow:0 14px 40px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.05);
+  font-family:"Space Grotesk",var(--brand),sans-serif}
+#dock-right>#location-readout[hidden]{display:none}
+#location-readout .loc-place{color:#dc143c;font-size:clamp(11px,.78vw,14px);font-weight:700;
+  letter-spacing:.09em;line-height:1.25;text-transform:uppercase}
+#location-readout .loc-fix{display:flex;align-items:center;gap:9px;color:rgba(247,243,234,.62);
+  font-family:"IBM Plex Mono","Courier New",var(--mono);font-size:clamp(10px,.7vw,13px);
+  letter-spacing:.02em;font-variant-numeric:tabular-nums lining-nums}
+#location-readout .loc-sep{flex:0 0 auto;width:4px;height:4px;border-radius:50%;background:#dc143c}
+
 @media(max-width:900px){.layout-alive .slot{width:min(39vw,460px)}
   .layout-alive #dock-right{width:min(31vw,360px)}}
 /* On a narrow frame the reference let the plate fill the frame, because in its own file nothing
@@ -518,6 +615,14 @@ html.swae .scale-wrap{display:none}
 @media(max-width:520px){#time-dock{min-width:0;width:calc(100vw - 2*var(--m));
   bottom:calc(var(--m) + 3.4em + env(safe-area-inset-bottom,0px))}
   #time-dock .clock-time{font-size:clamp(22px,7vw,34px)}}
+/* A 500x500 Swae box: the lockup still owns the top-centre band, so the readout steps below it,
+   drops to the place and the altitude, and shrinks its numerals rather than wrapping. Same plate,
+   fewer lines — it is read on a phone, a thumbnail away from the full frame. */
+@media(max-width:520px){
+  #dock-right>#location-readout{margin-top:3.4em;padding:7px 11px 8px 12px;gap:3px;border-radius:9px 0 0 9px}
+  #location-readout .loc-place{font-size:10px;letter-spacing:.06em}
+  #location-readout .loc-fix{font-size:9px;gap:6px}
+  #location-readout .loc-coords,#location-readout .loc-sep{display:none}}
 `;
 
 // ---------- upgraded DOM helper ----------
@@ -774,7 +879,59 @@ html.swae .scale-wrap{display:none}
   });
   const renderLogo = (l) => { if (lockup) lockup.update(l || {}); };
 
+  // ---------- location readout ----------
+  // The place, the coordinate and the altitude, top-right, drawn in the clock's language because
+  // it is the same fact about the same moment. It is the first item of the right column rather
+  // than a floating plate, so a module arriving underneath it cannot land on top of it, and it is
+  // hidden until there is a location: a frame with no location is byte-for-byte the frame that
+  // shipped before this existed.
+  const locationPlace = h("span", "loc-place");
+  const locationFix = h("div", "loc-fix");
+  const locationReadout = h("div", { id: "location-readout", hidden: true, "aria-live": "off" },
+    locationPlace, locationFix);
+  const fmtDegrees = (v, pos, neg) => `${Math.abs(v).toFixed(4)}° ${v >= 0 ? pos : neg}`;
+  const renderLocation = () => {
+    // The clock's topline is the place when there is one, and his own "Black Market" when there is
+    // not — the label it has always carried. Nothing else about the clock changes, and the
+    // "Africa / Lagos" line below it is his, always.
+    const market = root.querySelector("#time-dock .clock-market");
+    if (market) market.textContent = currentLocation?.place ? clockLabel(currentLocation.place) : "Black Market";
+    if (!currentLocation) {
+      locationReadout.hidden = true;
+      return;
+    }
+    locationReadout.hidden = false;
+    locationReadout.dataset.source = currentLocation.source;
+    locationPlace.hidden = !currentLocation.place;
+    locationPlace.textContent = currentLocation.place || "";
+    locationFix.replaceChildren(h("span", "loc-coords",
+      `${fmtDegrees(currentLocation.lat, "N", "S")}, ${fmtDegrees(currentLocation.lon, "E", "W")}`));
+    if (currentLocation.alt != null) {
+      locationFix.append(h("i", { class: "loc-sep", "aria-hidden": "true" }),
+        h("span", "loc-alt", `↕ ${currentLocation.alt}m`));
+    }
+  };
+
+  // The browser's own fix, asked for once and never awaited: the page draws whether or not it
+  // answers. A denied prompt, a missing API, or a browser that throws here is not an error state —
+  // the frame keeps the location it already had, or none at all, and looks exactly as it did
+  // before it knew where it was.
+  const requestGeo = () => {
+    if (locationRank >= LOCATION_RANK.control) return; // the URL or the operator already decided
+    const geo = navigator.geolocation;
+    if (!geo || typeof geo.getCurrentPosition !== "function") return;
+    try {
+      geo.getCurrentPosition(
+        (pos) => useLocation(readLocation({
+          lat: pos.coords.latitude, lon: pos.coords.longitude, alt: pos.coords.altitude,
+        }, "geo")),
+        () => {},
+        { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 });
+    } catch { }
+  };
+
   const dockRight = h("div", { id: "dock-right" });
+  dockRight.append(locationReadout);
   root.append(dockRight);
 
   const modulesWrap = h("div", { id: "modules" });
@@ -1138,6 +1295,9 @@ html.swae .scale-wrap{display:none}
     lastUpdated = s.updatedAt;
     clockOffset = s.serverNow - Date.now();
     state = s;
+    // A point the operator stored in desk state is the desk's own answer to "where is he". The
+    // page's URL still wins over it, and it still wins over a browser fix.
+    if (s.location) useLocation(readLocation(s.location, "control"));
     // CRID derives its own reactions, text tag and dozing from the same state the panels get; it
     // keeps the previous state itself and counts the diff, so it only fires on a real change.
     bot?.observe(s);
@@ -1237,6 +1397,10 @@ html.swae .scale-wrap{display:none}
   }
 
   window.DeskOverlay = { register, logo: lockup };
+  // One location, both consumers: the readout and the clock's topline are drawn once here, after
+  // both plates exist, and again only when the location itself changes.
+  renderLocation();
+  requestGeo();
   refreshHeadlines();
   // He was placed before the clock existed, so the floor he measured was the frame's own. Now that
   // every plate is in the document, measure again: this is what puts him on top of the bottom band

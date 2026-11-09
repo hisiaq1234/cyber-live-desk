@@ -6,7 +6,7 @@
 
 import { randomUUID } from "node:crypto";
 import { HttpError } from "./_desk-core.mjs";
-import { fetchXTrends } from "./x-feed.mjs";
+import { fetchXTrends, hasXCredentials } from "./x-feed.mjs";
 
 export const BRIEF_KEY = "brief";
 export const BRIEF_LOCK_KEY = "brief:lock";
@@ -260,8 +260,9 @@ function xLocation(woeid) {
 
 async function optionalXSnapshot({ env, fetchFn, now, requested = false }) {
   if (!requested) return { trends: [], note: "X lookup was not requested; no X API call was made." };
-  const token = String(env.X_BEARER_TOKEN || env.X_ACCESS_TOKEN || "").trim();
-  if (!token) return { trends: [], note: "X snapshot skipped: no X bearer token is configured." };
+  // A bearer token or all four OAuth 1.0a values, not X_ACCESS_TOKEN on its own: that one alone
+  // never authenticated anything, which is why this snapshot was always empty.
+  if (!hasXCredentials(env)) return { trends: [], note: "X snapshot skipped: no X credentials are configured." };
   const woeid = clean(env.BRIEF_X_WOEID || "1398823", 12);
   const region = xLocation(woeid);
   try {

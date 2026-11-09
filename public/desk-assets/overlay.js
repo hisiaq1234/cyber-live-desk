@@ -25,6 +25,7 @@ import { createCridAudioSync } from "./crid-audio.js";
      logo.x= logo.y=0–100      (percent placement, with logo=custom)
      Add a card type: DeskOverlay.register("my-type", (card, opts) => HTMLElement)  */
 import { createSoundOrbSync } from "./sound-orb.js";
+import { requestXFeed } from "./x-feed-client.js";
 import { createCridBot } from "./crid-bot.js";
 import { createLogo, LOGO_POSITIONS, LOGO_MARKS } from "./logo.js";
 import { CYBER_CSS } from "./cyber-theme.js";
@@ -316,6 +317,10 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 .x-item .x-handle{color:#8E8E93;font-size:.82em}
 .x-trend{display:flex;align-items:center;gap:.5em}
 .x-trend .x-count{color:#8E8E93;font-size:.78em;font-weight:600}
+/* The unavailable panel carries a sentence, not a one-line trend, so it gets a little more
+   room than the trend list and keeps its "retrying" footer on screen. */
+#x-jumbotron.x-problem-panel{max-height:28dvh}
+.x-item.x-problem{font-size:.86em;-webkit-line-clamp:4}
 
 /* Module Component Styles — individual caps keep the dock total bounded */
 .court-wrap,.music-wrap,.space-wrap,.ledger-wrap,.riad-wrap {
@@ -1014,6 +1019,27 @@ html.swae .scale-wrap{display:none}
   let xTimer = null;
   let xStarted = false;
 
+  // The feed is down: say so on the jumbotron instead of leaving the corner blank. No stand-in
+  // tweets — an empty panel that admits it is broken is honest, invented posts are not.
+  const renderXproblem = (message) => {
+    if (!xMode) return;
+    if (xEl && xKey === `problem|${message}`) return;
+    const head = h("div", "x-head", h("span", "x-brand", "X"), h("span", "x-kind", "Unavailable"));
+    const list = h("div", "x-list",
+      h("div", "x-item x-problem", h("span", "x-text", message)));
+    const foot = h("div", "", h("span", "x-count", `Retrying every ${Math.round(xJPollMs / 1000)}s`));
+    if (xEl) {
+      xEl.replaceChildren(head, list, foot);
+    } else {
+      xEl = h("div", { id: "x-jumbotron" }, head, list, foot);
+      dockRight.prepend(xEl);
+      bot?.summon(xEl);
+      requestAnimationFrame(() => requestAnimationFrame(() => xEl?.classList.add("in")));
+    }
+    xEl.classList.add("x-problem-panel");
+    xKey = `problem|${message}`;
+  };
+
   const renderXjumbotron = (feed) => {
     if (!xMode || !feed) {
       if (xEl) {
@@ -1080,18 +1106,26 @@ html.swae .scale-wrap{display:none}
       requestAnimationFrame(() => requestAnimationFrame(() => xEl?.classList.add("in")));
     }
     xKey = key;
+    xEl?.classList.remove("x-problem-panel");
     clearTimeout(xTimer);
     xTimer = setTimeout(fetchXfeed, xJPollMs);
   };
 
   const fetchXfeed = async () => {
     if (!xMode) return;
-    const params = new URLSearchParams({ mode: xMode });
-    if (xUserId) params.set("userId", xUserId);
-    try {
-      const r = await fetch(`/api/x/feed?${params}`, { cache: "no-store" });
-      if (r.ok) renderXjumbotron(await r.json());
-    } catch { }
+    clearTimeout(xTimer);
+    const result = await requestXFeed(globalThis.fetch, { mode: xMode, userId: xUserId });
+    if (!xMode) return;
+    if (result.ok) {
+      renderXjumbotron(result.feed);
+      return;
+    }
+    // A failure used to fall into an empty catch: nothing on air, nothing anywhere else, and the
+    // poll timer was never re-armed, so one bad response ended the feed for the whole stream.
+    console.warn("[desk] " + result.error);
+    renderXproblem(result.error);
+    clearTimeout(xTimer);
+    xTimer = setTimeout(fetchXfeed, xJPollMs);
   };
 
   const render = () => {

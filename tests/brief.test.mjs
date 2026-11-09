@@ -43,7 +43,9 @@ const validText = [
 function fakeFetch({ rssXml = rss(item()), gemini = generated(validText), xData = { data: [{ trend_name: "#LagosTopic", tweet_count: 8 }] }, onGemini, onX } = {}) {
   return async (url, init = {}) => {
     if (String(url).startsWith("https://news.google.com/rss/")) return new Response(rssXml, { status: 200 });
-    if (String(url).startsWith("https://api.x.com/")) {
+    // api.twitter.com and api.x.com are the same v2 API under two hostnames; the desk uses
+    // api.twitter.com everywhere, so match either instead of pinning one.
+    if (/^https:\/\/api\.(?:x|twitter)\.com\//.test(String(url))) {
       await onX?.(url, init);
       return new Response(JSON.stringify(xData), { status: 200 });
     }

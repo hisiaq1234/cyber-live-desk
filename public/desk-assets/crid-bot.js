@@ -2,16 +2,16 @@
    pose/gesture engine, summon/dismiss/cancel flights, reactions, observe, PAID/DUE verdict tag,
    on/doze/dead, is-active/music-playing.
 
-   Sprite: ./desk-assets/crid/body-<shape>-r7.webp (600x800, downscaled from the 1050x1400 masters:
-   the biggest he is ever drawn is 340 CSS px wide, so 600px is ~2.5x the display box and ~1.3x a
-   retina one). Shapes lean -> fattest: 3, 0, 5, 1, 2.
+Sprite: ./desk-assets/crid/body-<shape>-r7.webp (600x800, downscaled from the 1050x1400 masters:
+    the biggest he is ever drawn is 340 CSS px wide, so 600px is ~2.5x the display box and ~1.3x a
+    retina one). Shapes lean -> fattest: 000, 00, 3, 0, 5, 1, 2.
    Growth: every sub moves him up a notch. SUB_STEPS is where each body shape takes over, and
    between shapes he widens a little (STAGE_STRETCH) so every single sub is visible. The size is
    worked out from the sub total each time, so an overlay reload mid-stream restores it.
    Feed it with observe(state) where state.bot.subs is the sub count this stream, or call setSubs(n). */
 const NS="http://www.w3.org/2000/svg",PAL={onyx:"#1F1736",screen:"#0F0B17",edge:"#3A1D9E",indigo:"#6531F8",indigoDk:"#3A1D9E",mint:"#86F6BC",bone:"#A98BFF",ink:"#F4F0FF",red:"#FF5B57",dead:"#5E5873"},
-DOZE_AFTER_MS=12e4,BODIES=[3,0,5,1,2],ROT=7,ASSETS="./desk-assets/crid",AV=b=>`${ASSETS}/body-${b}-r${ROT}.webp`,
-SUB_STEPS=[0,3,8,15,25],STAGE_STRETCH=.06,
+DOZE_AFTER_MS=12e4,BODIES=["000","00",3,0,5,1,2],ROT=7,ASSETS="./desk-assets/crid",AV=b=>`${ASSETS}/body-${b}-r${ROT}.webp`,
+SUB_STEPS=[0,2,5,9,14,21,30],STAGE_STRETCH=.06,
 el=(t,a={},...k)=>{const e=document.createElementNS(NS,t);for(const[n,v]of Object.entries(a))e.setAttribute(n,v);for(const c of k)c&&e.append(c);return e},
 clamp=(n,lo,hi)=>Math.min(hi,Math.max(lo,n)),rand=(lo,hi)=>lo+Math.random()*(hi-lo),
 stageFor=n=>{n=Math.max(0,n|0);let i=0;for(let k=0;k<SUB_STEPS.length;k++)if(n>=SUB_STEPS[k])i=k;
@@ -116,8 +116,10 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const readMotion=()=>{reduced=!!(mq&&mq.matches)};
   readMotion(); if(mq){const onmq=()=>{readMotion();lastDrawn=""}; mq.addEventListener?mq.addEventListener("change",onmq):mq.addListener&&mq.addListener(onmq)}
   for(const b of BODIES){const im=new Image();im.src=AV(b)}
-  parts.avatarBase.addEventListener("error",()=>{parts.avatarBase.setAttribute("display","none");parts.avatarEyes.setAttribute("display","none");parts.avatarMouth.setAttribute("display","none");parts.ph.removeAttribute("display")});
+  parts.avatarBase.addEventListener("error",()=>{parts.avatarBase.setAttribute("display","none");parts.ph.removeAttribute("display")});
   parts.avatarBase.addEventListener("load",()=>{parts.ph.setAttribute("display","none");parts.avatarBase.removeAttribute("display");parts.avatarEyes.removeAttribute("display");parts.avatarMouth.removeAttribute("display")});
+  parts.avatarEyes.addEventListener("error",()=>{parts.avatarEyes.setAttribute("display","none")});
+  parts.avatarMouth.addEventListener("error",()=>{parts.avatarMouth.setAttribute("display","none")});
   let mode="dead",tagText=null,talking=!1,grooving=!1,tickN=0,wait=6,idleQ=[],gestureQ=[],timer=null,frozen=!1,dying=!1;
   // online is null, not true: "nothing has told me otherwise yet" is a different state from "the
   // desk says he is on". Starting at true made the first observe({bot:{on:true}}) a no-op — it only
@@ -125,6 +127,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // `mode!=="dead"` guard skipped every gesture. That was the dead-on-air bug.
   const pendingReact=[]; let lastActive=Date.now(),prev=null,online=null,lastReactN=null,lastSubN=null,bodyI=-1,growth={sx:1,sy:1},fx=1,walk=null,roamN=0,subs=0,home=null;
   const jobs=[]; let running=null; const flights=new WeakMap;
+  const failedEyes=new Set(), failedMouth=new Set();
   const setBody=i=>{if(i===bodyI)return; bodyI=clamp(i,0,BODIES.length-1); const src=AV(BODIES[bodyI]); parts.avatarBase.setAttribute("href",src); parts.avatarBase.setAttributeNS(XLINK,"href",src);};
   const subCount=s=>{const b=s&&s.bot||{}; const n=b.subs??b.subCount??b.subN; return Number.isFinite(n)?n:null};
   const applySubs=(n,beat)=>{subs=Math.max(0,n|0); const st=stageFor(subs); setBody(st.i); growth={sx:st.sx,sy:st.sy}; lastDrawn="";

@@ -35,6 +35,67 @@
     { "match": ["clutch", "clutched", "insane", "crazy"], "mood": "delighted", "lines": ["clutch. I saw that.", "that was not skill, that was confidence."] },
     { "match": ["died", "dead", "rip", "f"], "mood": "alarmed", "lines": ["he's fine. that was a tactical lie-down.", "rip. the respawn screen is a lifestyle."] }
   ],
+  "reactions": {
+    "_readme": "The owner's reaction vocabulary — the first words Crid actually understands. Trigger words, thresholds, cooldowns and every line live here, never in the engine. hype = W / Ws / www / 1 / 1s in chat (standalone tokens only). roast = L / Ls, or a roast term in `terms`. layerDrag = a named overlay layer is in the way, so Crid walks to it, drags it aside and says the line; the first line must stay exactly 'I saw what you did there.' Switch any of them off with \"enabled\": false.",
+    "hype": {
+      "enabled": true,
+      "windowMs": 8000,
+      "threshold": 3,
+      "minUsers": 2,
+      "cooldownMs": 45000,
+      "maxPerMinute": 3,
+      "tokens": ["w", "ws", "1", "1s"],
+      "patterns": ["^w{2,}$", "^1+$"],
+      "presence": "hype",
+      "emotion": "hype",
+      "gesture": "jump",
+      "effect": { "type": "particles", "intensity": 0.8, "duration": 1200 },
+      "style": "hype",
+      "duration": 5200,
+      "lines": [
+        "Ws in chat. I called it before you did.",
+        "that's a W. I'm not even surprised.",
+        "1s across the board. the desk agrees.",
+        "chat said W. chat was right. write it down."
+      ]
+    },
+    "roast": {
+      "enabled": true,
+      "windowMs": 12000,
+      "threshold": 2,
+      "termWeight": 2,
+      "minUsers": 1,
+      "cooldownMs": 60000,
+      "maxPerMinute": 2,
+      "tokens": ["l", "ls"],
+      "patterns": ["^l{2,}$"],
+      "terms": ["take the l", "skill issue", "washed", "ratio", "cooked"],
+      "emotion": "sad",
+      "gesture": "wince",
+      "effect": { "type": "tears", "intensity": 0.9, "duration": 6000 },
+      "style": "dry",
+      "duration": 6000,
+      "lines": [
+        "that's an L. I'll be over here, crying, professionally.",
+        "roasted by my own chat. rent is still due.",
+        "fine. I'll cry about it. quietly. on stream.",
+        "chat's right. it's so over. (it is not over.)"
+      ]
+    },
+    "layerDrag": {
+      "enabled": true,
+      "cooldownMs": 20000,
+      "maxPerMinute": 3,
+      "allowedLayers": ["card", "recap", "chips", "link"],
+      "sides": ["left", "right", "up", "down"],
+      "defaultSide": "left",
+      "travelMs": 900,
+      "dragMs": 700,
+      "style": "dry",
+      "duration": 6000,
+      "lines": ["I saw what you did there."]
+    }
+  },
   "lines": {
     "greet": [
       "oh. people.",

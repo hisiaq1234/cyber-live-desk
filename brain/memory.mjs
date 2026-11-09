@@ -276,6 +276,8 @@ export function labelFor(evt) {
       return `${evt.user} cheered ${evt.amount} bits`;
     case "raid":
       return `${evt.user} raided with ${evt.viewers} viewers`;
+    case "layer":
+      return `"${evt.layer}" layer was in the way`;
     case "chat":
       return `${evt.user}: ${evt.text}`;
     default:

@@ -1,5 +1,8 @@
 import { parseDeskCommand } from "./desk-commands.js";
-import { commandBody } from "../../api/_commands.mjs";
+// commandBody lives in the browser copy of the shared rules. The api/ copy is a
+// server-only module: /api/_commands.mjs is a 404 in the browser, so importing it
+// here cascade-fails control.js and blanks the operator panel.
+import { commandBody } from "./_commands.mjs";
 
 const TOKEN_KEY = "desk.token";
 

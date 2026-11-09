@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Crid — overlay</title>
+    <link rel="stylesheet" href="/overlay.css" />
+  </head>
+  <body>
+    <!-- Crid's body is public/desk-assets/crid-bot.js — the same one /desk uses.
+         This page renders; it never decides and never remembers. -->
+    <div id="crid-stage">
+      <div id="fx" aria-hidden="true"></div>
+      <div id="crid-card" aria-hidden="true"><div class="card-title"></div><div class="card-sub"></div></div>
+      <div id="crid-recap" aria-hidden="true"><div class="recap-head"></div><ul class="recap-list"></ul></div>
+      <div id="crid-chips" aria-hidden="true"></div>
+      <div id="crid-link" aria-hidden="true"><span class="dot"></span><span class="txt">offline</span></div>
+    </div>
+    <script type="module" src="/overlay.js"></script>
+  </body>
+</html>

@@ -3,7 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "brain": "node brain/index.mjs",
+    "brain:demo": "node brain/index.mjs --demo"
   },
   "dependencies": {
     "@upstash/redis": "^1.34.0",

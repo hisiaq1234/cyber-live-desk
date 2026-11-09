@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Crid — brain</title>
+    <style>
+      :root {
+        --onyx: #14101f;
+        --panel: #1f1736;
+        --indigo: #6531f8;
+        --mint: #86f6bc;
+        --bone: #a98bff;
+        --ink: #f4f0ff;
+        --red: #ff5b57;
+        --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 28px;
+        background: var(--onyx);
+        color: var(--ink);
+        font: 14px/1.5 var(--mono);
+      }
+      h1 { font-size: 20px; margin: 0 0 4px; color: var(--mint); letter-spacing: 0.02em; }
+      p.sub { margin: 0 0 20px; color: var(--bone); }
+      .row { display: flex; gap: 14px; flex-wrap: wrap; align-items: stretch; margin-bottom: 20px; }
+      .box { background: var(--panel); border: 2px solid var(--indigo); border-radius: 10px; padding: 12px 16px; min-width: 190px; }
+      .box .k { color: var(--bone); font-size: 10px; text-transform: uppercase; letter-spacing: 0.09em; }
+      .box .v { font-size: 18px; font-weight: 700; margin-top: 2px; }
+      a { color: var(--mint); }
+      a.btn {
+        display: inline-block; padding: 9px 14px; border-radius: 8px; background: var(--indigo);
+        color: var(--ink); text-decoration: none; font-weight: 700; border: 2px solid var(--bone);
+      }
+      a.btn.alt { background: transparent; color: var(--bone); }
+      #log { background: #100c1a; border: 2px solid #2a2050; border-radius: 10px; padding: 12px; min-height: 260px; max-height: 52vh; overflow: auto; }
+      #log .line { padding: 3px 0; border-bottom: 1px dashed #241b45; white-space: pre-wrap; }
+      #log .why { color: var(--bone); }
+      #log .cmds { color: var(--mint); opacity: 0.85; font-size: 12px; }
+      .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--red); margin-right: 6px; }
+      .dot.ok { background: var(--mint); }
+      .dot.wait { background: #ffcf57; }
+    </style>
+  </head>
+  <body>
+    <h1>Crid — brain</h1>
+    <p class="sub">The decision loop runs in your terminal. This page is only a window onto it.</p>
+
+    <div class="row">
+      <div class="box"><div class="k">source</div><div class="v" id="mode">…</div></div>
+      <div class="box"><div class="k">twitch</div><div class="v"><span class="dot" id="dot"></span><span id="twitch">…</span></div></div>
+      <div class="box"><div class="k">messages</div><div class="v" id="msgs">0</div></div>
+      <div class="box"><div class="k">moments</div><div class="v" id="moments">0</div></div>
+      <div class="box"><div class="k">actions</div><div class="v" id="actions">0</div></div>
+    </div>
+
+    <div class="row">
+      <a class="btn" href="/overlay?preview=1" target="_blank" rel="noreferrer">Open overlay (preview)</a>
+      <a class="btn alt" href="/overlay" target="_blank" rel="noreferrer">Open overlay (transparent)</a>
+      <a class="btn alt" href="/state" target="_blank" rel="noreferrer">Memory JSON</a>
+    </div>
+
+    <div id="log"></div>
+
+    <script type="module">
+      const log = document.getElementById("log");
+      const el = (id) => document.getElementById(id);
+
+      function line(decision, commands) {
+        const div = document.createElement("div");
+        div.className = "line";
+        const t = new Date(decision.ts).toLocaleTimeString();
+        div.innerHTML =
+          `<strong>${t}</strong> ${decision.rule} <span class="why">· p${decision.priority} · why: ${escapeHtml(decision.why)}</span><br>` +
+          `<span class="cmds">${commands.map(describe).join(" · ")}</span>`;
+        log.prepend(div);
+        while (log.children.length > 80) log.lastElementChild.remove();
+      }
+
+      function describe(c) {
+        const p = c.payload || {};
+        switch (c.type) {
+          case "say": return `say:"${escapeHtml(p.text || "")}"`;
+          case "express": return `express:${p.emotion}`;
+          case "gesture": return `gesture:${p.type}`;
+          case "look": return `look:${p.target}`;
+          case "presence": return `presence:${p.mode}`;
+          case "card": return `card:"${escapeHtml(p.title || "")}"`;
+          case "effect": return `effect:${p.type}`;
+          case "memory": return `memory:${p.kind}`;
+          default: return c.type;
+        }
+      }
+
+      function escapeHtml(s) {
+        return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+      }
+
+      function status(s) {
+        if (!s) return;
+        el("mode").textContent = s.mode || "…";
+        const t = s.twitch || {};
+        el("twitch").textContent = s.mode === "demo" ? "synthetic" : t.state === "connected" ? `#${t.channel}` : t.state || "…";
+        el("dot").className = "dot " + (s.mode === "demo" || t.state === "connected" ? "ok" : t.state === "connecting" ? "wait" : "");
+      }
+
+      function memory(m) {
+        if (!m) return;
+        el("msgs").textContent = m.counters?.messages ?? 0;
+        el("moments").textContent = m.moments?.length ?? 0;
+        el("actions").textContent = m.counters?.actions ?? 0;
+      }
+
+      function connect() {
+        const proto = location.protocol === "https:" ? "wss" : "ws";
+        const ws = new WebSocket(`${proto}://${location.host}/ws`);
+        ws.addEventListener("open", () => ws.send(JSON.stringify({ type: "hello" })));
+        ws.addEventListener("message", (ev) => {
+          const f = JSON.parse(ev.data);
+          if (f.frame === "snapshot") {
+            status(f.status);
+            memory(f.memory);
+            for (const c of (f.bus?.commands || []).slice(-4)) {
+              /* recent commands, shown without their decision line */
+            }
+          } else if (f.frame === "decision") {
+            line(f.decision, f.commands || []);
+            fetch("/state").then((r) => r.json()).then((s) => { memory(s.memory); status(s.status); }).catch(() => {});
+          } else if (f.frame === "status") {
+            status(f.status);
+          }
+        });
+        ws.addEventListener("close", () => setTimeout(connect, 2000));
+      }
+      connect();
+      setInterval(() => fetch("/health").then((r) => r.json()).then((h) => { memory({ counters: h.memory?.counters, moments: [] }); status(h); }).catch(() => {}), 10000);
+    </script>
+  </body>
+</html>

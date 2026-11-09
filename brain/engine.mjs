@@ -1,0 +1,610 @@
+/* The initiative loop — the organ Crid was missing.
+ *
+ * Deterministic by design (tech-notes §3): no model, no network, no awaits on the hot
+ * path. Two ways in:
+ *   handleEvent(evt) — a chat/sub/gift/bits/raid arrives; reactive rules fire in the
+ *                      same synchronous call, so event → command is well under 50ms.
+ *   tick()           — a timer, unprompted. This is the part that makes him feel alive:
+ *                      quiet rules fire on silence, repeated topics, memory callbacks
+ *                      and a "while you were gone" recap built only from real moments.
+ *
+ * Every action that leaves this file is one line of "why" on the console. That log is
+ * how the owner judges whether it reads as a mind.
+ */
+import { PRIORITY, presence, look, express, gesture, say, card, effect, memory as memCmd } from "./commands.mjs";
+import { labelFor, MIN } from "./memory.mjs";
+
+export const DEFAULT_TIMINGS = {
+  firstMessageSilenceMs: 60_000, // first message after this much quiet gets a greeting
+  longSilenceMs: 120_000, // unprompted "still here" after this
+  musingMs: 45_000, // quiet enough to volunteer an opinion
+  recapLullMs: 180_000, // "while you were gone" only after a real lull
+  callbackAgeMs: 180_000, // don't cite a moment from 20 seconds ago as a memory
+  spikeWindowMs: 10_000,
+  spikeThreshold: 7,
+  spikeUsers: 3,
+  topicWindowMs: 90_000,
+  topicUsers: 3,
+  returningGapMs: 300_000,
+  minActionGapMs: 2000, // global anti-spam floor
+  maxActionsPerMinute: 7,
+};
+
+const GAP_BY_PRIORITY = [
+  [90, 1200],
+  [70, 3500],
+  [45, 6000],
+  [0, 11000],
+];
+
+export class InitiativeEngine {
+  constructor({ memory, personality, bus, now = Date.now, log = console.log, timings = {}, random = Math.random, onAction = null } = {}) {
+    this.memory = memory;
+    this.personality = personality;
+    this.bus = bus;
+    this.now = now;
+    this.log = log;
+    this.random = random;
+    this.onAction = onAction;
+    this.timings = { ...DEFAULT_TIMINGS, ...timings };
+    this.lastFired = new Map();
+    this.lastActionAt = 0;
+    this.actionTimes = [];
+    this.timer = null;
+    this.tickMs = 500;
+    this.seq = 0;
+    this.decisions = [];
+    this.verbose = false;
+  }
+
+  /* ---------- public ---------- */
+
+  handleEvent(evt) {
+    if (!evt) return null;
+    this.record(evt);
+    const candidates = [];
+    for (const rule of REACTIVE_RULES) {
+      const c = this.safeRun(rule, evt);
+      if (c) candidates.push(c);
+    }
+    return this.decide(candidates, { source: "event", event: evt });
+  }
+
+  /** The unprompted tick. */
+  tick() {
+    const candidates = [];
+    for (const rule of QUIET_RULES) {
+      const c = this.safeRun(rule, null);
+      if (c) candidates.push(c);
+    }
+    return this.decide(candidates, { source: "tick" });
+  }
+
+  start() {
+    if (this.timer) return this;
+    this.timer = setInterval(() => {
+      try {
+        this.tick();
+      } catch (err) {
+        this.log(`[brain] tick failed: ${err.message}`);
+      }
+    }, this.tickMs);
+    return this;
+  }
+
+  stop() {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+  }
+
+  /* ---------- internals ---------- */
+
+  record(evt) {
+    const ts = evt.ts ?? this.now();
+    const e = { ...evt, ts };
+    if (e.type === "chat") {
+      // snapshot who they were before this message, so gap rules can measure the gap
+      const prior = this.memory.user(e.user);
+      evt.prior = prior ? { name: prior.name, first: prior.first, last: prior.last, count: prior.count } : null;
+      this.memory.recordChat(e);
+    } else {
+      // notable events become moments — the honest FOMO record — and carry their id
+      // so the action Crid takes can be tied back to the moment it belongs to.
+      const moment = this.memory.recordNotable(e);
+      evt.momentId = moment.id;
+    }
+  }
+
+  safeRun(rule, evt) {
+    try {
+      return rule.test(this.ctx(evt), rule);
+    } catch (err) {
+      this.log(`[brain] rule ${rule.id} failed: ${err.message}`);
+      return null;
+    }
+  }
+
+  ctx(evt) {
+    return {
+      now: this.now(),
+      evt,
+      memory: this.memory,
+      personality: this.personality,
+      timings: this.timings,
+      random: this.random,
+      engine: this,
+    };
+  }
+
+  cooldownLeft(ruleId, now) {
+    const last = this.lastFired.get(ruleId);
+    if (last === undefined) return 0;
+    const rule = RULE_INDEX.get(ruleId);
+    const cd = rule?.cooldownMs ?? 0;
+    return Math.max(0, last + cd - now);
+  }
+
+  gapLeft(priority, now) {
+    const gap = GAP_BY_PRIORITY.find(([p]) => priority >= p)?.[1] ?? 0;
+    const floor = Math.max(gap, this.timings.minActionGapMs);
+    return Math.max(0, this.lastActionAt + floor - now);
+  }
+
+  rateLimited(now) {
+    const cutoff = now - MIN;
+    this.actionTimes = this.actionTimes.filter((t) => t >= cutoff);
+    return this.actionTimes.length >= this.timings.maxActionsPerMinute;
+  }
+
+  decide(candidates, { source, event } = {}) {
+    const now = this.now();
+    if (!candidates.length) return null;
+    const eligible = [];
+    for (const c of candidates) {
+      const cd = this.cooldownLeft(c.rule, now);
+      if (cd > 0) {
+        this.trace(`· ${c.rule} held — cooldown ${Math.ceil(cd / 1000)}s`);
+        continue;
+      }
+      const gap = this.gapLeft(c.priority, now);
+      if (gap > 0 && c.priority < 90) {
+        this.trace(`· ${c.rule} held — too soon (${Math.ceil(gap / 1000)}s)`);
+        continue;
+      }
+      if (this.rateLimited(now) && c.priority < 90) {
+        this.trace(`· ${c.rule} held — rate limit (${this.timings.maxActionsPerMinute}/min)`);
+        continue;
+      }
+      eligible.push(c);
+    }
+    if (!eligible.length) return null;
+    eligible.sort((a, b) => b.priority - a.priority);
+    const winner = eligible[0];
+    this.fire(winner, now, source, event);
+    return winner;
+  }
+
+  fire(c, now, source, event) {
+    const built = c.commands.filter(Boolean);
+    const envelopes = this.bus.emit(built);
+    this.lastFired.set(c.rule, now);
+    this.lastActionAt = now;
+    this.actionTimes.push(now);
+    // Memory is written after the emit, so it never delays a reaction (tech-notes §5),
+    // and only for the action that actually happened — not for every rule that was considered.
+    const moment = c.moment ? this.memory.addMoment({ ts: now, ...c.moment }) : null;
+    const sayCmd = envelopes.find((e) => e.type === "say");
+    const action = this.memory.recordAction({
+      ts: now,
+      rule: c.rule,
+      why: c.why,
+      say: sayCmd ? sayCmd.payload.text : null,
+      momentId: c.momentId || moment?.id || null,
+      summary: c.summary || c.rule,
+    });
+    this.decisions.push({ ts: now, rule: c.rule, priority: c.priority, why: c.why, source, say: action.say });
+    if (this.decisions.length > 60) this.decisions.shift();
+    this.logDecision(c, envelopes, now, source);
+    this.onAction?.(action, envelopes, event);
+  }
+
+  logDecision(c, envelopes, now, source) {
+    const stamp = clock(now);
+    const head = `${stamp} ▲ ${c.rule} · p${c.priority}${source === "tick" ? " · unprompted" : ""} — why: ${c.why}`;
+    const parts = envelopes.map(describeCommand);
+    this.log(head);
+    this.log(`${" ".repeat(9)}└ ${parts.join(" · ")}`);
+  }
+
+  trace(line) {
+    if (this.verbose) this.log(`${" ".repeat(9)}${line}`);
+  }
+}
+
+export function describeCommand(cmd) {
+  switch (cmd.type) {
+    case "say":
+      return `say:"${cmd.payload.text}" (${cmd.payload.style})`;
+    case "express":
+      return `express:${cmd.payload.emotion}`;
+    case "gesture":
+      return `gesture:${cmd.payload.type}`;
+    case "look":
+      return `look:${cmd.payload.target}`;
+    case "presence":
+      return `presence:${cmd.payload.mode}`;
+    case "card":
+      return `card:"${cmd.payload.title}"|"${cmd.payload.subtitle || ""}"`;
+    case "effect":
+      return `effect:${cmd.payload.type}`;
+    case "memory":
+      return `memory:${cmd.payload.kind}:"${cmd.payload.text}"`;
+    default:
+      return cmd.type;
+  }
+}
+
+export function clock(ts) {
+  const d = new Date(ts);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
+}
+
+const fmtSecs = (ms) => `${Math.round(ms / 1000)}s`;
+const fmtMins = (ms) => `${Math.max(1, Math.round(ms / MIN))} min`;
+
+function say1(ctx, bucket, slots, extra = {}) {
+  const text = ctx.personality.line(bucket, slots, { avoid: ctx.memory.recentSayings(), random: ctx.random });
+  return text ? say(text, extra) : null;
+}
+
+/* ---------- reactive rules: something happened, react now ---------- */
+
+export const REACTIVE_RULES = [
+  {
+    id: "raid",
+    priority: 96,
+    cooldownMs: 0,
+    test(ctx, rule) {
+      const e = ctx.evt;
+      if (!e || e.type !== "raid") return null;
+      const viewers = e.viewers || e.amount || 0;
+      const n = ctx.memory.counters.raids;
+      const line = say1(ctx, "raid", { user: e.user, viewers }, { style: "hype", duration: 6000 });
+      return {
+        rule: rule.id,
+        priority: rule.priority,
+        why: `raid from ${e.user} with ${viewers} viewers · raid #${n} this session`,
+        momentId: ctx.evt.momentId || null,
+        commands: [
+          presence("hype"),
+          effect("flash", { intensity: 0.9 }),
+          card(e.user, `${viewers} raiders`, { art: "raid" }),
+          express("excited", { intensity: 1 }),
+          gesture("double-take"),
+          line,
+        ],
+      };
+    },
+  },
+  {
+    id: "sub",
+    priority: 94,
+    cooldownMs: 0,
+    test(ctx, rule) {
+      const e = ctx.evt;
+      if (!e || e.type !== "sub") return null;
+      const months = e.months || 1;
+      const subs = ctx.memory.counters.subs;
+      const line = say1(ctx, "sub", { user: e.user, months, count: subs }, { style: "callout", duration: 6000 });
+      return {
+        rule: rule.id,
+        priority: rule.priority,
+        why: `${e.detail || "new sub"} from ${e.user} · ${subs}${ordinal(subs)} sub this session`,
+        momentId: ctx.evt.momentId || null,
+        commands: [
+          card(e.user, months > 1 ? `+${months} months` : "new sub", { art: "sub" }),
+          express("pleased", { intensity: 1 }),
+          gesture("cheer"),
+          effect("flash", { intensity: 0.5 }),
+          line,
+        ],
+      };
+    },
+  },
+  {
+    id: "gift",
+    priority: 90,
+    cooldownMs: 3000,
+    test(ctx, rule) {
+      const e = ctx.evt;
+      if (!e || e.type !== "gift") return null;
+      const count = e.amount || 1;
+      const line = say1(ctx, "gift", { user: e.user, count }, { style: "callout", duration: 6000 });
+      return {
+        rule: rule.id,
+        priority: rule.priority,
+        why: `${count} gifted sub${count === 1 ? "" : "s"} from ${e.user} · ${ctx.memory.counters.gifts} gifted total`,
+        momentId: ctx.evt.momentId || null,
+        commands: [
+          card(e.user, `gifted ×${count}`, { art: "gift" }),
+          express("delighted", { intensity: 1 }),
+          gesture("nod"),
+          line,
+        ],
+      };
+    },
+  },
+  {
+    id: "bits",
+    priority: 86,
+    cooldownMs: 4000,
+    test(ctx, rule) {
+      const e = ctx.evt;
+      if (!e || e.type !== "bits") return null;
+      const bits = e.amount || 0;
+      const line = say1(ctx, "bits", { user: e.user, bits }, { style: "hype", duration: 5000 });
+      return {
+        rule: rule.id,
+        priority: rule.priority,
+        why: `${bits} bits from ${e.user} · ${ctx.memory.counters.bits} bits tonight`,
+        momentId: ctx.evt.momentId || null,
+        commands: [express("excited", { intensity: 0.9 }), gesture("hop"), effect("particles", { intensity: 0.5 }), line],
+      };
+    },
+  },
+  {
+    id: "chat-spike",
+    priority: 80,
+    cooldownMs: 45_000,
+    test(ctx, rule) {
+      const e = ctx.evt;
+      if (!e || (e.type !== "chat" && e.type !== "bits")) return null;
+      const { spikeWindowMs, spikeThreshold, spikeUsers } = ctx.timings;
+      const window = ctx.memory.chatInWindow(spikeWindowMs);
+      if (window.length < spikeThreshold) return null;
+      const users = new Set(window.map((c) => c.user.toLowerCase())).size;
+      if (users < spikeUsers) return null;
+      const topic = ctx.memory.repeatedTopic({ windowMs: spikeWindowMs, minUsers: 2 })?.word;
+      const spanS = Math.max(1, Math.round((window[window.length - 1].ts - window[0].ts) / 1000));
+      const line = say1(ctx, "spike", { count: window.length, users, topic }, { style: "hype", duration: 5500 });
+      return {
+        rule: rule.id,
+        priority: rule.priority,
+        moment: { kind: "spike", label: `${window.length} messages in ${spanS}s${topic ? ` about "${topic}"` : ""}` },
+        why: `${window.length} messages in ${spanS}s from ${users} people${topic ? ` · about "${topic}"` : ""}`,
+        commands: [presence("hype"), look("chat"), express("excited", { intensity: 0.9 }), gesture("lean-in"), line],
+      };
+    },
+  },
+  {
+    id: "keyword",
+    priority: 62,
+    cooldownMs: 25_000,
+    test(ctx, rule) {
+      const e = ctx.evt;
+      if (!e || e.type !== "chat" || !e.text) return null;
+      const hit = ctx.personality.keywordFor(e.text);
+      if (!hit) return null;
+      const text = ctx.personality.keywordLine(hit, { avoid: ctx.memory.recentSayings(), random: ctx.random });
+      if (!text) return null;
+      return {
+        rule: rule.id,
+        priority: rule.priority,
+        why: `${e.user} said "${truncate(e.text, 40)}" → keyword "${hit.keyword}"`,
+        commands: [look("chat"), express(hit.mood, { intensity: 0.7 }), say(text, { style: "dry", duration: 4200 })],
+      };
+    },
+  },
+  {
+    id: "first-after-silence",
+    priority: 56,
+    cooldownMs: 20_000,
+    test(ctx, rule) {
+      const e = ctx.evt;
+      if (!e || e.type !== "chat") return null;
+      const t = ctx.timings;
+      // Was there a real gap before this message? Look at the previous chat entry.
+      const prev = ctx.memory.chat.length >= 2 ? ctx.memory.chat[ctx.memory.chat.length - 2] : null;
+      if (!prev) return null;
+      const gap = e.ts - prev.ts;
+      if (gap < t.firstMessageSilenceMs) return null;
+      const line = say1(ctx, "firstAfterSilence", { user: e.user, minutes: fmtMins(gap) }, { style: "dry", duration: 5000 });
+      return {
+        rule: rule.id,
+        priority: rule.priority,
+        why: `first message after ${fmtSecs(gap)} of silence (${e.user})`,
+        commands: [presence("watching"), look("chat"), express("pleased", { intensity: 0.6 }), line],
+      };
+    },
+  },
+  {
+    id: "session-open",
+    priority: 50,
+    cooldownMs: 0,
+    test(ctx, rule) {
+      const e = ctx.evt;
+      if (!e || e.type !== "chat") return null;
+      if (ctx.memory.counters.messages !== 1) return null;
+      if (e.ts - ctx.memory.startedAt < 500) return null;
+      const line = say1(ctx, "greet", { user: e.user }, { style: "callout", duration: 4800 });
+      return {
+        rule: rule.id,
+        priority: rule.priority,
+        why: `first message of the session (${e.user}) — Crid was already watching`,
+        commands: [presence("watching"), look("chat"), express("pleased", { intensity: 0.7 }), gesture("nod"), line],
+      };
+    },
+  },
+  {
+    id: "new-viewer",
+    priority: 48,
+    cooldownMs: 12_000,
+    test(ctx, rule) {
+      const e = ctx.evt;
+      if (!e || e.type !== "chat") return null;
+      if (ctx.memory.counters.messages < 4) return null; // ignore the very first messages of the night
+      const u = ctx.memory.user(e.user);
+      if (!u || u.count !== 1) return null;
+      const line = say1(ctx, "newViewer", { user: e.user }, { style: "callout", duration: 4500 });
+      return {
+        rule: rule.id,
+        priority: rule.priority,
+        why: `first message from ${e.user} this session (${ctx.memory.seen.size} people seen)`,
+        commands: [look("chat"), gesture("nod"), express("pleased", { intensity: 0.6 }), line],
+      };
+    },
+  },
+  {
+    id: "returning-viewer",
+    priority: 44,
+    cooldownMs: 30_000,
+    test(ctx, rule) {
+      const e = ctx.evt;
+      if (!e || e.type !== "chat") return null;
+      const u = ctx.memory.user(e.user);
+      const prior = ctx.evt.prior || null;
+      if (!u || !prior || prior.count < 1) return null;
+      const gap = e.ts - prior.last;
+      if (!(gap >= ctx.timings.returningGapMs)) return null;
+      const minutes = fmtMins(gap);
+      const line = say1(ctx, "returning", { user: e.user, minutes }, { style: "dry", duration: 5000 });
+      return {
+        rule: rule.id,
+        priority: rule.priority,
+        why: `${e.user} back after ${minutes} (seen ${u.count}× this session)`,
+        commands: [look("chat"), memCmd("returning", `${e.user} · back after ${minutes}`), express("pleased", { intensity: 0.5 }), line],
+      };
+    },
+  },
+];
+
+/* ---------- quiet rules: nothing happened, act anyway ---------- */
+
+export const QUIET_RULES = [
+  {
+    id: "repeated-topic",
+    priority: 72,
+    cooldownMs: 120_000,
+    test(ctx, rule) {
+      const { topicWindowMs, topicUsers } = ctx.timings;
+      const topic = ctx.memory.repeatedTopic({ windowMs: topicWindowMs, minUsers: topicUsers });
+      if (!topic) return null;
+      if (ctx.memory.silenceMs(ctx.now) > topicWindowMs) return null; // only while it is live
+      const line = say1(ctx, "topic", { topic: topic.word, users: topic.users.length }, { style: "dry", duration: 5200 });
+      return {
+        rule: rule.id,
+        priority: rule.priority,
+        moment: { kind: "topic", label: `chat wouldn't drop "${topic.word}"` },
+        why: `"${topic.word}" mentioned by ${topic.users.length} people in the last ${Math.round(topicWindowMs / 1000)}s`,
+        commands: [look("chat"), express("thinking", { intensity: 0.7 }), memCmd("topic", `recurring: "${topic.word}"`), line],
+      };
+    },
+  },
+  {
+    id: "callback",
+    priority: 52,
+    cooldownMs: 100_000,
+    test(ctx, rule) {
+      const t = ctx.timings;
+      const now = ctx.now;
+      const candidates = ctx.memory.moments.filter((m) => now - m.ts >= t.callbackAgeMs && !ctx.memory.momentCited(m.id));
+      if (!candidates.length) return null;
+      const m = candidates[candidates.length - 1];
+      const ago = ctx.memory.ago(m.ts, now);
+      const line = say1(ctx, "callback", { ago, moment: m.label }, { style: "dry", duration: 5500 });
+      if (!line) return null;
+      return {
+        rule: rule.id,
+        priority: rule.priority,
+        why: `remembering "${m.label}" from ${ago} (moment ${m.id}, never referenced)`,
+        momentId: m.id,
+        commands: [look("chat"), express("thinking", { intensity: 0.6 }), memCmd("callback", `${ago}: ${m.label}`), line],
+      };
+    },
+  },
+  {
+    id: "recap",
+    priority: 42,
+    cooldownMs: 240_000,
+    test(ctx, rule) {
+      const t = ctx.timings;
+      const silence = ctx.memory.silenceMs(ctx.now);
+      if (silence < t.recapLullMs) return null;
+      // Only moments from inside the lull itself — what actually happened while chat was gone.
+      const since = ctx.memory.lastChatTs || ctx.memory.startedAt;
+      const moments = ctx.memory.momentsSince(since, ctx.now);
+      if (moments.length < 2) return null;
+      const count = moments.length;
+      const line = say1(ctx, "recap", { count }, { style: "dry", duration: 6500 });
+      return {
+        rule: rule.id,
+        priority: rule.priority,
+        why: `${count} real moments during a ${fmtMins(silence)} lull — honest FOMO, nothing invented`,
+        commands: [
+          memCmd("since-left", `${count} moments while you were gone`, {
+            moments: moments.map((m) => ({ label: m.label, ago: ctx.memory.ago(m.ts, ctx.now) })),
+          }),
+          express("deadpan", { intensity: 0.8 }),
+          gesture("shrug"),
+          line,
+        ],
+      };
+    },
+  },
+  {
+    id: "long-silence",
+    priority: 32,
+    cooldownMs: 75_000,
+    test(ctx, rule) {
+      const t = ctx.timings;
+      const silence = ctx.memory.silenceMs(ctx.now);
+      if (silence < t.longSilenceMs) return null;
+      if (ctx.memory.quietMs(ctx.now) < t.longSilenceMs) return null;
+      const line = say1(ctx, "silence", { minutes: fmtMins(silence) }, { style: "dry", duration: 5000 });
+      return {
+        rule: rule.id,
+        priority: rule.priority,
+        why: `no chat for ${fmtMins(silence)} — speaking into the quiet unprompted`,
+        commands: [presence("watching"), look("offscreen"), express("deadpan", { intensity: 0.6 }), gesture("shrug"), line],
+      };
+    },
+  },
+  {
+    id: "musing",
+    priority: 24,
+    cooldownMs: 90_000,
+    test(ctx, rule) {
+      const t = ctx.timings;
+      if (ctx.memory.quietMs(ctx.now) < t.musingMs) return null;
+      if (ctx.memory.counters.actions === 0 && ctx.memory.counters.messages < 2) return null;
+      const text = ctx.personality.musing({ avoid: ctx.memory.recentSayings(), random: ctx.random });
+      if (!text) return null;
+      return {
+        rule: rule.id,
+        priority: rule.priority,
+        why: `${fmtSecs(ctx.memory.quietMs(ctx.now))} of nothing happening — volunteering a thought from the personality file`,
+        commands: [look("offscreen"), express("thinking", { intensity: 0.5 }), say(text, { style: "quip", duration: 4800 })],
+      };
+    },
+  },
+];
+
+export const ALL_RULES = [...REACTIVE_RULES, ...QUIET_RULES];
+export const RULE_INDEX = new Map(ALL_RULES.map((r) => [r.id, r]));
+
+export function describeRules() {
+  return ALL_RULES.map((r) => ({ id: r.id, priority: r.priority, cooldownMs: r.cooldownMs, kind: REACTIVE_RULES.includes(r) ? "reactive" : "quiet" }));
+}
+
+function truncate(s, n) {
+  const t = String(s || "").replace(/\s+/g, " ").trim();
+  return t.length > n ? `${t.slice(0, n - 1)}…` : t;
+}
+
+function ordinal(n) {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return s[(v - 20) % 10] || s[v] || s[0];
+}
+
+export { labelFor, PRIORITY };

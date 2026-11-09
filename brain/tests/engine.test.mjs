@@ -317,6 +317,10 @@ test("the default timings keep reactions instant and monologues rare", () => {
   assert.ok(DEFAULT_TIMINGS.longSilenceMs >= 60_000);
   assert.ok(DEFAULT_TIMINGS.musingMs >= 30_000);
   assert.ok(DEFAULT_TIMINGS.maxActionsPerMinute <= 10);
-  assert.ok(REACTIVE_RULES.every((r) => r.cooldownMs >= 0));
-  assert.ok(QUIET_RULES.every((r) => r.cooldownMs > 0));
+  // Reaction rules take their cooldown from the personality file, so a rule's cooldown
+  // is either a number or a function of the loaded character — never negative.
+  const personality = loadPersonality();
+  const cooldown = (r) => (typeof r.cooldownMs === "function" ? r.cooldownMs({ personality, timings: DEFAULT_TIMINGS }) : r.cooldownMs);
+  assert.ok(REACTIVE_RULES.every((r) => cooldown(r) >= 0));
+  assert.ok(QUIET_RULES.every((r) => cooldown(r) > 0));
 });

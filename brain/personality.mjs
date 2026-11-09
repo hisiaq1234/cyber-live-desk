@@ -8,6 +8,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { normaliseReactions } from "./reactions.mjs";
 
 export const PERSONALITY_PATH = resolve(dirname(fileURLToPath(import.meta.url)), "crid-personality.json");
 const MAX_LINE = 140;
@@ -34,6 +35,24 @@ export class Personality {
       lines: arr(k.lines),
     }));
     this.lines = this.data.lines || {};
+    // The owner's reaction vocabulary (Ws/1s hype, L/roast, layer drag). Thresholds,
+    // trigger words, cooldowns and lines all live in this file — never in the engine.
+    this.reactions = normaliseReactions(this.data.reactions);
+  }
+
+  /** One reaction's normalised config ("hype", "roast", "layerDrag"). */
+  reaction(kind) {
+    return this.reactions[kind] || normaliseReactions(null)[kind];
+  }
+
+  /**
+   * Pick a line for a reaction, through the same `never` guard as every other line.
+   * Returns "" when nothing survives — the reaction then still happens, silently.
+   */
+  reactionLine(kind, slots = {}, { avoid = [], random = Math.random } = {}) {
+    const cfg = this.reaction(kind);
+    const pool = arr(cfg.lines).map((t) => this.fill(t, { ...this.ambient(), ...slots }));
+    return this._pick(pool, avoid, random);
   }
 
   /** All templates for a bucket (never empty: falls back to a generic list). */
@@ -119,6 +138,12 @@ export class Personality {
       jokes: this.jokes.length,
       keywords: this.keywords.map((k) => k.match).flat(),
       never: this.never.length,
+      reactions: Object.fromEntries(
+        Object.entries(this.reactions).map(([k, v]) => [
+          k,
+          { enabled: v.enabled, lines: v.lines.length, cooldownMs: v.cooldownMs, ...(v.windowMs ? { windowMs: v.windowMs, threshold: v.threshold } : {}) },
+        ]),
+      ),
     };
   }
 }

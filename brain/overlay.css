@@ -119,7 +119,12 @@ body.preview {
 #crid-card.on {
   opacity: 1;
   visibility: visible;
-  transform: translate(-50%, 0) scale(1);
+  /* --drag-x/--drag-y are the only thing a drag changes: the card keeps its contents,
+     its visibility and its fade — it is relocated, not re-rendered. */
+  transform: translate(calc(-50% + var(--drag-x, 0px)), var(--drag-y, 0px)) scale(1);
+}
+#crid-card.dragging {
+  transition-duration: 0.7s;
 }
 #crid-card .card-title {
   font: 800 26px/1.1 var(--mono);
@@ -142,6 +147,8 @@ body.preview {
   flex-direction: column;
   gap: 6px;
   align-items: flex-start;
+  transform: translate(var(--drag-x, 0px), var(--drag-y, 0px));
+  transition: transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .chip {
   padding: 5px 9px;
@@ -197,7 +204,10 @@ body.preview {
 #crid-recap.on {
   opacity: 1;
   visibility: visible;
-  transform: translateY(0);
+  transform: translate(var(--drag-x, 0px), var(--drag-y, 0px));
+}
+#crid-recap.dragging {
+  transition-duration: 0.7s;
 }
 #crid-recap .recap-head {
   font: 800 12px/1.2 var(--mono);
@@ -223,6 +233,45 @@ body.preview {
   color: var(--bone);
   opacity: 0.8;
   margin-left: 4px;
+}
+
+/* ---------- tears: the L reaction. Pure CSS water drops, anchored to his eyes ---------- */
+/* Lives inside #crid-bot so the tears travel with the body, and overflows it downward. */
+.crid-tears {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+.crid-tear {
+  position: absolute;
+  width: 7px;
+  height: 10px;
+  margin-left: -3.5px;
+  border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%;
+  background: linear-gradient(180deg, #d6f2ff 0%, #7fd4ff 45%, #3aa7f0 100%);
+  box-shadow: 0 0 6px rgba(122, 208, 255, 0.75);
+  opacity: 0;
+  transform-origin: 50% 0;
+  animation: crid-tear-fall var(--fall, 1.2s) cubic-bezier(0.35, 0.05, 0.6, 1) infinite;
+}
+@keyframes crid-tear-fall {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scale(0.6, 0.5);
+  }
+  12% {
+    opacity: 0.95;
+    transform: translateY(2px) scale(1, 1.15);
+  }
+  70% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(46px) scale(0.85, 1.5);
+  }
 }
 
 /* ---------- effects ---------- */
@@ -302,7 +351,8 @@ body.preview {
   font: 600 10px/1 var(--mono);
   color: var(--bone);
   opacity: 0;
-  transition: opacity 0.3s ease;
+  transition: opacity 0.3s ease, transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform: translate(var(--drag-x, 0px), var(--drag-y, 0px));
 }
 #crid-link.on {
   opacity: 0.75;

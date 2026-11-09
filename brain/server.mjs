@@ -41,6 +41,23 @@ export function createBrainServer({ engine, memory, bus, personality, getStatus,
     }
   });
 
+  /** Normalised event types the brain accepts from outside (the desk, the operator). */
+  const EVENT_TYPES = new Set(["chat", "sub", "gift", "bits", "raid", "layer"]);
+  let eventSeq = 0;
+
+  async function readJson(req, limit = 16 * 1024) {
+    const chunks = [];
+    let size = 0;
+    for await (const chunk of req) {
+      size += chunk.length;
+      if (size > limit) throw new Error("body too large");
+      chunks.push(chunk);
+    }
+    const text = Buffer.concat(chunks).toString("utf8").trim();
+    if (!text) return {};
+    return JSON.parse(text);
+  }
+
   function sendFile(res, file, status = 200) {
     return readFile(file).then((buf) => {
       res.writeHead(status, { "content-type": MIME[extname(file)] || "application/octet-stream", "cache-control": "no-store" });
@@ -62,6 +79,47 @@ export function createBrainServer({ engine, memory, bus, personality, getStatus,
     }
     if (path === "/health") return json(res, { ok: true, ...(getStatus ? getStatus() : {}), memory: memory.summary() });
     if (path === "/state") return json(res, { status: getStatus ? getStatus() : {}, memory: memory.snapshot(), personality: personality.describe() });
+
+    /* The desk's way in. It posts one normalised event and the brain decides what Crid
+     * does — it never receives commands, only things that happened. This is also how the
+     * desk reports an obstructing layer: {"type":"layer","layer":"poll","side":"left"}.
+     * See brain/README.md § "How the desk signals an obstructing layer". */
+    if (path === "/event" && req.method === "POST") {
+      let body;
+      try {
+        body = await readJson(req);
+      } catch (err) {
+        res.writeHead(400, { "content-type": "application/json" });
+        return res.end(JSON.stringify({ ok: false, error: `bad body: ${err.message}` }));
+      }
+      const type = String(body.type || "").toLowerCase();
+      if (!EVENT_TYPES.has(type)) {
+        res.writeHead(400, { "content-type": "application/json" });
+        return res.end(JSON.stringify({ ok: false, error: `unknown event type "${type}"`, accepted: [...EVENT_TYPES] }));
+      }
+      if (type === "layer" && !String(body.layer || "").trim()) {
+        res.writeHead(400, { "content-type": "application/json" });
+        return res.end(JSON.stringify({ ok: false, error: "a layer event needs a layer name" }));
+      }
+      const evt = {
+        id: String(body.id || `ext${++eventSeq}`),
+        ts: Number(body.ts) || Date.now(),
+        type,
+        user: String(body.user || "desk"),
+        text: String(body.text || ""),
+        amount: Number(body.amount) || 0,
+        months: Number(body.months) || 0,
+        viewers: Number(body.viewers) || 0,
+        detail: String(body.detail || ""),
+        layer: body.layer ? String(body.layer) : undefined,
+        side: body.side ? String(body.side) : undefined,
+        source: String(body.source || "desk"),
+      };
+      const fired = engine.handleEvent(evt);
+      log(`[event] ${type}${evt.layer ? `:${evt.layer}` : ""} from ${evt.source}${fired ? ` → ${fired.rule}` : " → no reaction"}`);
+      res.writeHead(202, { "content-type": "application/json; charset=utf-8" });
+      return res.end(JSON.stringify({ ok: true, fired: fired ? fired.rule : null }));
+    }
 
     if (path.startsWith("/desk-assets/")) {
       // crid-bot.js resolves its sprites as ./desk-assets/crid/... from the page it is on,

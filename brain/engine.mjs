@@ -11,8 +11,9 @@
  * Every action that leaves this file is one line of "why" on the console. That log is
  * how the owner judges whether it reads as a mind.
  */
-import { PRIORITY, presence, look, express, gesture, say, card, effect, memory as memCmd } from "./commands.mjs";
+import { PRIORITY, presence, look, express, gesture, say, card, effect, memory as memCmd, moveLayer } from "./commands.mjs";
 import { labelFor, MIN } from "./memory.mjs";
+import { matchHype, matchRoast, tallySignals, isAllowedLayer, normaliseSide } from "./reactions.mjs";
 
 export const DEFAULT_TIMINGS = {
   firstMessageSilenceMs: 60_000, // first message after this much quiet gets a greeting
@@ -28,6 +29,7 @@ export const DEFAULT_TIMINGS = {
   returningGapMs: 300_000,
   minActionGapMs: 2000, // global anti-spam floor
   maxActionsPerMinute: 7,
+  cooldownScale: 1, // demo pacing only; never lowered in a live run
 };
 
 const GAP_BY_PRIORITY = [
@@ -48,6 +50,7 @@ export class InitiativeEngine {
     this.onAction = onAction;
     this.timings = { ...DEFAULT_TIMINGS, ...timings };
     this.lastFired = new Map();
+    this.ruleFires = new Map();
     this.lastActionAt = 0;
     this.actionTimes = [];
     this.timer = null;
@@ -140,8 +143,21 @@ export class InitiativeEngine {
     const last = this.lastFired.get(ruleId);
     if (last === undefined) return 0;
     const rule = RULE_INDEX.get(ruleId);
-    const cd = rule?.cooldownMs ?? 0;
+    // A rule may take its cooldown from the personality file (owner-authored pacing),
+    // so the number lives with the vocabulary rather than in this file.
+    const raw = typeof rule?.cooldownMs === "function" ? rule.cooldownMs({ personality: this.personality, timings: this.timings }) : rule?.cooldownMs ?? 0;
+    const cd = Math.max(0, Number(raw) || 0) * (this.timings.cooldownScale ?? 1);
     return Math.max(0, last + cd - now);
+  }
+
+  /** Per-rule ceiling, also configurable per rule (reactions carry their own). */
+  ruleRateLimited(rule, now) {
+    const cap = typeof rule?.maxPerMinute === "function" ? rule.maxPerMinute({ personality: this.personality, timings: this.timings }) : rule?.maxPerMinute;
+    if (!cap) return false;
+    const cutoff = now - MIN;
+    const times = (this.ruleFires.get(rule.id) || []).filter((t) => t >= cutoff);
+    this.ruleFires.set(rule.id, times);
+    return times.length >= cap;
   }
 
   gapLeft(priority, now) {
@@ -175,6 +191,10 @@ export class InitiativeEngine {
         this.trace(`· ${c.rule} held — rate limit (${this.timings.maxActionsPerMinute}/min)`);
         continue;
       }
+      if (this.ruleRateLimited(RULE_INDEX.get(c.rule), now)) {
+        this.trace(`· ${c.rule} held — its own ceiling for this minute`);
+        continue;
+      }
       eligible.push(c);
     }
     if (!eligible.length) return null;
@@ -190,6 +210,7 @@ export class InitiativeEngine {
     this.lastFired.set(c.rule, now);
     this.lastActionAt = now;
     this.actionTimes.push(now);
+    this.ruleFires.set(c.rule, [...(this.ruleFires.get(c.rule) || []), now]);
     // Memory is written after the emit, so it never delays a reaction (tech-notes §5),
     // and only for the action that actually happened — not for every rule that was considered.
     const moment = c.moment ? this.memory.addMoment({ ts: now, ...c.moment }) : null;
@@ -237,6 +258,8 @@ export function describeCommand(cmd) {
       return `card:"${cmd.payload.title}"|"${cmd.payload.subtitle || ""}"`;
     case "effect":
       return `effect:${cmd.payload.type}`;
+    case "move":
+      return `move:${cmd.payload.target}→${cmd.payload.to}`;
     case "memory":
       return `memory:${cmd.payload.kind}:"${cmd.payload.text}"`;
     default:
@@ -260,6 +283,105 @@ function say1(ctx, bucket, slots, extra = {}) {
 /* ---------- reactive rules: something happened, react now ---------- */
 
 export const REACTIVE_RULES = [
+  {
+    /* The owner's own vocabulary: a layer is in the way, so Crid goes to it and moves it.
+     * The input is an explicit, normalised `layer` event — the desk says "this layer is
+     * obstructing", the brain never guesses from geometry it cannot see. */
+    id: "layer-obstructed",
+    priority: 92,
+    cooldownMs: (ctx) => ctx.personality.reaction("layerDrag").cooldownMs,
+    maxPerMinute: (ctx) => ctx.personality.reaction("layerDrag").maxPerMinute,
+    test(ctx, rule) {
+      const cfg = ctx.personality.reaction("layerDrag");
+      if (!cfg.enabled) return null;
+      const e = ctx.evt;
+      if (!e || e.type !== "layer") return null;
+      if (!isAllowedLayer(e.layer, cfg)) return null;
+      const target = String(e.layer).toLowerCase().trim();
+      const side = normaliseSide(e.side, cfg);
+      const line = ctx.personality.reactionLine("layerDrag", { layer: target }, { avoid: ctx.memory.recentSayings(), random: ctx.random });
+      return {
+        rule: rule.id,
+        priority: rule.priority,
+        moment: { kind: "layer", label: `Crid dragged "${target}" out of the way` },
+        why: `"${target}" is blocking the moment (signalled by ${e.source || "desk"}) — going to it and moving it ${side}`,
+        commands: [
+          presence("engaged"),
+          moveLayer(target, side, { travelMs: cfg.travelMs, dragMs: cfg.dragMs, why: `layer ${target} obstructing` }),
+          line ? say(line, { style: cfg.style, duration: cfg.duration }) : null,
+        ],
+      };
+    },
+  },
+  {
+    /* W / Ws / www / 1 / 1s — chat calling the play. Standalone tokens only. */
+    id: "chat-hype",
+    priority: 88,
+    cooldownMs: (ctx) => ctx.personality.reaction("hype").cooldownMs,
+    maxPerMinute: (ctx) => ctx.personality.reaction("hype").maxPerMinute,
+    test(ctx, rule) {
+      const cfg = ctx.personality.reaction("hype");
+      if (!cfg.enabled) return null;
+      const e = ctx.evt;
+      if (!e || e.type !== "chat") return null;
+      const hit = matchHype(e.text, cfg);
+      if (!hit) return null; // this message is not a hype token at all
+      const window = ctx.memory.chatInWindow(cfg.windowMs, e.ts);
+      const tally = tallySignals(window, cfg, "hype");
+      if (tally.weight < cfg.threshold) return null;
+      if (tally.users.length < cfg.minUsers) return null;
+      const spanS = Math.max(1, Math.round((window[window.length - 1].ts - window[0].ts) / 1000));
+      const line = ctx.personality.reactionLine("hype", { count: tally.count, users: tally.users.length, user: e.user, token: hit.token }, { avoid: ctx.memory.recentSayings(), random: ctx.random });
+      return {
+        rule: rule.id,
+        priority: rule.priority,
+        moment: { kind: "hype", label: `${tally.count} hype messages from ${tally.users.length} people ("${e.text.trim().slice(0, 24)}")` },
+        why: `${tally.count} hype messages from ${tally.users.length} people in ${spanS}s — "${truncate(e.text, 24)}" is a win signal`,
+        commands: [
+          presence(cfg.presence),
+          express(cfg.emotion, { intensity: 1 }),
+          gesture(cfg.gesture),
+          effect(cfg.effect.type, { intensity: cfg.effect.intensity, duration: cfg.effect.duration }),
+          line ? say(line, { style: cfg.style, duration: cfg.duration }) : null,
+        ],
+      };
+    },
+  },
+  {
+    /* L / Ls, or a configured roast term — the unmistakable sad one. */
+    id: "chat-roast",
+    priority: 84,
+    cooldownMs: (ctx) => ctx.personality.reaction("roast").cooldownMs,
+    maxPerMinute: (ctx) => ctx.personality.reaction("roast").maxPerMinute,
+    test(ctx, rule) {
+      const cfg = ctx.personality.reaction("roast");
+      if (!cfg.enabled) return null;
+      const e = ctx.evt;
+      if (!e || e.type !== "chat") return null;
+      const hit = matchRoast(e.text, cfg);
+      if (!hit) return null;
+      const window = ctx.memory.chatInWindow(cfg.windowMs, e.ts);
+      const tally = tallySignals(window, cfg, "roast");
+      if (tally.weight < cfg.threshold) return null;
+      if (tally.users.length < cfg.minUsers) return null;
+      const spanS = Math.max(1, Math.round((window[window.length - 1].ts - window[0].ts) / 1000));
+      const what = hit.via === "term" ? `roast term "${hit.term}"` : `${tally.count}× L from chat`;
+      const line = ctx.personality.reactionLine("roast", { count: tally.count, users: tally.users.length, user: e.user, token: hit.token || hit.term }, { avoid: ctx.memory.recentSayings(), random: ctx.random });
+      return {
+        rule: rule.id,
+        priority: rule.priority,
+        moment: { kind: "roast", label: `${what} in ${spanS}s` },
+        why: `${what} in ${spanS}s (${tally.users.length} people) — visibly sad, tears on`,
+        commands: [
+          presence("engaged"),
+          express(cfg.emotion, { intensity: 1 }),
+          gesture(cfg.gesture),
+          effect(cfg.effect.type, { intensity: cfg.effect.intensity, duration: cfg.effect.duration }),
+          line ? say(line, { style: cfg.style, duration: cfg.duration }) : null,
+        ],
+      };
+    },
+  },
   {
     id: "raid",
     priority: 96,
@@ -593,7 +715,15 @@ export const ALL_RULES = [...REACTIVE_RULES, ...QUIET_RULES];
 export const RULE_INDEX = new Map(ALL_RULES.map((r) => [r.id, r]));
 
 export function describeRules() {
-  return ALL_RULES.map((r) => ({ id: r.id, priority: r.priority, cooldownMs: r.cooldownMs, kind: REACTIVE_RULES.includes(r) ? "reactive" : "quiet" }));
+  return ALL_RULES.map((r) => ({
+    id: r.id,
+    priority: r.priority,
+    // reaction rules take their pacing from the personality file
+    cooldownMs: typeof r.cooldownMs === "function" ? null : r.cooldownMs,
+    cooldownFrom: typeof r.cooldownMs === "function" ? "personality" : null,
+    maxPerMinute: typeof r.maxPerMinute === "function" ? "personality" : r.maxPerMinute ?? null,
+    kind: REACTIVE_RULES.includes(r) ? "reactive" : "quiet",
+  }));
 }
 
 function truncate(s, n) {

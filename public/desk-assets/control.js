@@ -529,6 +529,17 @@ import { createCridVoice } from "./crid-voice.js";
   const srcBtn = btn("Show source", () => act("source"));
   const modeBtn = btn("X feed", () => act("mode", { mode: state?.mode === "x-following" ? "cards" : "x-following" }));
 
+  // Shortcuts are opt-in per tab. These two elements are referenced by the voice
+  // panel below; their definitions were dropped in 71bfd88 while the usages
+  // stayed, which threw a ReferenceError on first render and left the page blank.
+  const keyboardStatus = h("p", "sub", "Keyboard shortcuts are off.");
+  const keyboardButton = btn("Enable shortcuts", () => {
+    keyboardEnabled = !keyboardEnabled;
+    keyboardButton.textContent = keyboardEnabled ? "Disable shortcuts" : "Enable shortcuts";
+    keyboardButton.classList.toggle("primary", keyboardEnabled);
+    keyboardStatus.textContent = keyboardEnabled ? "Shortcuts are enabled for this tab only." : "Keyboard shortcuts are off.";
+  }, "small");
+
   const voicePanel = h("section", "panel voice-panel",
     h("h2", {}, "Voice & keyboard controls"),
     h("p", "sub", "CRID voice control. Press “CRID Listen” to capture a command; press “Stop Listen” to cancel."),

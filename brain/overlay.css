@@ -1,0 +1,321 @@
+/* Crid brain overlay — transparency first (OBS browser source), transform/opacity only. */
+:root {
+  --onyx: #1f1736;
+  --indigo: #6531f8;
+  --indigo-dk: #3a1d9e;
+  --mint: #86f6bc;
+  --bone: #a98bff;
+  --ink: #f4f0ff;
+  --red: #ff5b57;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  overflow: hidden;
+  height: 100%;
+  width: 100%;
+  font-family: var(--mono);
+  color: var(--ink);
+}
+
+/* preview only: a light stage so a human can see a transparent overlay in a normal browser */
+body.preview {
+  background: repeating-linear-gradient(45deg, #221a3d 0 24px, #1b1430 24px 48px);
+}
+
+#crid-stage {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* ---------- Crid's speech bubble (crid-bot.js creates .bot-bubble) ---------- */
+#crid-bot .bot-bubble {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 8ch;
+  max-width: 34ch;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: var(--onyx);
+  border: 2px solid var(--bone);
+  box-shadow: 3px 4px 0 var(--indigo-dk);
+  color: var(--ink);
+  font: 600 12px/1.35 var(--mono);
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.22s ease;
+  white-space: pre-wrap;
+}
+#crid-bot .bot-bubble::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border: 5px solid transparent;
+  border-top-color: var(--bone);
+}
+#crid-bot[data-say-style="dry"] .bot-bubble {
+  border-color: var(--bone);
+  color: var(--bone);
+}
+#crid-bot[data-say-style="hype"] .bot-bubble {
+  border-color: var(--mint);
+  box-shadow: 3px 4px 0 var(--indigo);
+  color: var(--mint);
+}
+#crid-bot[data-say-style="callout"] .bot-bubble {
+  border-color: var(--mint);
+  background: var(--indigo-dk);
+}
+
+/* presence: the macro baseline, everything layers on it */
+#crid-bot[data-presence="hidden"] {
+  display: none !important;
+}
+#crid-bot[data-presence="idle"] {
+  --bw: clamp(58px, 6.4vw, 92px);
+  opacity: 0.88;
+}
+#crid-bot[data-presence="watching"] {
+  --bw: clamp(64px, 7.2vw, 104px);
+  opacity: 1;
+}
+#crid-bot[data-presence="engaged"] {
+  --bw: clamp(72px, 8vw, 118px);
+  opacity: 1;
+}
+#crid-bot[data-presence="hype"] {
+  --bw: clamp(80px, 8.8vw, 132px);
+  opacity: 1;
+  filter: drop-shadow(0 0 18px rgba(134, 246, 188, 0.45));
+}
+
+/* ---------- card: big frame for sub / gift / raid ---------- */
+#crid-card {
+  position: fixed;
+  left: 50%;
+  top: 22%;
+  transform: translate(-50%, -8px) scale(0.96);
+  min-width: 260px;
+  max-width: 46vw;
+  padding: 18px 26px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(31, 23, 54, 0.96), rgba(58, 29, 158, 0.92));
+  border: 3px solid var(--mint);
+  box-shadow: 6px 8px 0 var(--indigo-dk);
+  text-align: center;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.18s ease, transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+#crid-card.on {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0) scale(1);
+}
+#crid-card .card-title {
+  font: 800 26px/1.1 var(--mono);
+  color: var(--mint);
+  letter-spacing: 0.02em;
+}
+#crid-card .card-sub {
+  margin-top: 6px;
+  font: 600 14px/1.2 var(--mono);
+  color: var(--ink);
+  opacity: 0.85;
+}
+
+/* ---------- memory chips: callbacks ---------- */
+#crid-chips {
+  position: fixed;
+  left: 16px;
+  bottom: 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+.chip {
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(31, 23, 54, 0.9);
+  border: 2px solid var(--bone);
+  color: var(--ink);
+  font: 600 11px/1.2 var(--mono);
+  opacity: 0;
+  transform: translateY(4px);
+  animation: chip-in 0.24s ease forwards;
+}
+.chip.out {
+  animation: chip-out 0.3s ease forwards;
+}
+.chip .kind {
+  color: var(--mint);
+  margin-right: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 9px;
+}
+@keyframes chip-in {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes chip-out {
+  to {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* ---------- "while you were gone": the honest FOMO panel ---------- */
+#crid-recap {
+  position: fixed;
+  left: 16px;
+  top: 16px;
+  min-width: 220px;
+  max-width: 34vw;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(31, 23, 54, 0.94);
+  border: 2px solid var(--mint);
+  box-shadow: 5px 6px 0 var(--indigo-dk);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-6px);
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+#crid-recap.on {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+#crid-recap .recap-head {
+  font: 800 12px/1.2 var(--mono);
+  color: var(--mint);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+}
+#crid-recap ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+#crid-recap li {
+  font: 600 12px/1.3 var(--mono);
+  color: var(--ink);
+  opacity: 0.92;
+}
+#crid-recap li .ago {
+  color: var(--bone);
+  opacity: 0.8;
+  margin-left: 4px;
+}
+
+/* ---------- effects ---------- */
+#fx {
+  position: fixed;
+  inset: 0;
+  opacity: 0;
+}
+#fx.flash {
+  animation: fx-flash 0.5s ease;
+}
+#fx.shake {
+  animation: fx-shake 0.4s ease;
+}
+#fx.vignette {
+  animation: fx-vignette 0.9s ease;
+}
+#fx.zoom {
+  animation: fx-zoom 0.5s ease;
+}
+@keyframes fx-flash {
+  0% {
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.55;
+    background: radial-gradient(circle at 50% 45%, rgba(134, 246, 188, 0.6), transparent 60%);
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes fx-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-6px);
+  }
+  50% {
+    transform: translateX(5px);
+  }
+  75% {
+    transform: translateX(-3px);
+  }
+}
+@keyframes fx-vignette {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+    box-shadow: inset 0 0 120px 40px rgba(101, 49, 248, 0.5);
+  }
+}
+@keyframes fx-zoom {
+  0% {
+    opacity: 0.4;
+    box-shadow: inset 0 0 0 0 rgba(134, 246, 188, 0.7);
+  }
+  100% {
+    opacity: 0;
+    box-shadow: inset 0 0 0 60px rgba(134, 246, 188, 0);
+  }
+}
+
+/* ---------- connection dot (tech-notes risk #1: a loud failure, not a silent one) ---------- */
+#crid-link {
+  position: fixed;
+  right: 14px;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 10px/1 var(--mono);
+  color: var(--bone);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+#crid-link.on {
+  opacity: 0.75;
+}
+#crid-link .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+}
+#crid-link[data-state="connected"] .dot {
+  background: var(--mint);
+}
+#crid-link[data-state="connecting"] .dot {
+  background: #ffcf57;
+}

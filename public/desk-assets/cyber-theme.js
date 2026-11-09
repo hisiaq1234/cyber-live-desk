@@ -148,25 +148,18 @@ ${T} #desk .x-kind{background:var(--indigo-500);border:0;color:var(--ink-1);bord
 ${T} #desk .x-item .x-author,${T} #desk .x-item .x-bullet{color:var(--mint)}
 ${T} #desk .x-item .x-text{color:var(--ink-2)}
 
-/* lower third, clock and chat share the same plate */
+/* Lower third and chat share the same plate. The clock deliberately does not: #time-dock is the
+   operator's own Black Market timestamp, drawn in full by overlay.js (crimson bar, dark panel,
+   IBM Plex Mono digits), and no theme repaints it. A theme rule on #time-dock would be the
+   "themes causing rubbish" the owner complained about — leave it alone. */
 ${T} #auto-headlines,${T} #swae-chat{
   background:var(--onyx-900);border:.14em solid var(--indigo-500);border-left-width:.5em;border-radius:1em;
   box-shadow:.22em .26em 0 var(--indigo-700);backdrop-filter:none;-webkit-backdrop-filter:none}
-/* The clock keeps the plate but not its outline colour: the heavy left edge is the one place on
-   this desk that carries the meaning token, and it is square on the left because it is a bar the
-   frame sits against, not a corner. That is the operator's original timestamp shape, drawn with
-   cyber's own fills, radii and single hard shadow. */
-${T} #time-dock{
-  background:var(--onyx-900);border:.14em solid var(--indigo-500);border-left:.5em solid var(--accent);
-  border-radius:0 1em 1em 0;box-shadow:.22em .26em 0 var(--indigo-700);
-  backdrop-filter:none;-webkit-backdrop-filter:none}
 ${T} .headline-feed-kicker{font-family:var(--display);font-weight:400;letter-spacing:.16em;color:var(--indigo-300)}
 ${T} .identity-row .headline-feed-title{font-family:var(--brand);font-weight:700;color:var(--ink-1)}
 ${T} .identity-row .headline-feed-meta{color:var(--ink-3)}
 ${T} .identity-music{border-bottom-color:var(--indigo-700)}
 ${T} .identity-music .headline-feed-kicker{color:var(--mint)}
-${T} #time-dock .clock-brand,${T} #time-dock .clock-zone{color:var(--indigo-300)}
-${T} #time-dock .clock-time{font-family:var(--display);font-weight:400;letter-spacing:.06em;color:var(--ink-1)}
 ${T} #swae-chat .swae-chat-user{color:var(--indigo-300)}
 ${T} #swae-chat .swae-chat-text{color:var(--ink-1)}
 
@@ -177,7 +170,7 @@ ${T} #swae-chat .swae-chat-text{color:var(--ink-1)}
 /* The mascot's size lives in the bot module (crid-bot.js) alone: one clamp, one source of truth,
    and ?bot.scale= multiplies it. The theme only styles what the module cannot: the cast shadow.
    A zero-blur offset copy of the silhouette read as a sticker, so the shadow is soft and low. */
-${T} #desk #crid-bot svg{filter:drop-shadow(0 calc(var(--bw)*.028) calc(var(--bw)*.07) rgba(15,11,23,.45))}
+${T} #desk #crid-bot svg{filter:drop-shadow(0 calc(var(--bot-w)*.028) calc(var(--bot-w)*.07) rgba(15,11,23,.45))}
 ${T} #desk #crid-bot[data-mode="on"]{animation:bot-idle 4.5s ease-in-out infinite}
 ${T} #desk #crid-bot.music-playing svg{animation:bot-groove 1.6s ease-in-out infinite}
 ${T} #desk #crid-bot.is-active svg{animation:bot-answer .8s ease-out}

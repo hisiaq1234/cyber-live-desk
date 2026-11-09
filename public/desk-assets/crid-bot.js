@@ -48,19 +48,21 @@ function draw(){
   const sticker={fill:PAL.bone,stroke:PAL.bone,"stroke-width":9,"stroke-linejoin":"round","stroke-linecap":"round"};
   const svg=el("svg",{viewBox:"-6 -4 160 168","aria-hidden":"true",focusable:"false"});
   const shadow=el("ellipse",{class:"shadow",cx:70,cy:159,rx:34,ry:5,fill:PAL.indigoDk});
-  const avatar=el("image",{class:"avatar",x:18,y:18,width:112,height:142,preserveAspectRatio:"xMidYMax meet"});
+  const avatarBase=el("image",{class:"avatar-base",x:18,y:18,width:112,height:142,preserveAspectRatio:"xMidYMax meet"});
+  const avatarEyes=el("image",{class:"avatar-eyes",x:18,y:18,width:112,height:142,preserveAspectRatio:"xMidYMax meet"});
+  const avatarMouth=el("image",{class:"avatar-mouth",x:18,y:18,width:112,height:142,preserveAspectRatio:"xMidYMax meet"});
   const ph=el("g",{class:"ph",display:"none"},
     el("path",{d:"M44 152C44 110 56 92 70 92C84 92 96 110 96 152Z",fill:PAL.indigo,stroke:PAL.bone,"stroke-width":5,"stroke-linejoin":"round"}),
     el("circle",{cx:70,cy:56,r:21,fill:PAL.indigo,stroke:PAL.bone,"stroke-width":5}),
     el("circle",{cx:63,cy:54,r:2.8,fill:PAL.mint}),el("circle",{cx:77,cy:54,r:2.8,fill:PAL.mint}));
-  const figG=el("g",{class:"fig"},avatar,ph),bodyG=el("g",{class:"body"},figG);
+  const figG=el("g",{class:"fig"},avatarBase,avatarEyes,avatarMouth,ph),bodyG=el("g",{class:"body"},figG);
   const ticket=el("g",{class:"ticket",opacity:0});
   const tkFill=[el("path",{d:"M100 4H138V22H100Z",fill:PAL.red,class:"ticket-fill"}),el("path",{d:"M108 22L106 31L118 22Z",fill:PAL.red,class:"ticket-fill"})];
   const ticketText=el("text",{x:119,y:17.2,"text-anchor":"middle","font-size":10.5,"font-weight":800,"letter-spacing":.6,fill:PAL.onyx,"font-family":"ui-monospace,'SF Mono','JetBrains Mono',Menlo,Consolas,monospace"});
   ticketText.textContent="";
   ticket.append(el("path",{d:"M100 4H138V22H100ZM108 22L106 31L118 22Z",...sticker,"stroke-width":6}),...tkFill,ticketText);
   svg.append(shadow,bodyG,ticket);
-  return{svg,parts:{ticket,ticketText,tkFill,shadow,bodyG,figG,avatar,ph}};
+  return{svg,parts:{ticket,ticketText,tkFill,shadow,bodyG,figG,avatarBase,avatarEyes,avatarMouth,ph}};
 }
 const CSS=`
 /* He is drawn at broadcast size: ~17.5vw is a full torso-and-head read on a 1080p stream, and the
@@ -93,8 +95,8 @@ const CSS=`
 #crid-bot svg{width:100%;height:100%;display:block;overflow:visible;filter:drop-shadow(0 calc(var(--bot-w)*.028) calc(var(--bot-w)*.07) rgba(15,11,23,.45))}
 html.low-power #crid-bot svg,html.swae #crid-bot svg{filter:none}
 #crid-bot[data-mode="dead"] .ticket-fill{fill:${PAL.dead}}
-#crid-bot[data-mode="dead"] .avatar{opacity:.55}
-#crid-bot[data-mode="doze"] .avatar{opacity:.88}
+#crid-bot[data-mode="dead"] .avatar-base,.avatar-eyes,.avatar-mouth{opacity:.55}
+#crid-bot[data-mode="doze"] .avatar-base,.avatar-eyes,.avatar-mouth{opacity:.88}
 `;
 export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="bc",x=null,y=null,step=null,scale=1}={}){
   if(!document.getElementById("crid-bot-css")){const st=document.createElement("style");st.id="crid-bot-css",st.textContent=CSS,document.head.append(st)}
@@ -114,8 +116,8 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const readMotion=()=>{reduced=!!(mq&&mq.matches)};
   readMotion(); if(mq){const onmq=()=>{readMotion();lastDrawn=""}; mq.addEventListener?mq.addEventListener("change",onmq):mq.addListener&&mq.addListener(onmq)}
   for(const b of BODIES){const im=new Image();im.src=AV(b)}
-  parts.avatar.addEventListener("error",()=>{parts.avatar.setAttribute("display","none");parts.ph.removeAttribute("display")});
-  parts.avatar.addEventListener("load",()=>{parts.ph.setAttribute("display","none");parts.avatar.removeAttribute("display")});
+  parts.avatarBase.addEventListener("error",()=>{parts.avatarBase.setAttribute("display","none");parts.avatarEyes.setAttribute("display","none");parts.avatarMouth.setAttribute("display","none");parts.ph.removeAttribute("display")});
+  parts.avatarBase.addEventListener("load",()=>{parts.ph.setAttribute("display","none");parts.avatarBase.removeAttribute("display");parts.avatarEyes.removeAttribute("display");parts.avatarMouth.removeAttribute("display")});
   let mode="dead",tagText=null,talking=!1,grooving=!1,tickN=0,wait=6,idleQ=[],gestureQ=[],timer=null,frozen=!1,dying=!1;
   // online is null, not true: "nothing has told me otherwise yet" is a different state from "the
   // desk says he is on". Starting at true made the first observe({bot:{on:true}}) a no-op — it only
@@ -123,7 +125,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // `mode!=="dead"` guard skipped every gesture. That was the dead-on-air bug.
   const pendingReact=[]; let lastActive=Date.now(),prev=null,online=null,lastReactN=null,lastSubN=null,bodyI=-1,growth={sx:1,sy:1},fx=1,walk=null,roamN=0,subs=0,home=null;
   const jobs=[]; let running=null; const flights=new WeakMap;
-  const setBody=i=>{if(i===bodyI)return; bodyI=clamp(i,0,BODIES.length-1); const src=AV(BODIES[bodyI]); parts.avatar.setAttribute("href",src);};
+  const setBody=i=>{if(i===bodyI)return; bodyI=clamp(i,0,BODIES.length-1); const src=AV(BODIES[bodyI]); parts.avatarBase.setAttribute("href",src); parts.avatarBase.setAttributeNS(XLINK,"href",src);};
   const subCount=s=>{const b=s&&s.bot||{}; const n=b.subs??b.subCount??b.subN; return Number.isFinite(n)?n:null};
   const applySubs=(n,beat)=>{subs=Math.max(0,n|0); const st=stageFor(subs); setBody(st.i); growth={sx:st.sx,sy:st.sy}; lastDrawn="";
     if(beat&&mode!=="dead"&&!dying){if(mode==="doze"){mode="on";lastActive=Date.now()} play(SEQ.sub,{urgent:!0}); lastActive=Date.now()}};
@@ -202,6 +204,21 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // theme's idle animation and any on-air check read, and it must never lag a mode change.
     host.dataset.mode=mode;
     const sig=JSON.stringify(p)+bodyI; if(sig===lastDrawn)return; lastDrawn=sig;
+    // Swap expression layers only when state actually changes
+    const eyeState=p.eyes||"open";
+    if(parts.avatarEyes.dataset.state!==eyeState){
+      const src=`${ASSETS}/eyes-${eyeState}.webp`;
+      parts.avatarEyes.setAttribute("href",src);
+      parts.avatarEyes.setAttributeNS(XLINK,"href",src);
+      parts.avatarEyes.dataset.state=eyeState;
+    }
+    const mouthState=p.mouth||"flat";
+    if(parts.avatarMouth.dataset.state!==mouthState){
+      const src=`${ASSETS}/mouth-${mouthState}.webp`;
+      parts.avatarMouth.setAttribute("href",src);
+      parts.avatarMouth.setAttributeNS(XLINK,"href",src);
+      parts.avatarMouth.dataset.state=mouthState;
+    }
     const plank=Math.abs(Math.sin(p.pr*Math.PI/180)),L=(p.hr*.8+p.pr)*p.fx,k=1-.16*plank,shift=plank*60*p.fx;
     parts.ticketText.textContent=p.tag||""; parts.ticket.setAttribute("opacity",p.tag?1:0);
     const tkc=p.tag==="PAID"||p.tag==="+SUB"?PAL.mint:PAL.red; for(const n of parts.tkFill)n.setAttribute("fill",tkc);

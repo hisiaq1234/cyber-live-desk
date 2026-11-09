@@ -9,7 +9,7 @@
    between shapes he widens a little (STAGE_STRETCH) so every single sub is visible. The size is
    worked out from the sub total each time, so an overlay reload mid-stream restores it.
    Feed it with observe(state) where state.bot.subs is the sub count this stream, or call setSubs(n). */
-const NS="http://www.w3.org/2000/svg",PAL={onyx:"#1F1736",screen:"#0F0B17",edge:"#3A1D9E",indigo:"#6531F8",indigoDk:"#3A1D9E",mint:"#86F6BC",bone:"#A98BFF",ink:"#F4F0FF",red:"#FF5B57",dead:"#5E5873"},
+const NS="http://www.w3.org/2000/svg",PAL={onyx:"#1F1736",screen:"#0F0B17",edge:"#3A1D9E",indigo:"#6531F8",indigoDk:"#3A1D9E",mint:"#86F6BC",bone:"#A98BFF",ink:"#F4F0FF",slate:"#2B2738",red:"#FF5B57",dead:"#5E5873"},
 DOZE_AFTER_MS=12e4,BODIES=[3,0,5,1,2],ROT=7,ASSETS="./desk-assets/crid",AV=b=>`${ASSETS}/body-${b}-r${ROT}.webp`,
 SUB_STEPS=[0,3,8,15,25],STAGE_STRETCH=.06,
 el=(t,a={},...k)=>{const e=document.createElementNS(NS,t);for(const[n,v]of Object.entries(a))e.setAttribute(n,v);for(const c of k)c&&e.append(c);return e},
@@ -45,13 +45,15 @@ sideeye:[{hr:6},{hr:-4},{hr:0}],
 salute:[{hy:-4,mR:"up"},{hy:-2},{hy:0,mR:"down"}]};
 SEQ.sub=[...SEQ.cheer.slice(0,-1).map(f=>({...f,tag:"+SUB"})),...SEQ.pushup];
 function draw(){
-  const sticker={fill:PAL.bone,stroke:PAL.bone,"stroke-width":9,"stroke-linejoin":"round","stroke-linecap":"round"};
+  // Nothing attached to him carries a colour of its own: the ticket outline is the desk's ink, not
+  // the theme's lavender, and the fallback figure is neutral slate. He used to sit on a flat indigo
+  // ellipse, which read as a purple sticker under a painted character on a dark frame.
+  const sticker={fill:PAL.ink,stroke:PAL.ink,"stroke-width":9,"stroke-linejoin":"round","stroke-linecap":"round"};
   const svg=el("svg",{viewBox:"-6 -4 160 168","aria-hidden":"true",focusable:"false"});
-  const shadow=el("ellipse",{class:"shadow",cx:70,cy:159,rx:34,ry:5,fill:PAL.indigoDk});
   const avatar=el("image",{class:"avatar",x:18,y:18,width:112,height:142,preserveAspectRatio:"xMidYMax meet"});
   const ph=el("g",{class:"ph",display:"none"},
-    el("path",{d:"M44 152C44 110 56 92 70 92C84 92 96 110 96 152Z",fill:PAL.indigo,stroke:PAL.bone,"stroke-width":5,"stroke-linejoin":"round"}),
-    el("circle",{cx:70,cy:56,r:21,fill:PAL.indigo,stroke:PAL.bone,"stroke-width":5}),
+    el("path",{d:"M44 152C44 110 56 92 70 92C84 92 96 110 96 152Z",fill:PAL.slate,stroke:PAL.ink,"stroke-width":5,"stroke-linejoin":"round"}),
+    el("circle",{cx:70,cy:56,r:21,fill:PAL.slate,stroke:PAL.ink,"stroke-width":5}),
     el("circle",{cx:63,cy:54,r:2.8,fill:PAL.mint}),el("circle",{cx:77,cy:54,r:2.8,fill:PAL.mint}));
   const figG=el("g",{class:"fig"},avatar,ph),bodyG=el("g",{class:"body"},figG);
   const ticket=el("g",{class:"ticket",opacity:0});
@@ -59,8 +61,8 @@ function draw(){
   const ticketText=el("text",{x:119,y:17.2,"text-anchor":"middle","font-size":10.5,"font-weight":800,"letter-spacing":.6,fill:PAL.onyx,"font-family":"ui-monospace,'SF Mono','JetBrains Mono',Menlo,Consolas,monospace"});
   ticketText.textContent="";
   ticket.append(el("path",{d:"M100 4H138V22H100ZM108 22L106 31L118 22Z",...sticker,"stroke-width":6}),...tkFill,ticketText);
-  svg.append(shadow,bodyG,ticket);
-  return{svg,parts:{ticket,ticketText,tkFill,shadow,bodyG,figG,avatar,ph}};
+  svg.append(bodyG,ticket);
+  return{svg,parts:{ticket,ticketText,tkFill,bodyG,figG,avatar,ph}};
 }
 const CSS=`
 /* He is drawn at broadcast size: ~17.5vw is a full torso-and-head read on a 1080p stream, and the
@@ -77,8 +79,9 @@ const CSS=`
 #crid-bot.pos-custom{left:var(--bx);top:var(--by);bottom:auto;right:auto;margin-left:calc(var(--bw)*var(--bws)/-2)}
 #crid-bot.roam{margin-left:calc(var(--bw)*var(--bws)/-2);right:auto;bottom:auto;transition:none}
 /* A soft cast shadow, not a zero-blur offset copy of the silhouette: the hard offset was the single
-   biggest thing making him read as a sticker pasted on the frame. */
-#crid-bot svg{width:100%;height:100%;display:block;overflow:visible;filter:drop-shadow(0 calc(var(--bw)*.028) calc(var(--bw)*.07) rgba(15,11,23,.45))}
+   biggest thing making him read as a sticker pasted on the frame. The colour is pure black at low
+   opacity — a tinted shadow was what turned into the purple blob under his feet. */
+#crid-bot svg{width:100%;height:100%;display:block;overflow:visible;filter:drop-shadow(0 calc(var(--bw)*.028) calc(var(--bw)*.07) rgba(0,0,0,.42))}
 html.low-power #crid-bot svg,html.swae #crid-bot svg{filter:none}
 #crid-bot[data-mode="dead"] .ticket-fill{fill:${PAL.dead}}
 #crid-bot[data-mode="dead"] .avatar{opacity:.55}
@@ -86,7 +89,11 @@ html.low-power #crid-bot svg,html.swae #crid-bot svg{filter:none}
 `;
 export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="bc",x=null,y=null,step=null,scale=1}={}){
   if(!document.getElementById("crid-bot-css")){const st=document.createElement("style");st.id="crid-bot-css",st.textContent=CSS,document.head.append(st)}
-  const STEP=step!=null?step:swae?220:lowPower?260:140,{svg,parts}=draw(),host=document.createElement("div");
+  const STEP=step!=null?step:swae?220:lowPower?260:140,
+  // Movement is sampled finer than the sequencing tick, so an eased beat is drawn as a movement
+  // rather than as three jumps. The fast cadence only runs while something is actually travelling:
+  // a still character costs the same as before.
+  ANIM=Math.max(16,Math.min(STEP,45)),{svg,parts}=draw(),host=document.createElement("div");
   host.id="crid-bot",host.setAttribute("aria-hidden","true"),host.dataset.mode="dead";
   if(x!=null&&y!=null){host.classList.add("pos-custom");host.style.setProperty("--bx",`${x}%`);host.style.setProperty("--by",`${y}%`)}
   else if(position=="bl"||position=="br")host.classList.add(`pos-${position}`);
@@ -104,7 +111,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   for(const b of BODIES){const im=new Image();im.src=AV(b)}
   parts.avatar.addEventListener("error",()=>{parts.avatar.setAttribute("display","none");parts.ph.removeAttribute("display")});
   parts.avatar.addEventListener("load",()=>{parts.ph.setAttribute("display","none");parts.avatar.removeAttribute("display")});
-  let mode="dead",tagText=null,talking=!1,grooving=!1,tickN=0,wait=6,idleQ=[],gestureQ=[],timer=null,frozen=!1,dying=!1;
+  let mode="dead",tagText=null,talking=!1,grooving=!1,tickN=0,waitUntil=Date.now()+3000,idleQ=[],gestureQ=[],timer=null,frozen=!1,dying=!1;
   // online is null, not true: "nothing has told me otherwise yet" is a different state from "the
   // desk says he is on". Starting at true made the first observe({bot:{on:true}}) a no-op — it only
   // acts on a flip — so the boot never ran, mode stayed at its "dead" default and the idle loop's
@@ -141,13 +148,29 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // so a resize, a theme switch or a long headline can never slide him under the ticker.
   const place=()=>{if(!host.classList.contains("pos-br"))return;
     host.style.setProperty("--bot-right",`${Math.round(innerWidth-clearRight()+clamp(innerWidth*.012,10,26))}px`)};
+  // ---- locomotion: stepping, not gliding -------------------------------------------------
+  // He covers ground in short weighted steps with a pause between them, each one eased in and out,
+  // so the travel reads as a person shifting their weight rather than as a sprite sliding along.
   const startWalk=(tx,ty)=>{if(reduced||mode!=="on"||walk)return; const r=pct(host.getBoundingClientRect());
     host.classList.remove(...homeCls); host.classList.add("roam"); host.style.left=`${r.x}%`; host.style.top=`${r.y}%`;
     // He may shuffle around his own corner, never across the frame: at broadcast size a full-width
     // crawl would walk him over the lower third, the clock and the dock.
-    walk={x:r.x,y:r.y,tx:clamp(tx,8,Math.min(92,maxCenterX())),ty:clamp(ty,42,100-r.h-2),done:0}};
-  const advanceWalk=()=>{if(!walk)return; if(walk.done>0){if(--walk.done===0)goHome(); return} const dx=walk.tx-walk.x,dy=walk.ty-walk.y;
-    if(Math.hypot(dx,dy)<1.2){walk.done=Math.round(2600/STEP); return} fx=dx<0?-1:1; walk.x+=dx*.34; walk.y+=dy*.34; host.style.left=`${walk.x}%`; host.style.top=`${walk.y}%`};
+    walk={x:r.x,y:r.y,tx:clamp(tx,8,Math.min(92,maxCenterX())),ty:clamp(ty,42,100-r.h-2),
+      from:{x:r.x,y:r.y},to:null,t0:0,dur:1,gap:0,done:0}};
+  const advanceWalk=()=>{if(!walk)return; const now=Date.now();
+    if(walk.done){if(now>=walk.done)goHome(); return}
+    if(walk.to){ // mid-step: eased travel, then a beat with both feet down before the next one
+      const e=EASE.smooth(clamp((now-walk.t0)/walk.dur,0,1));
+      walk.x=walk.from.x+(walk.to.x-walk.from.x)*e; walk.y=walk.from.y+(walk.to.y-walk.from.y)*e;
+      if(now-walk.t0>=walk.dur){walk.from={x:walk.x,y:walk.y}; walk.to=null; walk.gap=now+rand(160,430)*(reduced?1.6:1)}
+    } else if(now>=walk.gap){
+      const dx=walk.tx-walk.x,dy=walk.ty-walk.y;
+      if(Math.hypot(dx,dy)<1.1){walk.done=now+Math.round(rand(1900,2900)); return}
+      fx=dx<0?-1:1; const k=.42+Math.random()*.26;   // no two steps cover the same ground
+      walk.from={x:walk.x,y:walk.y}; walk.to={x:walk.x+dx*k,y:walk.y+dy*k};
+      walk.t0=now; walk.dur=clamp(340+Math.hypot(dx,dy)*9,340,720);
+    }
+    host.style.left=`${walk.x}%`; host.style.top=`${walk.y}%`};
   const goHome=()=>{if(!walk)return; walk=null; fx=1; gestureQ=[]; host.classList.remove("roam"); host.style.left=host.style.top=""; host.classList.add(...homeCls)};
   // A short shuffle around wherever he lives (home is re-read after every landing and on resize),
   // so the crawl reads as him pottering about rather than as a walk across the whole stream.
@@ -166,28 +189,73 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // gx used to be scaled by .4 — a 3px glance at the old 104px size, i.e. nothing. A glance now
     // reads as a look: the sprite is the only face he has, so its travel is the expression.
     parts.figG.setAttribute("transform",`translate(${(shift+p.gx*1.15).toFixed(2)} ${(p.hy*.85-plank*14).toFixed(2)}) translate(70 158) rotate(${L.toFixed(2)}) scale(${(p.fx*p.sx*k).toFixed(3)} ${(p.sy*k).toFixed(3)}) translate(-70 -158)`);
-    const lift=clamp(1+Math.min(p.by,0)/70,.45,1);
-    parts.shadow.setAttribute("transform",`translate(${(shift*.55).toFixed(2)} 0) translate(70 159) scale(${((1+plank*.8)*lift*p.sx).toFixed(3)} 1) translate(-70 -159)`);
   };
-  // The sprite is a still drawing, so the only life it has is what the engine moves. Breathing runs
-  // under every pose — a slow rise and a 1% swell on a 4.6s cycle — so he is never a frozen image,
-  // even between gestures, and even when a gesture frame is playing.
-  const breath=()=>Math.sin(tickN*STEP/1000*2*Math.PI/4.6)*(reduced?.35:1);
-  const compose=frame=>{const p={...REST[mode],tag:tagText,fx,sx:growth.sx,sy:growth.sy,...(frame||{})};
-    if(mode==="on"||mode==="doze"){const br=breath(); p.bs*=(1+.012*br); p.sy*=(1+.007*br); p.hy-=1.1*br}
-    if(!frame&&mode==="doze")p.hr=[3,5,7,5][Math.floor(tickN/3)%4]; if(grooving&&mode==="on"&&!frame){p.hr=tickN%4<2?-3:3;p.hy=tickN%2?2:0} return p};
-  // Weighted towards the moves that actually read on air: sway, lean, peek, kick, hop. The eye-only
-  // sequences (blink, ledBlink) are kept but rare, because on a sprite with a painted face they are
-  // nearly invisible at any size.
+  // ---- human timing ----------------------------------------------------------------------
+  // The sprite is a still drawing, so the only life it has is what the engine moves. Two layers:
+  // the gesture beats, which are interpolated (below), and a continuous layer that never stops —
+  // breathing, a slow weight shift, and the walk cycle.
+  const EASE={linear:u=>u,smooth:u=>u*u*(3-2*u),out:u=>1-Math.pow(1-u,3),settle:u=>1-Math.pow(1-u,4.2),
+      anticipate:u=>{const c=1.35;return (c+1)*u*u*u-c*u*u},
+      overshoot:u=>{const c=1.70158;return 1+(c+1)*Math.pow(u-1,3)+c*Math.pow(u-1,2)}},
+    NUMS=["gx","gy","hy","hr","by","bs","pr","tr"],BOOT=Date.now();
+  // Every beat knows where it sits in its own sequence, so the first beat can wind up before the
+  // move and the last one can settle after it. One frame per tick, every frame the same length,
+  // was the metronome that made him skip like a robot.
+  const FPOS=new WeakMap,FLEN=new WeakMap;
+  for(const k in SEQ){const arr=SEQ[k]; arr.forEach((f,i)=>{if(!FPOS.has(f))FPOS.set(f,i)}); for(const f of arr)if(!FLEN.has(f))FLEN.set(f,arr.length)}
+  const beatMs=f=>{const i=FPOS.get(f)??1,n=FLEN.get(f)??3; return STEP*(i===0?2.6:i===n-1?3.1:2.0)*(.82+Math.random()*.5)*(reduced?1.3:1)};
+  const beatEase=f=>{const i=FPOS.get(f)??1,n=FLEN.get(f)??3; return i===0?"anticipate":i===n-1?"settle":(Math.random()<.5?"out":"smooth")};
+  const breath=now=>Math.sin((now-BOOT)/1000*2*Math.PI/4.6)*(reduced?.35:1);
+  // A person standing still is never square to the camera: a small lean that moves every few
+  // seconds, biased to one side, is what stops him reading as a sprite pinned to a grid.
+  let post={hr:0,tr:0,hy:0},postTo={hr:0,tr:0,hy:0},postAt=BOOT,postFor=1;
+  const postureAt=now=>{if(now>=postAt+postFor){post={...postTo}; postAt=now; postFor=rand(2600,4600)*(reduced?1.4:1);
+      postTo={hr:(Math.random()<.62?-1:1)*rand(.6,2.4),tr:rand(-1.6,1.6),hy:rand(0,1.3)}}
+    const e=EASE.smooth(clamp((now-postAt)/postFor,0,1));
+    return{hr:post.hr+(postTo.hr-post.hr)*e,tr:post.tr+(postTo.tr-post.tr)*e,hy:post.hy+(postTo.hy-post.hy)*e}};
+  const baseOf=frame=>({...REST[mode],tag:tagText,fx,sx:growth.sx,sy:growth.sy,...(frame||{})});
+  const dress=p=>{const now=Date.now(),q={...p};
+    if(mode==="on"||mode==="doze"){const br=breath(now); q.bs*=(1+.012*br); q.sy*=(1+.007*br); q.hy-=1.1*br}
+    if(!frozen&&mode!=="dead"){const po=postureAt(now); q.hr+=po.hr; q.tr+=po.tr; q.hy+=po.hy}
+    if(!gestureOn){if(mode==="doze")q.hr=[3,5,7,5][Math.floor(now/430)%4];
+      if(grooving&&mode==="on"){q.hr=Math.floor(now/760)%2?-3:3; q.hy=Math.floor(now/1500)%2?2:0}}
+    if(walk&&walk.to){const u=clamp((now-walk.t0)/walk.dur,0,1),lift=Math.sin(Math.PI*u);
+      q.by-=lift*2.4; q.hr+=lift*2*fx; q.hy+=lift*.7}
+    return q};
+  // One transition at a time: the pose eases from where it is to the next beat instead of snapping
+  // onto it, which is the difference between a gesture and a twitch.
+  let pose=null,tgt=null,from=null,trAt=0,trFor=1,trEase=EASE.smooth,gestureOn=!1;
+  const stepTo=(frame,now)=>{from={...pose}; tgt=baseOf(frame); trAt=now; trFor=frame?beatMs(frame):STEP*1.5;
+    trEase=EASE[frame?beatEase(frame):"smooth"]; gestureOn=!!frame};
+  const advancePose=now=>{if(!pose){pose=baseOf(null); tgt=pose; trAt=now; trFor=1; return dress(pose)}
+    const e=trEase(clamp((now-trAt)/trFor,0,1)),p={...tgt};
+    for(const k of NUMS)p[k]=(from[k]??0)+((tgt[k]??0)-(from[k]??0))*e;
+    pose=p; return dress(pose)};
+  // Fewer, larger gestures, and long gaps between them. The eye-only beats (blink, ledBlink) are
+  // nearly invisible on a painted face, so they are the rare exception now, not the filler.
   const pickIdle=()=>{const r=Math.random(); if(mode==="doze") return r<.5?[{led:"on"},{led:"dim"}]:SEQ.blink;
-    if(r<.14)return SEQ.blink; if(r<.2)return SEQ.doubleBlink; if(r<.3)return rand(0,1)<.5?SEQ.glanceL:SEQ.glanceR;
-    if(r<.38)return SEQ.peek; if(r<.48)return SEQ.sway; if(r<.55)return SEQ.read; if(r<.63)return SEQ.sideeye;
-    if(r<.7)return SEQ.hop; if(r<.77)return SEQ.shrug; if(r<.85)return SEQ.sit.concat(SEQ.stand);
-    if(r<.9)return SEQ.kick; if(r<.95)return SEQ.weighted; return SEQ.crawl};
-  const tick=()=>{if(frozen)return; timer=setTimeout(tick,STEP); tickN++; if(walk&&(jobs.length||running))goHome(); advanceJob(); advanceWalk();
-    let frame=null; if(walk&&!walk.done&&!gestureQ.length)gestureQ.push(...SEQ.crawl);
-    if(gestureQ.length)frame=gestureQ.shift(); else if(mode!=="dead"){if(!idleQ.length&&!walk&&--wait<=0){const q=pickIdle(); if(q===SEQ.crawl){crawlScreen();idleQ=[]}else idleQ=[...q]; wait=Math.round(rand(3,9)*(mode==="doze"?1.8:1)*(220/STEP))} frame=idleQ.shift()||null; if(mode==="on"&&Date.now()-lastActive>DOZE_AFTER_MS)setMode("doze")}
-    render(compose(frame)); if(dying&&!gestureQ.length){mode="dead";dying=!1}else if(!running&&!jobs.length&&!gestureQ.length&&pendingReact.length)play(SEQ[pendingReact.shift()]||[])};
+    if(r<.28)return SEQ.sway; if(r<.42)return SEQ.weighted; if(r<.53)return SEQ.read;
+    if(r<.62)return rand(0,1)<.5?SEQ.glanceL:SEQ.glanceR; if(r<.7)return SEQ.peek;
+    if(r<.78)return SEQ.shrug; if(r<.86)return SEQ.sit.concat(SEQ.stand);
+    if(r<.92)return SEQ.crawl; if(r<.96)return SEQ.sideeye; return SEQ.blink};
+  // The gap before the next gesture is drawn, not fixed: a few seconds of stillness, often much
+  // longer, and never the same interval twice running.
+  const nextWait=()=>{const r=Math.random();
+    const sec=mode==="doze"?(r<.4?rand(16,30):rand(9,16)):(r<.25?rand(15,28):r<.6?rand(8.5,15):rand(4.5,8.5));
+    return sec*1000*(reduced?1.35:1)};
+  const tick=()=>{if(frozen)return; const now=Date.now(); tickN++; if(walk&&(jobs.length||running))goHome(); advanceJob(); advanceWalk();
+    if(now>=trAt+trFor){ // the previous beat has finished travelling: choose the next one
+      let frame=null; if(walk&&!walk.done&&!gestureQ.length)gestureQ.push(...SEQ.crawl);
+      if(gestureQ.length)frame=gestureQ.shift(); else if(mode!=="dead"){
+        if(!idleQ.length&&!walk&&now>=waitUntil){const q=pickIdle();
+          if(q===SEQ.crawl){crawlScreen();idleQ=[]}else idleQ=[...q]; waitUntil=now+nextWait()}
+        frame=idleQ.shift()||null; if(mode==="on"&&now-lastActive>DOZE_AFTER_MS)setMode("doze")}
+      stepTo(frame,now);
+      if(dying&&!gestureQ.length){mode="dead";dying=!1}
+      else if(!running&&!jobs.length&&!gestureQ.length&&pendingReact.length)play(SEQ[pendingReact.shift()]||[]);
+    }
+    render(advancePose(now));
+    timer=setTimeout(tick,(walk||Date.now()<trAt+trFor)?ANIM:STEP)};
   // The reduced-motion cut of a sequence: the same beats, without the travel. Anything that moves
   // him across the frame (by, bs, pr) is dropped and what remains is clamped to a twitch, so the
   // loop still ticks and still reads as a character — it just stops throwing him around.
@@ -230,7 +298,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const mo=typeof MutationObserver=="function"?new MutationObserver(watch):null; mo==null||mo.observe(host,{attributes:!0,attributeFilter:["class"]});
   // Boot him on the way in (the desk default), place him clear of the lower third, and keep the
   // placement honest across resizes and strip content changes.
-  applySubs(0,!1); power(); place(); render(compose(null)); timer=setTimeout(tick,STEP);
+  applySubs(0,!1); power(); place(); render(advancePose(Date.now())); timer=setTimeout(tick,STEP);
   let placeFrame=0,stripWatch=null;
   const replace=()=>{home=null; if(placeFrame)return; placeFrame=(typeof requestAnimationFrame=="function"?requestAnimationFrame:setTimeout)(()=>{placeFrame=0; place()},0)};
   if(typeof addEventListener=="function")addEventListener("resize",replace);

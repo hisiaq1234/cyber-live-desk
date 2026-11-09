@@ -135,7 +135,13 @@ test("the mascot is drawn at broadcast size and can be scaled from the URL", asy
   assert.ok(clamp, "the base size must be one clamp in the bot module");
   assert.ok(Number(clamp[3]) >= 320, `the max width must read on air, got ${clamp[3]}px`);
   assert.match(src, /--bws/, "the scale multiplier must exist");
-  assert.match(src, /filter:drop-shadow\(0 calc\(var\(--bw\)\*\.028\) calc\(var\(--bw\)\*\.07\)/, "the shadow must be soft, not a hard offset copy");
+  // What is actually drawn is --bot-w: the broadcast clamp times ?bot.scale=, capped by the frame so
+  // a raised scale cannot crop him. The shadow is bound to that, not to --bw, so it grows with him.
+  assert.match(src, /--bot-w:min\(calc\(var\(--bw\)\*var\(--bws\)\),var\(--bot-max\)\)/,
+    "the drawn width must be the scaled clamp, capped to the frame");
+  assert.match(src, /--bot-max:min\(calc\(100vw - 2\*var\(--m,16px\)\),calc\(\(100dvh - 2\*var\(--m,16px\)\)\*160\/168\)\)/,
+    "the cap must be the frame's width and height, in the sprite's own aspect");
+  assert.match(src, /filter:drop-shadow\(0 calc\(var\(--bot-w\)\*\.028\) calc\(var\(--bot-w\)\*\.07\)/, "the shadow must be soft, not a hard offset copy");
   const overlay = await import("node:fs/promises").then((fs) => fs.readFile(
     new URL("../public/desk-assets/overlay.js", import.meta.url), "utf8"));
   assert.match(overlay, /num\("bot\.scale", 1, 0\.4, 2\.5\)/, "?bot.scale= must be wired from the overlay");

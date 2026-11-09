@@ -516,40 +516,33 @@ const emOf = (block, prop) => {
   return m ? Number(m[1]) : null;
 };
 
-test("the clock shares the news ticker's type rhythm instead of a solo overlay's absolute px", () => {
+test("the clock is the operator's Black Market timestamp, not a paraphrase of it", () => {
   const css = source("public/desk-assets/overlay.js");
   const dock = css.match(/#time-dock\{[^}]*\}/)?.[0];
   assert.ok(dock, "could not find the clock block to check");
 
-  // The one token both plates read their ems from. index (2).html is a standalone timestamp, so
-  // its 43px digits and 390px plate are sized for an empty frame; the desk's frame also carries the
-  // ticker, and copying the solo numbers made the timer the loudest thing on screen.
-  assert.match(css, /#desk\{[^}]*--feed-fs:calc\(var\(--scale\)\*clamp\(13px,1\.8vmin,19px\)\)/s);
-  assert.match(dock, /font-size:var\(--feed-fs\)/);
-  assert.match(css, /#auto-headlines\{[^}]*font-size:var\(--feed-fs\)/s);
-
-  // No fixed pixel floor may survive on the plate: it has to be em or it stops tracking the feed.
-  assert.match(dock, /min-width:min\(16em,64vw\)/);
-  assert.ok(!/\b\d+px\b/.test(dock.match(/min-width:[^;]*/)[0]), "the plate still has a px floor");
-
-  // The balance itself: digits against the headline text they sit next to. The operator's older
-  // overlay measured about 1.7x; anything past ~2x is the timer shouting over the news.
-  const time = css.match(/\.clock-time\{[^}]*\}/)?.[0];
-  const title = css.match(/\.identity-row \.headline-feed-title\{[^}]*\}/)?.[0];
-  assert.ok(time && title, "could not find the time or headline rules");
-  const digits = emOf(time, "font-size");
-  const ratio = digits / emOf(title, "font-size");
-  assert.ok(ratio > 1.4 && ratio < 2.0, `clock-to-headline ratio is ${ratio.toFixed(2)}, outside balance`);
-  assert.equal(digits, 1.5);
-
-  // Same declaration as the ticker's own accent edge, so the two bars weigh the same at any width.
-  const ticker = css.match(/#auto-headlines\{[^}]*\}/)?.[0];
-  assert.equal(emOf(dock, "border-left"), emOf(ticker, "border-left"));
+  // The owner's index (2).html, ported: crimson #dc143c on paper #f7f3ea, the 3px crimson left bar
+  // with the square-left/round-right corner, his 390px plate and IBM Plex Mono digits at 2.35vw.
+  // The desk used to rescale all of this onto the news ticker's em rhythm; he asked for his own.
+  assert.match(dock, /border-left:3px solid #dc143c/);
+  assert.match(dock, /background:rgba\(8,11,16,\.84\)/);
+  assert.match(dock, /min-width:min\(390px,82vw\)/);
+  assert.match(dock, /border-radius:0 12px 12px 0/);
 
   // The reference anatomy, kept.
-  assert.match(css, /\.clock-time\{[^}]*font-family:var\(--mono\)/s);
-  assert.match(css, /\.clock-time\{[^}]*letter-spacing:-\.045em/s);
-  assert.match(dock, /border-radius:0 \.75em \.75em 0/);
-  assert.match(css, /#desk\{[^}]*--mono:/);
+  const time = css.match(/#time-dock \.clock-time\{[^}]*\}/)?.[0];
+  assert.ok(time, "could not find the digits rule");
+  assert.match(time, /font-family:"IBM Plex Mono"/);
+  assert.match(time, /font-size:clamp\(24px,2\.35vw,43px\)/);
+  assert.match(time, /letter-spacing:-\.045em/);
   assert.match(css, /@media\(max-width:520px\)\{#time-dock\{[^}]*bottom:calc/);
+
+  // His words on the plate: the topline, the live dot, and the zone row.
+  assert.match(css, /"Black Market"/);
+  assert.match(css, /"clock-live"/);
+  assert.match(css, /"Africa \/ Lagos"/);
+
+  // Pinned to his zone and his cadence, not to whatever machine is drawing the frame.
+  assert.match(css, /const ZONE = "Africa\/Lagos"/);
+  assert.match(css, /setInterval\(drawClock, 250\)/);
 });

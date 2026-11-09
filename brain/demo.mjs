@@ -83,6 +83,9 @@ export function createDemoSource({ onEvent = () => {}, log = () => {}, random = 
     { at: 300, run: () => log("[demo] stream is live — Crid is on the desk, nobody has typed yet") },
     { at: 1600, run: () => chat("dave", "yo") },
     { at: 5200, run: () => chat("nova", "he's back") },
+    // the quiet layer: a question mark and a configured keyword (gg → proud) are two of
+    // the signals that fire a micro-emotion between the big ones.
+    { at: 6600, run: () => chat("mira", "is that the boss phase two?") },
     { at: 7600, run: () => chat("pixel", "the lag is unreal") }, // keyword: lag
     { at: 12000, run: () => log("[demo] chat spike") },
     ...[0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => ({
@@ -101,6 +104,7 @@ export function createDemoSource({ onEvent = () => {}, log = () => {}, random = 
     { at: 27000, run: () => chat("pixel", "L") },
     { at: 27400, run: () => chat("kay", "Ls") },
     { at: 31000, run: () => onEvent(event("bits", { user: "pixel", amount: 500, detail: "500 bits" })) },
+    { at: 34000, run: () => chat("kay", "gg") }, // keyword: gg → the proud micro-emotion
     ...[0, 1, 2, 3, 4].map((i) => ({
       at: 37000 + i * 1400,
       run: () => chat(["mira", "joss", "kay", "reg", "tamsin"][i], TOPIC_CHATTER[i % TOPIC_CHATTER.length]),

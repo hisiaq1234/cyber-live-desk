@@ -96,6 +96,85 @@
       "lines": ["I saw what you did there."]
     }
   },
+  "microEmotions": {
+    "_readme": "The quiet layer under the loud one. Eight miniature feelings that play often and briefly (each under 2s) so the stream feels alive between big moments. They never take the floor from hype/roast/layerDrag: the engine only plays one when nothing else is happening. Retune pacing (minGapMs/maxGapMs while chat is live, idleGapMs when the room is quiet, maxPerMinute), which signal fires what (`signals`), and each feeling's weight/cooldown/duration/lines here. Weight 0 or \"enabled\": false switches one off; \"enabled\": false on this block switches the whole layer off. `caption` shows the tiny line beside the mark — set it false for a silent, visual-only layer.",
+    "enabled": true,
+    "minGapMs": 4000,
+    "maxGapMs": 12000,
+    "idleGapMs": 45000,
+    "maxPerMinute": 6,
+    "caption": true,
+    "signals": {
+      "_readme": "keywordMoods maps a `keywords` mood to a feeling; momentEmotions is the quiet after-beat of a sub/gift/bits/raid (it waits momentLeadMs so the loud reaction lands first). rateRise/rateFall are message-rate comparisons between two equal windows. startleGapMs is how much quiet makes the next line a flinch, sulkAfterMs how much quiet after a busy patch makes him sulky, sleepAfterMs how much quiet makes him doze.",
+      "keywordMoods": { "curious": "curious", "delighted": "delighted", "proud": "proud", "alarmed": "startled" },
+      "momentEmotions": { "sub": "proud", "gift": "proud", "bits": "delighted", "raid": "startled" },
+      "momentLeadMs": 1500,
+      "afterMomentMs": 7000,
+      "rateRise": { "windowMs": 8000, "messages": 4, "users": 2 },
+      "rateFall": { "windowMs": 8000, "priorMessages": 4 },
+      "startleGapMs": 10000,
+      "sulkAfterMs": 6000,
+      "sleepAfterMs": 25000
+    },
+    "emotions": {
+      "curious": {
+        "enabled": true,
+        "weight": 3,
+        "cooldownMs": 18000,
+        "duration": 1500,
+        "lines": ["hm?", "what's this then?", "a question. bold."]
+      },
+      "delighted": {
+        "enabled": true,
+        "weight": 2,
+        "cooldownMs": 22000,
+        "duration": 1400,
+        "lines": ["yes. noted.", "oh, that's nice.", "I'll allow it."]
+      },
+      "smug": {
+        "enabled": true,
+        "weight": 2,
+        "cooldownMs": 26000,
+        "duration": 1600,
+        "lines": ["called it.", "no notes.", "I said that. earlier."]
+      },
+      "flustered": {
+        "enabled": true,
+        "weight": 2,
+        "cooldownMs": 26000,
+        "duration": 1400,
+        "lines": ["ok. ok. ok.", "one at a time.", "steady."]
+      },
+      "sleepy": {
+        "enabled": true,
+        "weight": 2,
+        "cooldownMs": 60000,
+        "duration": 1800,
+        "lines": ["five more.", "still here.", "the menu again."]
+      },
+      "startled": {
+        "enabled": true,
+        "weight": 1,
+        "cooldownMs": 24000,
+        "duration": 1200,
+        "lines": ["what—", "I was resting.", "hm!"]
+      },
+      "proud": {
+        "enabled": true,
+        "weight": 2,
+        "cooldownMs": 28000,
+        "duration": 1600,
+        "lines": ["no notes.", "tidy.", "I made that happen. sort of."]
+      },
+      "sulky": {
+        "enabled": true,
+        "weight": 1,
+        "cooldownMs": 40000,
+        "duration": 1600,
+        "lines": ["fine.", "I'll be here.", "noted. ignored."]
+      }
+    }
+  },
   "lines": {
     "greet": [
       "oh. people.",

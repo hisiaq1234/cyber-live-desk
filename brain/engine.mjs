@@ -11,9 +11,10 @@
  * Every action that leaves this file is one line of "why" on the console. That log is
  * how the owner judges whether it reads as a mind.
  */
-import { PRIORITY, presence, look, express, gesture, say, card, effect, memory as memCmd, moveLayer } from "./commands.mjs";
+import { PRIORITY, presence, look, express, gesture, say, card, effect, memory as memCmd, moveLayer, micro as microCmd } from "./commands.mjs";
 import { labelFor, MIN } from "./memory.mjs";
 import { matchHype, matchRoast, tallySignals, isAllowedLayer, normaliseSide } from "./reactions.mjs";
+import { MicroEmotionDriver } from "./micro-emotions.mjs";
 
 export const DEFAULT_TIMINGS = {
   firstMessageSilenceMs: 60_000, // first message after this much quiet gets a greeting
@@ -58,6 +59,9 @@ export class InitiativeEngine {
     this.seq = 0;
     this.decisions = [];
     this.verbose = false;
+    // The quiet layer. It reads the same session memory the loud rules do, but it is not
+    // a rule: it gets the floor only when the loud loop decided nothing (see tick()).
+    this.micro = new MicroEmotionDriver({ personality: () => this.personality, now: this.now, random: this.random });
   }
 
   /* ---------- public ---------- */
@@ -80,7 +84,11 @@ export class InitiativeEngine {
       const c = this.safeRun(rule, null);
       if (c) candidates.push(c);
     }
-    return this.decide(candidates, { source: "tick" });
+    const winner = this.decide(candidates, { source: "tick" });
+    // The quiet layer only gets a turn when the loud loop had nothing to say. That one
+    // line is the whole guarantee that a micro-emotion can never displace a big reaction.
+    if (!winner) this.microEmotion();
+    return winner;
   }
 
   start() {
@@ -229,6 +237,26 @@ export class InitiativeEngine {
     this.onAction?.(action, envelopes, event);
   }
 
+  /**
+   * One miniature feeling from the quiet layer.
+   *
+   * It emits through the same bus and logs the same "why", but it is deliberately not an
+   * action: it does not move the global gap, spend the per-minute ceiling or write to the
+   * moment record. A small feeling is not a moment, and it must never cost the loud layer
+   * its turn — so `tick()` still reports "nothing fired" when only this happened.
+   */
+  microEmotion() {
+    const cand = this.micro.step({ memory: this.memory });
+    if (!cand) return null;
+    const now = this.now();
+    const envelopes = this.bus.emit([microCmd(cand.emotion, { line: cand.line, duration: cand.cfg.duration, why: cand.why })]);
+    const action = { ts: now, rule: `micro-emotion:${cand.emotion}`, why: cand.why, say: null, momentId: null, summary: `micro:${cand.emotion}`, priority: PRIORITY.micro };
+    this.log(`${clock(now)} ▲ ${action.rule} · p${PRIORITY.micro} · quiet — why: ${cand.why}`);
+    this.log(`${" ".repeat(9)}└ ${envelopes.map(describeCommand).join(" · ")}`);
+    this.onAction?.(action, envelopes, null);
+    return cand;
+  }
+
   logDecision(c, envelopes, now, source) {
     const stamp = clock(now);
     const head = `${stamp} ▲ ${c.rule} · p${c.priority}${source === "tick" ? " · unprompted" : ""} — why: ${c.why}`;
@@ -252,6 +280,8 @@ export function describeCommand(cmd) {
       return `gesture:${cmd.payload.type}`;
     case "look":
       return `look:${cmd.payload.target}`;
+    case "micro":
+      return `micro:${cmd.payload.emotion}`;
     case "presence":
       return `presence:${cmd.payload.mode}`;
     case "card":

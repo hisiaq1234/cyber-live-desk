@@ -75,6 +75,26 @@ const LOOK = {
   offscreen: "glanceR",
 };
 
+/* ---------- micro-emotions: the quiet layer ----------
+ * The brain names the feeling (and its caption); this map owns what it LOOKS like — the
+ * same split the layer drag uses. Each one is a small pose from the body's own sequences
+ * plus a CSS-drawn mark over the sprite (see `.crid-micro` in overlay.css). No image
+ * assets, no new frames, and each is capped at 2s so the quiet layer stays quiet.
+ */
+const MICRO = {
+  curious: { pose: "peek", mark: "?", shape: "ask" },
+  delighted: { pose: "hop", mark: "*", shape: "spark" },
+  smug: { pose: "sideeye", mark: "hm", shape: "smirk" },
+  flustered: { pose: "wince", mark: "~", shape: "blush" },
+  sleepy: { pose: "sit", mark: "z", shape: "zzz" },
+  startled: { pose: "surprise", mark: "!", shape: "jolt" },
+  proud: { pose: "nod", mark: "", shape: "bar" },
+  sulky: { pose: "shrug", mark: "...", shape: "puff" },
+};
+
+// A card, an effect or a drag owns the frame while it plays; a small feeling waits.
+const LOUD_PRIORITY = 50;
+
 /* ---------- layers Crid may physically move ----------
  * Named targets the brain can address. Anything not in this registry is refused rather
  * than guessed at. brain/README.md documents the same contract for the desk's own panels.
@@ -131,6 +151,9 @@ function applyCommand(cmd) {
       break;
     case "effect":
       playEffect(p.type, p.intensity, p.duration);
+      break;
+    case "micro":
+      playMicro(p.emotion, p.line, p.duration);
       break;
     case "move":
       moveLayer(p, cmd);
@@ -278,6 +301,52 @@ function playTears(intensity = 0.8, duration = 6000) {
     tearLayer?.remove();
     tearLayer = null;
   }, Math.max(1200, duration));
+}
+
+/* ---------- micro-emotions: one tiny feeling, drawn in CSS, gone in under 2s ---------- */
+
+let microEl = null;
+let microTimer = null;
+
+/**
+ * Play one miniature feeling. The mark and the shape come from MICRO; the caption is the
+ * owner's line from the personality file (text, never HTML). Reusing one element keeps
+ * this allocation-free between beats, and the timer removes the class so nothing sticks.
+ */
+function playMicro(name, line = "", duration = 1600) {
+  const m = MICRO[name];
+  if (!m) return;
+  if (host.dataset.presence === "hidden") return;
+  if (Date.now() < playing.until && playing.priority >= LOUD_PRIORITY) return; // a big visual has the frame
+  const ms = Math.min(2000, Math.max(400, Number(duration) || 1600));
+  if (!microEl) {
+    microEl = document.createElement("div");
+    microEl.className = "crid-micro";
+    microEl.setAttribute("aria-hidden", "true");
+    host.append(microEl);
+  }
+  microEl.dataset.emotion = name;
+  microEl.dataset.shape = m.shape;
+  microEl.style.setProperty("--micro-dur", `${ms}ms`);
+  microEl.textContent = "";
+  if (m.mark) {
+    const mark = document.createElement("i");
+    mark.className = "micro-mark";
+    mark.textContent = m.mark;
+    microEl.append(mark);
+  }
+  if (line) {
+    const caption = document.createElement("span");
+    caption.className = "micro-line";
+    caption.textContent = line;
+    microEl.append(caption);
+  }
+  microEl.classList.remove("on");
+  void microEl.offsetWidth; // restart the animation
+  microEl.classList.add("on");
+  if (m.pose) bot.react(m.pose);
+  clearTimeout(microTimer);
+  microTimer = setTimeout(() => microEl?.classList.remove("on"), ms + 260);
 }
 
 /* ---------- physical layer drag: walk to it, take the weight, move it aside ---------- */
@@ -431,4 +500,4 @@ bot.setMode("on");
 setPresence("watching");
 connect();
 
-window.cridOverlay = { bot, applyCommand, onCommand, moveLayer, playTears, goHome };
+window.cridOverlay = { bot, applyCommand, onCommand, moveLayer, playTears, playMicro, goHome };

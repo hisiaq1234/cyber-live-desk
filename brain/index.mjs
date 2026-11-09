@@ -14,7 +14,7 @@ import { SessionMemory } from "./memory.mjs";
 import { InitiativeEngine, DEFAULT_TIMINGS, describeRules, clock } from "./engine.mjs";
 import { loadPersonality, PERSONALITY_PATH } from "./personality.mjs";
 import { createTwitchIrc } from "./twitch-irc.mjs";
-import { createDemoSource, mulberry32 } from "./demo.mjs";
+import { createDemoSource, createReactionDemo, mulberry32 } from "./demo.mjs";
 import { createBrainServer } from "./server.mjs";
 
 const DEFAULT_PORT = 7311;
@@ -22,7 +22,7 @@ const DEFAULT_PORT = 7311;
 /* ---------- arguments ---------- */
 
 function parseArgs(argv) {
-  const args = { demo: false, channel: null, port: DEFAULT_PORT, verbose: false, seed: null, help: false };
+  const args = { demo: false, channel: null, port: DEFAULT_PORT, verbose: false, seed: null, help: false, scenario: null, cooldownScale: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--demo" || a === "-d") args.demo = true;
@@ -33,9 +33,14 @@ function parseArgs(argv) {
     else if (a === "--verbose" || a === "-v") args.verbose = true;
     else if (a === "--seed") args.seed = Number(argv[++i]) || null;
     else if (a.startsWith("--seed=")) args.seed = Number(a.split("=")[1]) || null;
+    else if (a === "--scenario" || a === "-s") args.scenario = String(argv[++i] || "").toLowerCase() || null;
+    else if (a.startsWith("--scenario=")) args.scenario = a.split("=")[1].toLowerCase();
+    else if (a === "--cooldown-scale") args.cooldownScale = Number(argv[++i]) || null;
+    else if (a.startsWith("--cooldown-scale=")) args.cooldownScale = Number(a.split("=")[1]) || null;
     else if (a === "--help" || a === "-h") args.help = true;
   }
   args.channel = (args.channel || process.env.CRID_CHANNEL || process.env.CRID_TWITCH_CHANNEL || "").trim().replace(/^#/, "") || null;
+  if (args.scenario) args.demo = true; // a scenario is always synthetic
   return args;
 }
 
@@ -45,9 +50,14 @@ Crid's brain — local initiative loop for the Crid overlay
   npm run brain                        connect to a Twitch channel (anonymous IRC, no login)
   npm run brain -- --channel <name>    which channel to watch
   npm run brain -- --demo              synthetic chat and events, no Twitch needed
+  npm run brain -- --demo --scenario reactions
+                                       only the owner's three reactions, on a loop:
+                                       Ws/1s hype, L/roast tears, drag a layer aside
   npm run brain -- --port 7311         port for the overlay + command bus
   npm run brain -- --verbose           also log rules that were held back
   npm run brain -- --seed 42           reproducible demo
+  npm run brain -- --cooldown-scale 0.25
+                                       demo pacing only: shrink configured cooldowns
 
   channel can also come from the CRID_CHANNEL environment variable.
 
@@ -55,6 +65,7 @@ Crid's brain — local initiative loop for the Crid overlay
             http://127.0.0.1:<port>/overlay?preview=1
   status:   http://127.0.0.1:<port>/              (live decision log)
   memory:   http://127.0.0.1:<port>/state
+  events:   POST http://127.0.0.1:<port>/event    (the desk reports what happened)
 `;
 
 /* ---------- timings ---------- */
@@ -68,6 +79,16 @@ const DEMO_TIMINGS = {
   callbackAgeMs: 45_000,
   returningGapMs: 30_000,
   minActionGapMs: 1_500,
+};
+
+// The reaction scenario only has three things to show, so it gets the floor: a tighter
+// global gap, a higher per-minute ceiling, and the owner's configured cooldowns scaled
+// down (pacing only — the vocabulary itself is untouched).
+const REACTION_TIMINGS = {
+  ...DEMO_TIMINGS,
+  minActionGapMs: 600,
+  maxActionsPerMinute: 14,
+  cooldownScale: 0.2,
 };
 
 /* ---------- main ---------- */
@@ -91,13 +112,15 @@ async function main() {
   let personality = loadPersonality();
   const memory = new SessionMemory();
   const bus = new CommandBus();
+  const timings = { ...(args.demo ? DEMO_TIMINGS : {}), ...(args.scenario === "reactions" ? REACTION_TIMINGS : {}) };
+  if (args.cooldownScale) timings.cooldownScale = args.cooldownScale;
   const engine = new InitiativeEngine({
     memory,
     personality,
     bus,
     log,
     random,
-    timings: args.demo ? DEMO_TIMINGS : {},
+    timings,
   });
   engine.verbose = args.verbose;
 
@@ -159,9 +182,16 @@ async function main() {
 
   let source = null;
   if (args.demo) {
-    source = createDemoSource({ onEvent: (evt) => engine.handleEvent(evt), log, random });
-    source.start();
-    log("[demo] synthetic chat started — watch the overlay, or this log");
+    if (args.scenario === "reactions") {
+      source = createReactionDemo({ onEvent: (evt) => engine.handleEvent(evt), log });
+      source.start();
+      log("[reactions] looping the owner's vocabulary: Ws/1s hype → L tears → drag a layer aside");
+    } else {
+      if (args.scenario) log(`[brain] unknown scenario "${args.scenario}" — running the full demo instead`);
+      source = createDemoSource({ onEvent: (evt) => engine.handleEvent(evt), log, random });
+      source.start();
+      log("[demo] synthetic chat started — watch the overlay, or this log");
+    }
   } else {
     if (!args.channel) {
       log("");
@@ -206,15 +236,29 @@ function banner({ args, personality, port, engine, log }) {
   const d = personality.describe();
   log("");
   log("  CRID — brain");
-  log(`  mode        ${args.demo ? "demo (synthetic chat + events)" : `live (anonymous Twitch IRC${args.channel ? ` → #${args.channel}` : ", no channel yet"})`}`);
+  log(`  mode        ${args.demo ? `demo (${args.scenario === "reactions" ? "reaction pack only" : "synthetic chat + events"})` : `live (anonymous Twitch IRC${args.channel ? ` → #${args.channel}` : ", no channel yet"})`}`);
   log(`  overlay     http://127.0.0.1:${port}/overlay        ← OBS browser source (1920×1080, 60fps)`);
   log(`  preview     http://127.0.0.1:${port}/overlay?preview=1`);
   log(`  status      http://127.0.0.1:${port}/             (live decision log)`);
   log(`  personality ${personality.path}`);
   log(`              ${d.buckets.length} line buckets · ${d.opinions} opinions · ${d.catchphrases} catchphrases · ${d.keywords.length} keywords · ${d.never} banned phrases`);
   log(`  rules       ${describeRules().length} (${describeRules().filter((r) => r.kind === "quiet").length} unprompted)`);
+  for (const line of reactionBanner(personality)) log(`  ${line}`);
   if (args.verbose) log(`  timings     ${JSON.stringify({ ...DEFAULT_TIMINGS, ...engine.timings })}`);
   log("");
+}
+
+function reactionBanner(personality) {
+  const h = personality.reaction("hype");
+  const r = personality.reaction("roast");
+  const l = personality.reaction("layerDrag");
+  const on = (c) => (c.enabled ? "on " : "off");
+  const secs = (ms) => `${Math.round(ms / 1000)}s`;
+  return [
+    `reactions   ${on(h)} hype   ${h.tokens.join("/")} · ${h.threshold} in ${secs(h.windowMs)} from ${h.minUsers}+ people · ${secs(h.cooldownMs)} cooldown`,
+    `            ${on(r)} roast  ${r.tokens.join("/")}${r.terms.length ? ` + ${r.terms.length} terms` : ""} · ${r.threshold} in ${secs(r.windowMs)} · ${secs(r.cooldownMs)} cooldown · tears`,
+    `            ${on(l)} layer  drag ${l.allowedLayers.join("/") || "any"} to the ${l.defaultSide} · "${l.lines[0] || ""}" · ${secs(l.cooldownMs)} cooldown`,
+  ];
 }
 
 function heartbeat({ memory, log, status }) {

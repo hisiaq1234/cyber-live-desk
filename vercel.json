@@ -11,5 +11,12 @@
     { "source": "/api/x/feed", "destination": "/api/x-feed" },
     { "source": "/api/spotify/top", "destination": "/api/spotify-top" },
     { "source": "/(.*)", "destination": "/public/$1" }
+  ],
+  "redirects": [
+    {
+      "source": "/",
+      "destination": "/desk",
+      "permanent": false
+    }
   ]
 }

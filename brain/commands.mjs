@@ -22,6 +22,7 @@ export const PRIORITY = {
   say: 40,
   memory: 45,
   effect: 50,
+  move: 60, // a physical drag beats any quip or expression already playing
   card: 95,
 };
 
@@ -33,6 +34,7 @@ const DEFAULT_INTERRUPT = {
   say: "soft",
   memory: "soft",
   effect: "hard",
+  move: "hard",
   card: "hard",
 };
 
@@ -119,6 +121,8 @@ function defaultTtl(type, payload) {
       return 8000;
     case "effect":
       return 1200;
+    case "move":
+      return (payload?.travelMs ?? 900) + (payload?.dragMs ?? 700) + 1200;
     case "memory":
       return 12000;
     default:
@@ -149,11 +153,31 @@ export const card = (title, subtitle, { art = null, why = "" } = {}) => ({
   interrupt: "hard",
   why,
 });
-export const effect = (type, { intensity = 0.6, why = "" } = {}) => ({ type: "effect", payload: { type, intensity }, interrupt: "hard", why });
+export const effect = (type, { intensity = 0.6, duration, why = "" } = {}) => ({
+  type: "effect",
+  payload: { type, intensity, duration },
+  interrupt: "hard",
+  why,
+});
 export const memory = (kind, text, { moments = [], why = "" } = {}) => ({
   type: "memory",
   payload: { kind, text, moments },
   interrupt: "soft",
+  why,
+});
+
+/**
+ * Crid physically relocates one of his own overlay layers.
+ *
+ * The brain names the layer and the side; the renderer owns the body work (walk to the
+ * layer, grab it, drag it, walk back). `target` must be a name both sides agree on —
+ * see LAYERS in brain/overlay.js and the contract in brain/README.md. The layer keeps
+ * its rendered state (visible/hidden, contents); only its position changes.
+ */
+export const moveLayer = (target, to = "left", { travelMs = 900, dragMs = 700, why = "" } = {}) => ({
+  type: "move",
+  payload: { target: String(target || "").toLowerCase(), to, travelMs, dragMs },
+  interrupt: "hard",
   why,
 });
 

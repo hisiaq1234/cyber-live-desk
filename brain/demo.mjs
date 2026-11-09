@@ -90,7 +90,16 @@ export function createDemoSource({ onEvent = () => {}, log = () => {}, random = 
       run: () => chat(["dave", "nova", "mira", "joss", "kay"][i % 5], CHATTER[i % CHATTER.length]),
     })),
     { at: 19000, run: () => onEvent(event("sub", { user: "dave", months: 3, tier: "1000", detail: "resub 3 months", text: "" })) },
+    // the owner's vocabulary, on the same synthetic feed the real chat uses:
+    // a layer reports itself in the way, chat calls a W, then chat calls an L
+    { at: 20000, run: () => onEvent(event("layer", { layer: "card", side: "left", detail: "sub card over the game feed", user: "desk" })) },
+    ...[0, 1, 2].map((i) => ({
+      at: 21500 + i * 450,
+      run: () => chat(["nova", "mira", "joss"][i], ["W", "Ws", "1s"][i]),
+    })),
     { at: 25000, run: () => onEvent(event("gift", { user: "nova", amount: 5, tier: "1000", detail: "5 gifted subs" })) },
+    { at: 27000, run: () => chat("pixel", "L") },
+    { at: 27400, run: () => chat("kay", "Ls") },
     { at: 31000, run: () => onEvent(event("bits", { user: "pixel", amount: 500, detail: "500 bits" })) },
     ...[0, 1, 2, 3, 4].map((i) => ({
       at: 37000 + i * 1400,
@@ -149,6 +158,97 @@ export function createDemoSource({ onEvent = () => {}, log = () => {}, random = 
       for (const t of timers) clearTimeout(t);
       timers = [];
       clearTimeout(fillerTimer);
+    },
+    get stopped() {
+      return stopped;
+    },
+  };
+}
+
+/* ---------- the reaction pack, on its own ----------
+ * `npm run brain:reactions` runs exactly three things, in a loop, with nothing else
+ * competing for the floor: chat calls a W, chat calls an L, a layer reports itself in
+ * the way. Same normalised events as the IRC client and the desk's POST /event, so what
+ * you see here is what a live channel would produce.
+ */
+export function createReactionDemo({ onEvent = () => {}, log = () => {} } = {}) {
+  let timers = [];
+  let stopped = true;
+  let cycleStart = 0;
+  let cursor = 0;
+  let seq = 0;
+
+  const now = () => Date.now();
+  const event = (type, extra = {}) => ({
+    id: `rx${++seq}`,
+    ts: now(),
+    type,
+    user: "someone",
+    text: "",
+    amount: 0,
+    months: 0,
+    viewers: 0,
+    detail: "",
+    ...extra,
+  });
+  const chat = (user, text) => onEvent(event("chat", { user, text }));
+
+  const STEPS = [
+    { at: 400, run: () => log("[reactions] ① chat calls the play: W, Ws, 1s") },
+    { at: 900, run: () => chat("nova", "W") },
+    { at: 2900, run: () => chat("mira", "Ws") },
+    { at: 4900, run: () => chat("joss", "1s") },
+
+    { at: 10000, run: () => log("[reactions] ② chat calls an L: L, Ls") },
+    { at: 10500, run: () => chat("pixel", "L") },
+    { at: 14200, run: () => chat("reg", "Ls") },
+
+    { at: 19000, run: () => log("[reactions] ③ a layer reports itself in the way (a real sub card is on screen)") },
+    { at: 19200, run: () => onEvent(event("sub", { user: "dave", months: 3, detail: "resub 3 months" })) },
+    { at: 21000, run: () => onEvent(event("layer", { layer: "card", side: "left", detail: "sub card over the game feed", user: "desk", source: "desk" })) },
+
+    { at: 28000, run: () => log("[reactions] cycle complete — repeating") },
+  ];
+
+  function schedule(fn, ms) {
+    const t = setTimeout(() => {
+      if (stopped) return;
+      try {
+        fn();
+      } catch (err) {
+        log(`[reactions] step failed: ${err.message}`);
+      }
+    }, Math.max(0, ms));
+    timers.push(t);
+    return t;
+  }
+
+  function runStep() {
+    if (stopped) return;
+    const step = STEPS[cursor];
+    schedule(() => {
+      step.run();
+      cursor += 1;
+      if (cursor >= STEPS.length) {
+        cursor = 0;
+        cycleStart = now();
+      }
+      runStep();
+    }, cycleStart + step.at - now());
+  }
+
+  return {
+    start() {
+      stopped = false;
+      cycleStart = now();
+      cursor = 0;
+      runStep();
+      return this;
+    },
+    stop() {
+      stopped = true;
+      for (const t of timers) clearTimeout(t);
+      timers = [];
     },
     get stopped() {
       return stopped;

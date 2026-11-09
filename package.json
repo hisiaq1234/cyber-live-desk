@@ -5,7 +5,8 @@
   "scripts": {
     "test": "node --test",
     "brain": "node brain/index.mjs",
-    "brain:demo": "node brain/index.mjs --demo"
+    "brain:demo": "node brain/index.mjs --demo",
+    "brain:reactions": "node brain/index.mjs --demo --scenario reactions"
   },
   "dependencies": {
     "@upstash/redis": "^1.34.0",

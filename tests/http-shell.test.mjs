@@ -28,17 +28,20 @@ test("x-feed reads query parameters from a relative url", async () => {
   assert.match((await res.json()).error, /Unknown mode: not-a-mode/);
 });
 
-test("x-feed reports a missing token as 502 instead of crashing", async () => {
-  const saved = { bearer: process.env.X_BEARER_TOKEN, access: process.env.X_ACCESS_TOKEN };
-  delete process.env.X_BEARER_TOKEN;
-  delete process.env.X_ACCESS_TOKEN;
+test("x-feed reports missing credentials as 503 naming the variables, instead of crashing", async () => {
+  const names = ["X_BEARER_TOKEN", "X_CONSUMER_KEY", "X_CONSUMER_SECRET", "X_ACCESS_TOKEN", "X_ACCESS_TOKEN_SECRET"];
+  const saved = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+  for (const name of names) delete process.env[name];
   try {
     const res = await xFeed.fetch(vercelReq("/api/x/feed?mode=trends&woeid=23424908"));
-    assert.equal(res.status, 502);
-    assert.match((await res.json()).error, /X_BEARER_TOKEN/);
+    assert.equal(res.status, 503);
+    const body = await res.json();
+    assert.match(body.error, /X_BEARER_TOKEN/);
+    assert.match(body.error, /X_CONSUMER_KEY/);
   } finally {
-    for (const [key, value] of Object.entries(saved)) {
-      if (value !== undefined) process.env[key] = value;
+    for (const name of names) {
+      if (saved[name] === undefined) delete process.env[name];
+      else process.env[name] = saved[name];
     }
   }
 });

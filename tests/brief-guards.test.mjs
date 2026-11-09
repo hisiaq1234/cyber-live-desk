@@ -39,7 +39,8 @@ const gemini = (searchQuery = "Lagos current report") => ({
 function fetcher({ onX, onPrompt, searchQuery = "Lagos current report" } = {}) {
   return async (url, init = {}) => {
     if (String(url).startsWith("https://news.google.com/rss/")) return new Response(rss(NOW), { status: 200 });
-    if (String(url).startsWith("https://api.x.com/")) {
+    // Same v2 API under two hostnames; the desk asks api.twitter.com.
+    if (/^https:\/\/api\.(?:x|twitter)\.com\//.test(String(url))) {
       await onX?.();
       return new Response(JSON.stringify({ data: [{ trend_name: "#Lagos", tweet_count: 3 }] }), { status: 200 });
     }

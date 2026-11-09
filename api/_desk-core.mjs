@@ -18,6 +18,7 @@ export const LIMITS = {
   cridTitle: 120, // a jumbotron line a phone viewer has to read in seconds
   cridCredit: 30,
   cridAudioUrl: 2000, // https audio URL the jumbotron plays on Swae / stream audio
+  place: 80, // a named place: long enough for a street, a district and a city, short enough to read
 };
 
 // CRID — Cyber's Rent Is Due. The branded segment the desk puts on the jumbotron: one subject,
@@ -66,6 +67,12 @@ export const DEFAULT_STATE = {
   // which is the desk's own full-frame layout. The inset picture is drawn by the renderer; this
   // only reserves the room for it.
   scene: null, // { mode: "full"|"pip", w: vw, h: vh }
+  // Where the creator is. One coordinate, several consumers: the readout top-right, the clock's
+  // topline, and (once the archive is in the repo) the centre of his map. null means "never told",
+  // which is how every frame looked before there was a location, so an old desk renders unchanged.
+  // The overlay resolves it in this order, first available wins: the page's own ?lat=&lon= URL,
+  // this stored point, then the browser's geolocation if it is granted. `source` says which one won.
+  location: null, // { lat, lon, alt, place, source, updatedAt }
   autoPlay: false, // when on, an expired card advances to the next approved one by itself
   autoResearch: false, // when on, the scheduled run adds new research by itself
   // Research approval is a separate, persistent decision from whether the scheduler fetches at
@@ -1062,6 +1069,35 @@ export async function runAction(store, b, now = Date.now()) {
         next[axis] = Math.min(PIP_SIZE.max, Math.max(PIP_SIZE.min, Math.round(v)));
       }
       patch = { scene: next };
+      break;
+    }
+    // ---------- where the creator is ----------
+    case "location": {
+      // The operator's own coordinate, for the times the URL cannot carry one: a browser source
+      // opened by hand, or a Swae widget whose link was set months ago. It is one point, not a
+      // track — the desk shows where he is, not where he has been — so a body always replaces it
+      // whole, and `{ clear: true }` puts the frame back to "location unknown".
+      if (b.clear === true) {
+        patch = { location: null };
+        break;
+      }
+      const lat = Number(b.lat);
+      const lon = Number(b.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) throw new HttpError(422, "lat and lon are required, in degrees.");
+      if (lat < -90 || lat > 90) throw new HttpError(422, "lat must be between -90 and 90.");
+      if (lon < -180 || lon > 180) throw new HttpError(422, "lon must be between -180 and 180.");
+      // Altitude is optional: a phone that cannot see the sky still knows where it is.
+      const rawAlt = b.alt == null || b.alt === "" ? null : Number(b.alt);
+      if (rawAlt !== null && !Number.isFinite(rawAlt)) throw new HttpError(422, "alt must be a number of metres.");
+      patch = {
+        location: {
+          lat, lon,
+          alt: rawAlt === null ? null : Math.round(rawAlt),
+          place: text(b.place, LIMITS.place, "place"),
+          source: "control",
+          updatedAt: now,
+        },
+      };
       break;
     }
     default:

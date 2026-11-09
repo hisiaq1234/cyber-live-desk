@@ -545,4 +545,9 @@ test("the clock is the operator's Black Market timestamp, not a paraphrase of it
   // Pinned to his zone and his cadence, not to whatever machine is drawing the frame.
   assert.match(css, /const ZONE = "Africa\/Lagos"/);
   assert.match(css, /setInterval\(drawClock, 250\)/);
+
+  // And the theme layer never paints it. A #time-dock rule in cyber-theme.js is exactly how the
+  // clock got a green bar, a purple outline and grotesque digits back after the port landed.
+  const theme = source("public/desk-assets/cyber-theme.js");
+  assert.doesNotMatch(theme, /#time-dock\s*[,{]/, "no theme rule may repaint the clock");
 });

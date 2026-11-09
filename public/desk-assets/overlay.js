@@ -1204,13 +1204,13 @@ html.swae .scale-wrap{display:none}
     const clockDay = h("span", "clock-day", "");
     root.append(h("div", { id: "time-dock" },
       h("div", "clock-top",
-        h("span", "clock-brand", "Black Market"),
+        h("span", "clock-market", "Black Market"),
         h("span", "clock-live", h("i", { class: "clock-dot", "aria-hidden": "true" }), "Live")),
       clockTime,
       h("div", "clock-detail",
         clockDay,
         h("i", { class: "clock-sep", "aria-hidden": "true" }),
-        h("span", "clock-zone", "Africa / Lagos"))));
+        h("span", "clock-place", "Africa / Lagos"))));
 
     // Three formatters, one per line, because the original reads "Oct 20, 17:11:30" over
     // "Tuesday, October 20" and neither is a substring of the other. h23 gives the desk its

@@ -61,6 +61,10 @@ Crid's brain — local initiative loop for the Crid overlay
 
   channel can also come from the CRID_CHANNEL environment variable.
 
+  the quiet layer (micro-emotions) plays underneath everything above: eight miniature
+  feelings, one every 4-12s while chat is live and almost never when the room is quiet.
+  Tune them in crid-personality.json → microEmotions.
+
   overlay:  http://127.0.0.1:<port>/overlay        (OBS browser source, transparent)
             http://127.0.0.1:<port>/overlay?preview=1
   status:   http://127.0.0.1:<port>/              (live decision log)
@@ -244,6 +248,7 @@ function banner({ args, personality, port, engine, log }) {
   log(`              ${d.buckets.length} line buckets · ${d.opinions} opinions · ${d.catchphrases} catchphrases · ${d.keywords.length} keywords · ${d.never} banned phrases`);
   log(`  rules       ${describeRules().length} (${describeRules().filter((r) => r.kind === "quiet").length} unprompted)`);
   for (const line of reactionBanner(personality)) log(`  ${line}`);
+  for (const line of microBanner(personality)) log(`  ${line}`);
   if (args.verbose) log(`  timings     ${JSON.stringify({ ...DEFAULT_TIMINGS, ...engine.timings })}`);
   log("");
 }
@@ -258,6 +263,19 @@ function reactionBanner(personality) {
     `reactions   ${on(h)} hype   ${h.tokens.join("/")} · ${h.threshold} in ${secs(h.windowMs)} from ${h.minUsers}+ people · ${secs(h.cooldownMs)} cooldown`,
     `            ${on(r)} roast  ${r.tokens.join("/")}${r.terms.length ? ` + ${r.terms.length} terms` : ""} · ${r.threshold} in ${secs(r.windowMs)} · ${secs(r.cooldownMs)} cooldown · tears`,
     `            ${on(l)} layer  drag ${l.allowedLayers.join("/") || "any"} to the ${l.defaultSide} · "${l.lines[0] || ""}" · ${secs(l.cooldownMs)} cooldown`,
+  ];
+}
+
+/** The quiet layer, on one line: what it is called and how often it may play. */
+function microBanner(personality) {
+  const m = personality.microEmotions;
+  const names = Object.entries(m.emotions)
+    .filter(([, v]) => v.enabled)
+    .map(([k]) => k);
+  const secs = (ms) => `${Math.round(ms / 1000)}s`;
+  return [
+    `micro       ${m.enabled ? "on " : "off"} ${names.length} feelings · ${secs(m.minGapMs)}-${secs(m.maxGapMs)} apart while chat is live · ${secs(m.idleGapMs)} when the room is quiet · max ${m.maxPerMinute}/min`,
+    `            ${names.join(" · ")}`,
   ];
 }
 

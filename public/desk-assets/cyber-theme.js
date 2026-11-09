@@ -174,12 +174,14 @@ ${T} #swae-chat .swae-chat-text{color:var(--ink-1)}
    The pose engine owns every inner <g> and never writes the host's transform, so the host and the
    root svg are the only safe places to add motion. The bottom-centre anchor uses margin-left, not
    a transform, so nothing here may translate on X. */
-${T} #desk #crid-bot{--bw:clamp(64px,7.2vw,104px)}
-${T} #desk #crid-bot svg{filter:drop-shadow(calc(var(--bw)*.031) calc(var(--bw)*.038) 0 var(--indigo-700))}
+/* The mascot's size lives in the bot module (crid-bot.js) alone: one clamp, one source of truth,
+   and ?bot.scale= multiplies it. The theme only styles what the module cannot: the cast shadow.
+   A zero-blur offset copy of the silhouette read as a sticker, so the shadow is soft and low. */
+${T} #desk #crid-bot svg{filter:drop-shadow(0 calc(var(--bw)*.028) calc(var(--bw)*.07) rgba(15,11,23,.45))}
 ${T} #desk #crid-bot[data-mode="on"]{animation:bot-idle 4.5s ease-in-out infinite}
 ${T} #desk #crid-bot.music-playing svg{animation:bot-groove 1.6s ease-in-out infinite}
 ${T} #desk #crid-bot.is-active svg{animation:bot-answer .8s ease-out}
-@keyframes bot-idle{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+@keyframes bot-idle{0%,100%{transform:translateY(0)}50%{transform:translateY(calc(var(--bw)*-.016))}}
 @keyframes bot-groove{0%,100%{transform:scale(1)}50%{transform:scale(1.035)}}
 @keyframes bot-answer{0%,100%{transform:scale(1)}40%{transform:scale(1.09) translateY(-3px)}}
 /* The theme's selector out-specifies the bot module's own swae/low-power filter:none, and the

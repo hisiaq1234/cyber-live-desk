@@ -156,7 +156,7 @@ test("the overlay route is served with its renderer and Crid's body", async () =
     const bot = await fetch(`${server.url}/desk-assets/crid-bot.js`);
     assert.equal(bot.status, 200, "the existing crid-bot.js is served, not rewritten");
 
-    const sprite = await fetch(`${server.url}/desk-assets/crid/body-0-r7.png`);
+    const sprite = await fetch(`${server.url}/desk-assets/crid/body-0-r7.webp`);
     assert.equal(sprite.status, 200, "his sprites resolve from the page's relative paths");
 
     const css = await fetch(`${server.url}/overlay.css`);

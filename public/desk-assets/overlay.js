@@ -17,6 +17,7 @@ import { createCridAudioSync } from "./crid-audio.js";
      theme=cyber|creative|torn-paper   (default cyber; the theme CSS is ./cyber-theme.js)
      scene=pip                 pip.w=10–60 pip.h=10–60 (% of viewport)
      bot=0 | bl|bc|br          bot.x=0–100 bot.y=0–100  (CRID mascot; 0 restores the sound orb)
+     bot.scale=0.4–2.5         (mascot size multiplier on top of the theme's broadcast size; default 1)
      clock=0 | 1               (bottom-left clock plate; on by default)
      chat=0 | 1                chatPrefix=   (Swae chat strip; on by default inside Swae)
      cridLogo=                 (CRID badge logo URL, falls back to ./crid-logo.png)
@@ -740,6 +741,9 @@ html.swae .scale-wrap{display:none}
     position: ["bl", "bc", "br"].includes(BOT_ARG) ? BOT_ARG : "br",
     x: botPlaced ? num("bot.x", 50, 0, 100) : null,
     y: botPlaced ? num("bot.y", 88, 0, 100) : null,
+    // ?bot.scale= is the size knob: the mascot is drawn at broadcast size by default, and the
+    // operator can shrink or grow him from the browser source URL without a code change.
+    scale: num("bot.scale", 1, 0.4, 2.5),
   });
   const soundOrb = bot ? bot.el : h("div", { id: "sound-orb", "aria-hidden": "true" },
     h("span", { class: "orb-ring" }), h("span", { class: "orb-ring" }), h("span", { class: "orb-core" }));

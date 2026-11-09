@@ -17,6 +17,7 @@ export const COMMAND_VERSION = 1;
 export const PRIORITY = {
   presence: 10,
   look: 15,
+  micro: 20, // the quiet layer: a miniature feeling, under every loud one
   express: 25,
   gesture: 30,
   say: 40,
@@ -29,6 +30,7 @@ export const PRIORITY = {
 const DEFAULT_INTERRUPT = {
   presence: "none",
   look: "none",
+  micro: "none", // a small feeling never cuts anything, and is never cut by ambient gaze
   express: "soft",
   gesture: "soft",
   say: "soft",
@@ -111,6 +113,8 @@ function defaultTtl(type, payload) {
       return 0;
     case "look":
       return payload?.hold ?? 4000;
+    case "micro":
+      return payload?.duration ?? 1600;
     case "express":
       return payload?.hold ?? 5000;
     case "gesture":
@@ -178,6 +182,21 @@ export const moveLayer = (target, to = "left", { travelMs = 900, dragMs = 700, w
   type: "move",
   payload: { target: String(target || "").toLowerCase(), to, travelMs, dragMs },
   interrupt: "hard",
+  why,
+});
+
+/**
+ * A micro-emotion: one miniature feeling from the quiet layer.
+ *
+ * The brain names the emotion, its caption and how long it lasts. The renderer owns the
+ * glyph and the pose (see MICRO in brain/overlay.js) — same split as the layer drag.
+ * `interrupt: "none"` and the lowest visual priority mean a small feeling can never
+ * displace a hype jump, a roast wince or a card: it plays underneath them or not at all.
+ */
+export const micro = (emotion, { line = "", duration = 1600, why = "" } = {}) => ({
+  type: "micro",
+  payload: { emotion, line, duration },
+  interrupt: "none",
   why,
 });
 

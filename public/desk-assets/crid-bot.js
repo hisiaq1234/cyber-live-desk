@@ -67,21 +67,35 @@ function draw(){
 const CSS=`
 /* He is drawn at broadcast size: ~17.5vw is a full torso-and-head read on a 1080p stream, and the
    clamp keeps him off a phone screen's face. --bws is the ?bot.scale= multiplier, so the operator
-   can resize him from the URL without a code edit. */
-#crid-bot{--bw:clamp(150px,17.5vw,340px);--bws:1;--bx:50%;--by:auto;position:fixed;z-index:27;
-  width:calc(var(--bw)*var(--bws));aspect-ratio:160/168;pointer-events:none;
-  left:var(--bx);margin-left:calc(var(--bw)*var(--bws)/-2);bottom:calc(var(--m,16px) + env(safe-area-inset-bottom,0px));top:auto;
+   can resize him from the URL without a code edit.
+
+   --bot-w is the width actually drawn: that product, capped so a raised scale can never crop him.
+   He is anchored by his edge, not his centre, so before this cap growing him pushed him past the
+   frame instead of around his spot — at 500x500 and ?bot.scale=2.5 he measured 375px wide starting
+   at x=-215, i.e. more than half of him outside the frame. The two caps are the frame's own width
+   and height; the height one carries the sprite's 160/168 aspect so the SVG never has to squash. */
+#crid-bot{--bw:clamp(150px,17.5vw,340px);--bws:1;--bx:50%;--by:auto;
+  --bot-max:min(calc(100vw - 2*var(--m,16px)),calc((100dvh - 2*var(--m,16px))*160/168));
+  --bot-w:min(calc(var(--bw)*var(--bws)),var(--bot-max));
+  position:fixed;z-index:27;
+  width:var(--bot-w);aspect-ratio:160/168;pointer-events:none;
+  left:var(--bx);margin-left:calc(var(--bot-w)/-2);top:auto;
+  bottom:var(--bot-floor,calc(var(--m,16px) + env(safe-area-inset-bottom,0px)));
   transition:left .9s cubic-bezier(.2,.8,.2,1),top .9s cubic-bezier(.2,.8,.2,1),bottom .9s cubic-bezier(.2,.8,.2,1),width .6s ease,transform .18s ease}
 #crid-bot.pos-bl{--bx:calc(var(--m,16px) + 12em);margin-left:0}
 /* --bot-right is measured from the lower-third strip itself (place()), because the strip is wider
-   than --identity-w by its own padding and border and he must not sit on top of it. */
-#crid-bot.pos-br{left:auto;margin-left:0;right:var(--bot-right,calc(var(--m,16px) + var(--identity-w,24em) + .6em))}
-#crid-bot.pos-custom{left:var(--bx);top:var(--by);bottom:auto;right:auto;margin-left:calc(var(--bw)*var(--bws)/-2)}
-#crid-bot.roam{margin-left:calc(var(--bw)*var(--bws)/-2);right:auto;bottom:auto;transition:none}
+   than --identity-w by its own padding and border and he must not sit on top of it. The extra cap
+   is the room that is actually left of that anchor, so ?bot=br scales the same way. */
+#crid-bot.pos-br{left:auto;margin-left:0;right:var(--bot-right,calc(var(--m,16px) + var(--identity-w,24em) + .6em));
+  --bot-w:min(calc(var(--bw)*var(--bws)),var(--bot-max),calc(100vw - var(--bot-right,0px) - 2*var(--m,16px)))}
+#crid-bot.pos-custom{left:var(--bx);top:var(--by);bottom:auto;right:auto;margin-left:calc(var(--bot-w)/-2)}
+#crid-bot.roam{margin-left:calc(var(--bot-w)/-2);right:auto;bottom:auto;transition:none}
 /* A soft cast shadow, not a zero-blur offset copy of the silhouette: the hard offset was the single
    biggest thing making him read as a sticker pasted on the frame. The colour is pure black at low
    opacity — a tinted shadow was what turned into the purple blob under his feet. */
 #crid-bot svg{width:100%;height:100%;display:block;overflow:visible;filter:drop-shadow(0 calc(var(--bw)*.028) calc(var(--bw)*.07) rgba(0,0,0,.42))}
+   biggest thing making him read as a sticker pasted on the frame. */
+#crid-bot svg{width:100%;height:100%;display:block;overflow:visible;filter:drop-shadow(0 calc(var(--bot-w)*.028) calc(var(--bot-w)*.07) rgba(15,11,23,.45))}
 html.low-power #crid-bot svg,html.swae #crid-bot svg{filter:none}
 #crid-bot[data-mode="dead"] .ticket-fill{fill:${PAL.dead}}
 #crid-bot[data-mode="dead"] .avatar{opacity:.55}
@@ -144,6 +158,27 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const clearRight=()=>{const t=document.getElementById("auto-headlines"); if(!t)return innerWidth;
     const r=t.getBoundingClientRect(); return r.width>0&&r.height>0?r.left:innerWidth};
   const maxCenterX=()=>{const w=host.offsetWidth||innerWidth*.175; return (clearRight()-w/2-10)/innerWidth*100};
+  // The other end of that band: the clock plate. He may cross the centre of the frame, never the
+  // clock, so the left bound is measured the same way the right one is.
+  const minCenterX=()=>{const c=document.getElementById("time-dock"); if(!c)return 8;
+    const r=c.getBoundingClientRect(),w=host.offsetWidth||innerWidth*.175;
+    return r.width>0&&r.height>0?(r.right+w/2+10)/innerWidth*100:8};
+  // The floor of the frame belongs to the clock and the news ticker. He lives in the centre column,
+  // so whatever of that band reaches under him decides where his feet go: on a 1080p frame neither
+  // plate reaches the middle and he stands on the frame's own floor, and on a 500x500 Swae box both
+  // do, so he stands on top of them instead of behind them. Measured, never inferred from the
+  // viewport, because both plates move (the clock lifts on a narrow frame, the ticker lifts and
+  // narrows when the dual-cam inset is on) and the composition has to hold either way.
+  let floorBottom=0;
+  const homeFloor=()=>{
+    const w=host.offsetWidth||innerWidth*.175,half=w/2,cx=innerWidth/2;
+    const gap=clamp(innerWidth*.008,4,12); let floor=0;
+    for(const id of ["time-dock","auto-headlines"]){
+      const n=document.getElementById(id); if(!n)continue;
+      const r=n.getBoundingClientRect(); if(!(r.width>0&&r.height>0))continue;
+      if(r.left<cx+half&&r.right>cx-half) floor=Math.max(floor,innerHeight-r.top+gap);
+    }
+    return floor};
   // Bottom-right: sit just left of that edge. Re-run whenever the frame or the strip changes size,
   // so a resize, a theme switch or a long headline can never slide him under the ticker.
   const place=()=>{if(!host.classList.contains("pos-br"))return;
@@ -171,6 +206,25 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       walk.t0=now; walk.dur=clamp(340+Math.hypot(dx,dy)*9,340,720);
     }
     host.style.left=`${walk.x}%`; host.style.top=`${walk.y}%`};
+  const place=()=>{
+    if(host.classList.contains("pos-br"))
+      host.style.setProperty("--bot-right",`${Math.round(innerWidth-clearRight()+clamp(innerWidth*.012,10,26))}px`);
+    floorBottom=homeFloor();
+    if(floorBottom>0) host.style.setProperty("--bot-floor",`${Math.round(floorBottom)}px`);
+    else host.style.removeProperty("--bot-floor")};
+  const startWalk=(tx,ty)=>{if(reduced||mode!=="on"||walk)return;
+    // He travels the band between the clock and the strip. When the frame is too narrow for one
+    // (a 500px Swae box: the two plates overlap in x) there is nowhere to walk that is not on top
+    // of something, so he stays where he is and the idle gestures carry the movement instead.
+    const lo=minCenterX(),hi=Math.min(92,maxCenterX()); if(hi<=lo)return;
+    const r=pct(host.getBoundingClientRect());
+    host.classList.remove(...homeCls); host.classList.add("roam"); host.style.left=`${r.x}%`; host.style.top=`${r.y}%`;
+    // He may shuffle along the centre, never across the frame: at broadcast size a full-width
+    // crawl would walk him over the lower third and the clock.
+    const tyMax=floorBottom?(innerHeight-floorBottom-r.h*innerHeight/100)/innerHeight*100:100-r.h-2;
+    walk={x:r.x,y:r.y,tx:clamp(tx,lo,hi),ty:clamp(ty,42,tyMax),done:0}};
+  const advanceWalk=()=>{if(!walk)return; if(walk.done>0){if(--walk.done===0)goHome(); return} const dx=walk.tx-walk.x,dy=walk.ty-walk.y;
+    if(Math.hypot(dx,dy)<1.2){walk.done=Math.round(2600/STEP); return} fx=dx<0?-1:1; walk.x+=dx*.34; walk.y+=dy*.34; host.style.left=`${walk.x}%`; host.style.top=`${walk.y}%`};
   const goHome=()=>{if(!walk)return; walk=null; fx=1; gestureQ=[]; host.classList.remove("roam"); host.style.left=host.style.top=""; host.classList.add(...homeCls)};
   // A short shuffle around wherever he lives (home is re-read after every landing and on resize),
   // so the crawl reads as him pottering about rather than as a walk across the whole stream.
@@ -303,5 +357,5 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const replace=()=>{home=null; if(placeFrame)return; placeFrame=(typeof requestAnimationFrame=="function"?requestAnimationFrame:setTimeout)(()=>{placeFrame=0; place()},0)};
   if(typeof addEventListener=="function")addEventListener("resize",replace);
   if(typeof ResizeObserver=="function"){const strip=document.getElementById("auto-headlines"); if(strip){stripWatch=new ResizeObserver(replace); stripWatch.observe(strip)}}
-  return{el:host,summon,dismiss,cancel,react,observe,setMode,setSubs:n=>{lastSubN=n|0;applySubs(n,!1)},setOnline(v){online=!!v;power()},get mode(){return mode},get subs(){return subs},setMood,say,nudge,randomLine,freeze(pose={}){frozen=!0;clearTimeout(timer); if(pose.mode)mode=pose.mode; if(pose.tag!==void 0)tagText=pose.tag; if(pose.subs!=null)applySubs(pose.subs,!1); lastDrawn=""; render({...REST[mode],tag:tagText,fx:pose.fx||1,sx:growth.sx,sy:growth.sy,...pose})},destroy(){clearTimeout(timer); mo==null||mo.disconnect(); stripWatch==null||stripWatch.disconnect(); if(typeof removeEventListener=="function")removeEventListener("resize",replace); cancelJobs(); goHome(); host.remove()}}
+  return{el:host,summon,dismiss,cancel,react,observe,setMode,setSubs:n=>{lastSubN=n|0;applySubs(n,!1)},setOnline(v){online=!!v;power()},get mode(){return mode},get subs(){return subs},setMood,say,nudge,randomLine,place:replace,freeze(pose={}){frozen=!0;clearTimeout(timer); if(pose.mode)mode=pose.mode; if(pose.tag!==void 0)tagText=pose.tag; if(pose.subs!=null)applySubs(pose.subs,!1); lastDrawn=""; render({...REST[mode],tag:tagText,fx:pose.fx||1,sx:growth.sx,sy:growth.sy,...pose})},destroy(){clearTimeout(timer); mo==null||mo.disconnect(); stripWatch==null||stripWatch.disconnect(); if(typeof removeEventListener=="function")removeEventListener("resize",replace); cancelJobs(); goHome(); host.remove()}}
 }

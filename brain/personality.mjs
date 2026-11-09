@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { normaliseReactions } from "./reactions.mjs";
+import { normaliseMicroEmotions } from "./micro-emotions.mjs";
 
 export const PERSONALITY_PATH = resolve(dirname(fileURLToPath(import.meta.url)), "crid-personality.json");
 const MAX_LINE = 140;
@@ -38,6 +39,9 @@ export class Personality {
     // The owner's reaction vocabulary (Ws/1s hype, L/roast, layer drag). Thresholds,
     // trigger words, cooldowns and lines all live in this file — never in the engine.
     this.reactions = normaliseReactions(this.data.reactions);
+    // The quiet layer: eight miniature feelings, their pacing and their lines. Same deal
+    // as `reactions` — the owner retunes this file, never the engine.
+    this.microEmotions = normaliseMicroEmotions(this.data.microEmotions);
   }
 
   /** One reaction's normalised config ("hype", "roast", "layerDrag"). */
@@ -52,6 +56,18 @@ export class Personality {
   reactionLine(kind, slots = {}, { avoid = [], random = Math.random } = {}) {
     const cfg = this.reaction(kind);
     const pool = arr(cfg.lines).map((t) => this.fill(t, { ...this.ambient(), ...slots }));
+    return this._pick(pool, avoid, random);
+  }
+
+  /** One micro-emotion's normalised config ("curious", "sleepy", …). */
+  microEmotion(name) {
+    return this.microEmotions.emotions[name] || normaliseMicroEmotions(null).emotions[name];
+  }
+
+  /** The tiny caption for a micro-emotion, through the same `never` guard as every line. */
+  microLine(name, slots = {}, { avoid = [], random = Math.random } = {}) {
+    const cfg = this.microEmotion(name);
+    const pool = arr(cfg?.lines).map((t) => this.fill(t, { ...this.ambient(), ...slots }));
     return this._pick(pool, avoid, random);
   }
 
@@ -144,6 +160,15 @@ export class Personality {
           { enabled: v.enabled, lines: v.lines.length, cooldownMs: v.cooldownMs, ...(v.windowMs ? { windowMs: v.windowMs, threshold: v.threshold } : {}) },
         ]),
       ),
+      microEmotions: {
+        enabled: this.microEmotions.enabled,
+        minGapMs: this.microEmotions.minGapMs,
+        maxGapMs: this.microEmotions.maxGapMs,
+        maxPerMinute: this.microEmotions.maxPerMinute,
+        emotions: Object.entries(this.microEmotions.emotions)
+          .filter(([, v]) => v.enabled)
+          .map(([k]) => k),
+      },
     };
   }
 }

@@ -6,6 +6,7 @@
    Loaded as a module so the poll validator and command help are the tested shared copy. */
 import { BOT_REACTS, COMMAND_HELP, commandText, parseAllowIds, parseDeskCommand, validatePollDraft } from "./desk-commands.js";
 import { deskHotkeyAction } from "./desk-hotkeys.js";
+import { requestXFeed } from "./x-feed-client.js";
 import { youtubePlaylistEmbedUrl } from "./youtube-playlist.mjs";
 import { createCridVoice } from "./crid-voice.js";
 
@@ -112,6 +113,44 @@ import { createCridVoice } from "./crid-voice.js";
     haptic(bad ? 'error' : 'success');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => (toastEl.className = "toast-island"), bad ? 6000 : 2200);
+  };
+
+  // ---------- X feed health ----------
+  // The overlay is the only thing that renders the feed, but it runs inside OBS or Swae, so its
+  // console is nowhere near the operator. The controller therefore asks the same endpoint the
+  // overlay asks and shows the answer here: the desk function's status plus whatever X replied,
+  // instead of a corner of the stream that is silently empty.
+  const xFeedStatus = h("div", "sub x-feed-status", "");
+  let xFeedCheckedAt = 0;
+  let xFeedBusy = false;
+  let xFeedLastError = "";
+  const checkXFeed = async ({ force = false } = {}) => {
+    if (xFeedBusy) return null;
+    if (!force && Date.now() - xFeedCheckedAt < 60000) return null;
+    xFeedBusy = true;
+    xFeedCheckedAt = Date.now();
+    try {
+      const result = await requestXFeed(globalThis.fetch, { mode: "trends" });
+      const at = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      if (result.ok) {
+        xFeedStatus.dataset.state = "ok";
+        xFeedStatus.textContent = `X feed reachable · trends checked ${at}`;
+        xFeedLastError = "";
+      } else {
+        xFeedStatus.dataset.state = "bad";
+        xFeedStatus.textContent = `${result.error} · checked ${at}`;
+        // One toast per distinct failure, not one every minute.
+        if (result.error !== xFeedLastError) toast(result.error, true);
+        xFeedLastError = result.error;
+      }
+      return result;
+    } catch (err) {
+      xFeedStatus.dataset.state = "bad";
+      xFeedStatus.textContent = "X feed check failed: " + (err?.message || err);
+      return null;
+    } finally {
+      xFeedBusy = false;
+    }
   };
 
   const api = async (path, body) => {
@@ -362,6 +401,9 @@ import { createCridVoice } from "./crid-voice.js";
     }
     .toast-island.show, .toast.show { opacity: 1; transform: translate(-50%, 0) scale(1); }
     .toast-island.bad, .toast.bad { border-color: var(--accent); color: var(--accent); }
+    .x-feed-status { margin-top: 2px; }
+    .x-feed-status[data-state="ok"] { color: var(--tint-green); }
+    .x-feed-status[data-state="bad"] { color: var(--accent); font-weight: 600; }
 
     /* Counts */
     .counts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0; }
@@ -527,7 +569,10 @@ import { createCridVoice } from "./crid-voice.js";
   const statusEl = h("section", "panel status");
   const holdBtn = btn("Hold card", () => act("hold"));
   const srcBtn = btn("Show source", () => act("source"));
-  const modeBtn = btn("X feed", () => act("mode", { mode: state?.mode === "x-following" ? "cards" : "x-following" }));
+  const modeBtn = btn("X feed", async () => {
+    await act("mode", { mode: state?.mode === "x-following" ? "cards" : "x-following" });
+    if (state?.mode === "x-following") void checkXFeed({ force: true });
+  });
 
   // Shortcuts are opt-in per tab. These two elements are referenced by the voice
   // panel below; their definitions were dropped in 71bfd88 while the usages
@@ -1782,6 +1827,7 @@ import { createCridVoice } from "./crid-voice.js";
       h("div", "now", what),
       h("div", "sub", `Mode: ${state.mode === "x-following" ? "X feed" : "Cards"}` +
         `${state.showSource ? ", source shown" : ""}${desk ? `, ${desk.label} desk` : ""}`),
+      xFeedStatus,
       cdEl, countsEl);
     renderCountdown();
     drawCounts();
@@ -2009,7 +2055,12 @@ import { createCridVoice } from "./crid-voice.js";
 
   // ---------- boot ----------
   setInterval(renderCountdown, 1000);
-  setInterval(() => { if (token && document.visibilityState === "visible" && !busy) load(); }, 10000);
+  setInterval(() => {
+    if (!token || document.visibilityState !== "visible" || busy) return;
+    load();
+    // Throttled to once a minute inside checkXFeed; only while the desk is in X mode.
+    if (state?.mode === "x-following") void checkXFeed();
+  }, 10000);
   document.addEventListener("visibilitychange", () => { if (token && document.visibilityState === "visible") load(); });
   if (token) load(); else showLogin();
 })();

@@ -129,6 +129,55 @@ says so — one POST, one decision.
 
 ---
 
+## 3b. The quiet layer: micro-emotions
+
+The three reactions above are the **loud layer** — they fire on a big audience moment and
+hold the floor for five or six seconds. That leaves the other 90% of a stream with no
+vocabulary. Micro-emotions are that vocabulary: eight miniature feelings that play often
+and briefly so the stream feels alive between big moments.
+
+All of it lives in **`brain/crid-personality.json` → `microEmotions`**, in the same shape as
+`reactions`. The engine contains no thresholds and no lines.
+
+| feeling | fires from | on screen |
+|---|---|---|
+| `curious` | a chat line ending in `?` | head tilt (`peek`), a `?` drifting up |
+| `delighted` | a keyword whose mood is `delighted`; the after-beat of bits | a hop, two sparks |
+| `smug` | message rate falling — a busy room settling down | a side-eye, a raised mouth corner |
+| `flustered` | message rate rising — chat speeding up around him | a wince, colour in the cheeks |
+| `sleepy` | `sleepAfterMs` (25s) of silence | he sits down, small `z`s rise |
+| `startled` | the first line after `startleGapMs` (10s) of quiet; the after-beat of a raid | a jolt, an expanding ring |
+| `proud` | a keyword whose mood is `proud` (`gg`); the after-beat of a sub/gift | a nod, a bar filling above his head |
+| `sulky` | a busy room that empties (`sulkAfterMs`, 6s) | a shrug, a puff drifting off |
+
+**Pacing.** One feeling every `minGapMs`–`maxGapMs` (4–12s) while chat is live, one every
+`idleGapMs` (45s) once the room is properly quiet, capped at `maxPerMinute` (6) and at each
+feeling's own `cooldownMs`. The same feeling never plays twice in a row. Weights decide which
+one wins when several signals are live at once.
+
+**It can never drown out the loud layer.** Three separate guarantees:
+
+1. The engine only asks the driver for a feeling when the loud loop decided *nothing* that
+   tick (`tick()` → `microEmotion()`), so a hype jump, a roast wince, a sub card or a layer
+   drag always has the floor.
+2. A micro-emotion is **not an action**: it does not move the global anti-spam gap, spend the
+   per-minute ceiling, or write to the moment record. It costs the loud layer nothing.
+3. On the overlay it is `interrupt: "none"` at the lowest visual priority, and the renderer
+   refuses to draw one over a card, an effect or a drag.
+
+**The look is CSS, not assets.** The body is a painted webp, so his only face is what is
+layered on top of it: the brain names the feeling and the caption, and
+`brain/overlay.js` (`MICRO`) + `overlay.css` (`.crid-micro`) own the pose and the mark. Each
+one is capped at 2s of motion, and every mark scales with the drawn width of the body
+(`--micro-u`) so it stays in proportion as his presence changes. `caption: false` in the
+config gives a silent, visual-only layer.
+
+**The quiet tail.** A sub, gift, bits or raid produces the loud reaction *and* — a second or
+two later — a small after-beat from `signals.momentEmotions`. That is the moment the loud
+layer has finished and the quiet layer says the small true thing about it.
+
+---
+
 ## 4. Command bus contract
 
 Every instruction is one versioned envelope:
@@ -141,6 +190,7 @@ Every instruction is one versioned envelope:
 |---|---|---|---|
 | `presence` | `{mode}` | none | 10 |
 | `look` | `{target, hold}` | none | 15 |
+| `micro` | `{emotion, line, duration}` | none | 20 |
 | `express` | `{emotion, intensity, hold}` | soft | 25 |
 | `gesture` | `{type, duration}` | soft | 30 |
 | `say` | `{text, style, duration}` | soft | 40 |
@@ -216,6 +266,7 @@ Three tests fail on `main` before this work and still fail after it (`api-handle
 |---|---|
 | `index.mjs` | entry point: args, wiring, banner, heartbeat, shutdown |
 | `reactions.mjs` | the owner's vocabulary as code: tokenising, matching, tallies (pure, no state) |
+| `micro-emotions.mjs` | the quiet layer: the eight feelings, which signal fires each, and the pacing that keeps them rare |
 | `engine.mjs` | the initiative loop: reactive + unprompted rules, cooldowns, priority, "why" logging |
 | `memory.mjs` | session memory: chat, moments, Crid's own actions, topics, who was here |
 | `personality.mjs` + `crid-personality.json` | everything Crid says, what he reacts to, and what he would never say |

@@ -274,6 +274,389 @@ body.preview {
   }
 }
 
+/* ---------- micro-emotions: the quiet layer ---------- */
+/* Eight miniature feelings, each a small pose plus a mark drawn in CSS over the sprite.
+   No image assets and no new body frames — the body is a painted webp, so the only face
+   he has is what we layer on top of it. Everything here is under 2s of motion and lives
+   inside #crid-bot, so it travels with him. Anchors are fractions of the body box: the
+   head sits above ~13% and the cheeks at ~62% from the bottom. */
+.crid-micro {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  --micro-accent: var(--mint);
+  /* One unit = the drawn width of the body, so every mark stays in proportion as the
+     presence (and the ?bot.scale= multiplier) resizes him. */
+  --micro-u: calc(var(--bw, 104px) * var(--bws, 1));
+}
+.crid-micro.on {
+  opacity: 1;
+}
+.crid-micro[data-emotion="smug"],
+.crid-micro[data-emotion="sleepy"],
+.crid-micro[data-emotion="sulky"] {
+  --micro-accent: var(--bone);
+}
+.crid-micro[data-emotion="flustered"],
+.crid-micro[data-emotion="startled"] {
+  --micro-accent: var(--red);
+}
+
+.crid-micro .micro-mark {
+  position: absolute;
+  left: 56%;
+  bottom: 88%;
+  transform: translate(-50%, 0);
+  font: 800 calc(var(--micro-u) * 0.16) / 1 var(--mono);
+  color: var(--micro-accent);
+  filter: drop-shadow(0 0 calc(var(--micro-u) * 0.06) currentColor);
+  opacity: 0;
+}
+
+.crid-micro .micro-line {
+  position: absolute;
+  left: 56%;
+  bottom: calc(88% + var(--micro-u) * 0.19);
+  transform: translate(-50%, 0);
+  padding: calc(var(--micro-u) * 0.02) calc(var(--micro-u) * 0.05);
+  border-radius: 6px;
+  border: 1px solid var(--micro-accent);
+  background: rgba(31, 23, 54, 0.86);
+  color: var(--ink);
+  font: 600 calc(var(--micro-u) * 0.1) / 1.2 var(--mono);
+  white-space: nowrap;
+  opacity: 0;
+}
+
+.crid-micro.on .micro-mark,
+.crid-micro.on .micro-line {
+  animation: micro-in var(--micro-dur, 1600ms) ease-out forwards;
+}
+@keyframes micro-in {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 5px) scale(0.7);
+  }
+  22% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1.05);
+  }
+  45% {
+    transform: translate(-50%, 0) scale(1);
+  }
+  78% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -4px) scale(0.96);
+  }
+}
+
+/* curious — a thought that drifts up and away */
+.crid-micro[data-shape="ask"]::after {
+  content: "";
+  position: absolute;
+  left: 56%;
+  bottom: calc(88% + var(--micro-u) * 0.25);
+  width: calc(var(--micro-u) * 0.04);
+  height: calc(var(--micro-u) * 0.04);
+  border-radius: 50%;
+  background: var(--micro-accent);
+  opacity: 0;
+}
+.crid-micro.on[data-shape="ask"]::after {
+  animation: micro-drift var(--micro-dur, 1500ms) ease-out;
+}
+@keyframes micro-drift {
+  0% {
+    opacity: 0;
+    transform: translate(0, 4px) scale(0.6);
+  }
+  35% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-7px, -11px) scale(1);
+  }
+}
+
+/* delighted — two sparks that pop */
+.crid-micro[data-shape="spark"]::before,
+.crid-micro[data-shape="spark"]::after {
+  content: "";
+  position: absolute;
+  width: calc(var(--micro-u) * 0.06);
+  height: calc(var(--micro-u) * 0.06);
+  border-radius: 1px;
+  background: var(--micro-accent);
+  opacity: 0;
+}
+.crid-micro[data-shape="spark"]::before {
+  left: 40%;
+  bottom: 96%;
+}
+.crid-micro[data-shape="spark"]::after {
+  left: 68%;
+  bottom: 86%;
+}
+.crid-micro.on[data-shape="spark"]::before,
+.crid-micro.on[data-shape="spark"]::after {
+  animation: micro-spark var(--micro-dur, 1400ms) ease-out;
+}
+.crid-micro.on[data-shape="spark"]::after {
+  animation-delay: 0.12s;
+}
+@keyframes micro-spark {
+  0% {
+    opacity: 0;
+    transform: rotate(45deg) scale(0.2);
+  }
+  30% {
+    opacity: 1;
+    transform: rotate(45deg) scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(45deg) scale(0.5) translateY(-6px);
+  }
+}
+
+/* smug — one raised corner of the mouth */
+.crid-micro[data-shape="smirk"]::after {
+  content: "";
+  position: absolute;
+  left: 64%;
+  bottom: 60%;
+  width: calc(var(--micro-u) * 0.115);
+  height: calc(var(--micro-u) * 0.115);
+  border-radius: 50%;
+  border: 2px solid transparent;
+  border-bottom-color: var(--micro-accent);
+  opacity: 0;
+}
+.crid-micro.on[data-shape="smirk"]::after {
+  animation: micro-smirk var(--micro-dur, 1600ms) ease-out;
+}
+@keyframes micro-smirk {
+  0% {
+    opacity: 0;
+    transform: rotate(-8deg) scale(0.7);
+  }
+  30% {
+    opacity: 0.95;
+    transform: rotate(-8deg) scale(1);
+  }
+  80% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(-8deg) scale(1);
+  }
+}
+
+/* flustered — colour in the cheeks */
+.crid-micro[data-shape="blush"]::before,
+.crid-micro[data-shape="blush"]::after {
+  content: "";
+  position: absolute;
+  width: calc(var(--micro-u) * 0.125);
+  height: calc(var(--micro-u) * 0.067);
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(255, 91, 87, 0.8), rgba(255, 91, 87, 0));
+  opacity: 0;
+}
+.crid-micro[data-shape="blush"]::before {
+  left: 31%;
+  bottom: 58%;
+}
+.crid-micro[data-shape="blush"]::after {
+  left: 56%;
+  bottom: 58%;
+}
+.crid-micro.on[data-shape="blush"]::before,
+.crid-micro.on[data-shape="blush"]::after {
+  animation: micro-blush var(--micro-dur, 1400ms) ease-out;
+}
+@keyframes micro-blush {
+  0% {
+    opacity: 0;
+  }
+  25% {
+    opacity: 0.9;
+  }
+  75% {
+    opacity: 0.75;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* sleepy — two small z's rising */
+.crid-micro[data-shape="zzz"]::before,
+.crid-micro[data-shape="zzz"]::after {
+  content: "z";
+  position: absolute;
+  font: 800 calc(var(--micro-u) * 0.087) / 1 var(--mono);
+  color: var(--micro-accent);
+  opacity: 0;
+}
+.crid-micro[data-shape="zzz"]::before {
+  left: 62%;
+  bottom: 92%;
+}
+.crid-micro[data-shape="zzz"]::after {
+  left: 71%;
+  bottom: 84%;
+  font-size: calc(var(--micro-u) * 0.058);
+}
+.crid-micro.on[data-shape="zzz"]::before,
+.crid-micro.on[data-shape="zzz"]::after {
+  animation: micro-zzz var(--micro-dur, 1800ms) ease-out;
+}
+.crid-micro.on[data-shape="zzz"]::after {
+  animation-delay: 0.22s;
+}
+@keyframes micro-zzz {
+  0% {
+    opacity: 0;
+    transform: translate(0, 2px);
+  }
+  30% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(4px, -9px);
+  }
+}
+
+/* startled — a ring that expands from the mark */
+.crid-micro[data-shape="jolt"]::after {
+  content: "";
+  position: absolute;
+  left: 56%;
+  bottom: 88%;
+  width: calc(var(--micro-u) * 0.135);
+  height: calc(var(--micro-u) * 0.135);
+  margin: 0 0 calc(var(--micro-u) * -0.067) calc(var(--micro-u) * -0.067);
+  border-radius: 50%;
+  border: 2px solid var(--micro-accent);
+  opacity: 0;
+}
+.crid-micro.on[data-shape="jolt"]::after {
+  animation: micro-jolt var(--micro-dur, 1200ms) ease-out;
+}
+@keyframes micro-jolt {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.3);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.1);
+  }
+}
+
+/* proud — a bar above his head that fills up */
+.crid-micro[data-shape="bar"]::before {
+  content: "";
+  position: absolute;
+  left: 32%;
+  bottom: 95%;
+  width: 38%;
+  height: max(1px, calc(var(--micro-u) * 0.02));
+  border-radius: 2px;
+  background: var(--micro-accent);
+  transform-origin: left center;
+  transform: scaleX(0);
+  opacity: 0;
+}
+.crid-micro.on[data-shape="bar"]::before {
+  animation: micro-bar var(--micro-dur, 1600ms) ease-out;
+}
+@keyframes micro-bar {
+  0% {
+    opacity: 0;
+    transform: scaleX(0);
+  }
+  35% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+  80% {
+    opacity: 0.9;
+    transform: scaleX(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scaleX(1);
+  }
+}
+
+/* sulky — a small puff that drifts off to the side */
+.crid-micro[data-shape="puff"]::after {
+  content: "";
+  position: absolute;
+  left: 34%;
+  bottom: 72%;
+  width: calc(var(--micro-u) * 0.096);
+  height: calc(var(--micro-u) * 0.096);
+  border-radius: 50%;
+  background: rgba(169, 139, 255, 0.45);
+  box-shadow: calc(var(--micro-u) * 0.077) 2px 0 -2px rgba(169, 139, 255, 0.35);
+  opacity: 0;
+}
+.crid-micro.on[data-shape="puff"]::after {
+  animation: micro-puff var(--micro-dur, 1600ms) ease-out;
+}
+@keyframes micro-puff {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.5);
+  }
+  30% {
+    opacity: 0.85;
+    transform: translate(-3px, -2px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-14px, -7px) scale(1.3);
+  }
+}
+
+/* Reduced motion is a request for less movement, not for a dead character: the mark and
+   the caption still appear and fade, and every shape is dropped. */
+@media (prefers-reduced-motion: reduce) {
+  .crid-micro.on .micro-mark,
+  .crid-micro.on .micro-line {
+    animation: micro-hold var(--micro-dur, 1600ms) linear forwards;
+  }
+  .crid-micro.on::before,
+  .crid-micro.on::after {
+    animation: none !important;
+    opacity: 0 !important;
+  }
+}
+@keyframes micro-hold {
+  0%,
+  100% {
+    opacity: 0;
+    transform: translate(-50%, 0);
+  }
+  10%,
+  85% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
 /* ---------- effects ---------- */
 #fx {
   position: fixed;

@@ -16,7 +16,7 @@ import { createCridAudioSync } from "./crid-audio.js";
      swae=0 | 1                (force the snapshot-safe style off / on)
      theme=cyber|creative|torn-paper   (default cyber; the theme CSS is ./cyber-theme.js)
      scene=pip                 pip.w=10–60 pip.h=10–60 (% of viewport)
-     bot=0 | bl|bc|br          bot.x=0–100 bot.y=0–100  (CRID mascot; 0 restores the sound orb)
+     bot=0 | bl|bc|br          bot.x=0–100 bot.y=0–100  (CRID mascot; 0 restores the sound orb; default bc, the centre column)
      bot.scale=0.4–2.5         (mascot size multiplier on top of the theme's broadcast size; default 1)
      clock=0 | 1               (bottom-left clock plate; on by default)
      chat=0 | 1                chatPrefix=   (Swae chat strip; on by default inside Swae)
@@ -26,6 +26,7 @@ import { createCridAudioSync } from "./crid-audio.js";
      logo.x= logo.y=0–100      (percent placement, with logo=custom)
      Add a card type: DeskOverlay.register("my-type", (card, opts) => HTMLElement)  */
 import { createSoundOrbSync } from "./sound-orb.js";
+import { requestXFeed } from "./x-feed-client.js";
 import { createCridBot } from "./crid-bot.js";
 import { createLogo, LOGO_POSITIONS, LOGO_MARKS } from "./logo.js";
 import { CYBER_CSS } from "./cyber-theme.js";
@@ -317,6 +318,10 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 .x-item .x-handle{color:#8E8E93;font-size:.82em}
 .x-trend{display:flex;align-items:center;gap:.5em}
 .x-trend .x-count{color:#8E8E93;font-size:.78em;font-weight:600}
+/* The unavailable panel carries a sentence, not a one-line trend, so it gets a little more
+   room than the trend list and keeps its "retrying" footer on screen. */
+#x-jumbotron.x-problem-panel{max-height:28dvh}
+.x-item.x-problem{font-size:.86em;-webkit-line-clamp:4}
 
 /* Module Component Styles — individual caps keep the dock total bounded */
 .court-wrap,.music-wrap,.space-wrap,.ledger-wrap,.riad-wrap {
@@ -434,31 +439,37 @@ html[data-theme="torn-paper"] #desk{
 .layout-alive .summary,.layout-alive .source,.layout-alive .court-viewpoint .v-text,.layout-alive .ledger-entry{font-family:var(--brand)}
 .layout-alive .music-wrap{max-height:28dvh;overflow:auto}
 .music-empty{font-size:.78em;color:#9d9587;margin-top:.4em}
-/* The clock plate keeps the Black Market timestamp's anatomy (index (2).html) but not its absolute
-   numbers. That file is a solo overlay: 43px digits and a 390px plate are right when the timestamp
-   is the only thing in the frame, and lifting them straight into a frame that also carries the news
-   ticker made the timer the loudest element on screen. Everything below is em of --feed-fs, the
-   news ticker's own type size, so the digits hold 1.5x the headline text, the left bar is the same
-   weight as the ticker's, and the two plates stay balanced at every width and every --scale. The
-   reference's tabular mono, -.045em tracking, square-left/round-right corner and three-row rhythm
-   are kept as they were. */
+/* The clock plate is the operator's own Black Market timestamp, ported rather than paraphrased
+   (his index (2).html): crimson #dc143c on paper #f7f3ea, IBM Plex Mono digits at 2.35vw with
+   -.045em tracking, a Space Grotesk topline and detail row, the 3px crimson left bar with the
+   square-left/round-right corner, and the faint crimson ellipse bleeding out of the bottom-right.
+   It keeps that fixed palette instead of the theme's --accent/--glass tokens because it is his
+   original and he asked for it to look like it; every other surface still follows the theme.
+   It lives bottom-left, which is where his reference frame put it. */
 #time-dock{position:absolute;left:var(--m);bottom:var(--m);z-index:20;pointer-events:none;
-  font-size:var(--feed-fs);
-  min-width:min(16em,64vw);max-width:calc(100vw - 2*var(--m));box-sizing:border-box;overflow:hidden;
-  padding:.72em .95em .78em 1.05em;
-  border:1px solid var(--surface-line);border-left:.28em solid var(--accent);border-radius:0 .75em .75em 0;
-  background:var(--glass);box-shadow:0 14px 40px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.05);
-  color:var(--ink)}
-#time-dock .clock-top{display:flex;align-items:center;justify-content:space-between;gap:1.4em;
-  margin-bottom:.5em;font-family:var(--brand);font-size:.62em;
-  font-weight:600;letter-spacing:.18em;line-height:1;text-transform:uppercase;color:var(--ink-3,#9d9587)}
-#time-dock .clock-time{display:block;font-family:var(--mono);
-  font-size:1.5em;font-weight:500;letter-spacing:-.045em;
-  line-height:1.05;white-space:nowrap;color:var(--ink);font-variant-numeric:tabular-nums lining-nums}
-#time-dock .clock-detail{display:flex;align-items:center;gap:.62em;margin-top:.55em;
-  font-family:var(--brand);font-size:.68em;font-weight:500;
-  letter-spacing:.04em;color:var(--ink-3,#9d9587)}
-#time-dock .clock-sep{flex:0 0 auto;width:4px;height:4px;border-radius:50%;background:var(--accent)}
+  box-sizing:border-box;overflow:hidden;isolation:isolate;
+  min-width:min(390px,82vw);max-width:calc(100vw - 2*var(--m));
+  padding:16px 22px 17px 24px;
+  border:1px solid rgba(247,243,234,.14);border-left:3px solid #dc143c;border-radius:0 12px 12px 0;
+  background:rgba(8,11,16,.84);color:#f7f3ea;
+  box-shadow:0 14px 40px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.05)}
+#time-dock::after{position:absolute;z-index:-1;right:-30px;bottom:-44px;width:170px;height:110px;
+  border:1px solid rgba(220,20,60,.2);border-radius:50%;content:"";transform:rotate(-18deg)}
+#time-dock .clock-top{display:flex;align-items:center;justify-content:space-between;gap:18px;
+  margin-bottom:11px;color:rgba(247,243,234,.62);
+  font-family:"Space Grotesk",var(--brand),sans-serif;
+  font-size:clamp(10px,.72vw,13px);font-weight:600;letter-spacing:.18em;line-height:1;text-transform:uppercase}
+#time-dock .clock-live{display:inline-flex;align-items:center;gap:7px;color:#dc143c;white-space:nowrap}
+#time-dock .clock-dot{width:7px;height:7px;border-radius:50%;background:#dc143c;
+  box-shadow:0 0 0 4px rgba(220,20,60,.14),0 0 14px rgba(220,20,60,.7)}
+#time-dock .clock-time{display:block;color:#f7f3ea;
+  font-family:"IBM Plex Mono","Courier New",var(--mono);
+  font-size:clamp(24px,2.35vw,43px);font-weight:500;letter-spacing:-.045em;line-height:1.05;
+  white-space:nowrap;font-variant-numeric:tabular-nums lining-nums}
+#time-dock .clock-detail{display:flex;align-items:center;gap:10px;margin-top:12px;
+  color:rgba(247,243,234,.62);font-family:"Space Grotesk",var(--brand),sans-serif;
+  font-size:clamp(11px,.8vw,14px);font-weight:500;letter-spacing:.04em}
+#time-dock .clock-sep{flex:0 0 auto;width:4px;height:4px;border-radius:50%;background:#dc143c}
 html[data-crop="true"] #desk .mod::before{content:"";position:absolute;inset:-1px;border-radius:inherit;pointer-events:none;opacity:.34;
   background:linear-gradient(to right,var(--accent) 2px,transparent 2px) 0 0/8px 8px no-repeat,
     linear-gradient(to bottom,var(--accent) 2px,transparent 2px) 0 0/8px 8px no-repeat,
@@ -505,13 +516,13 @@ html.swae .scale-wrap{display:none}
 
 @media(max-width:900px){.layout-alive .slot{width:min(39vw,460px)}
   .layout-alive #dock-right{width:min(31vw,360px)}}
-/* On a narrow phone the reference let the plate fill the frame, because in its own file nothing
-   else was there. Here the news ticker owns the bottom-right, so the clock keeps to its content
-   width and steps up above the ticker instead of being laid under it. Nothing else changes at that
-   width: the digits stay 1.5em of the same feed size, so the measured clock-to-headline ratio is
-   the same 1.83 on a phone as on a broadcast frame rather than a second number to keep honest. */
-@media(max-width:520px){#time-dock{min-width:0;
-  bottom:calc(var(--m) + 3.4em + env(safe-area-inset-bottom,0px))}}
+/* On a narrow frame the reference let the plate fill the frame, because in its own file nothing
+   else was there. Here the news ticker owns the bottom-right, so the clock keeps the reference's
+   full-width plate and its own smaller digits, and steps up above the ticker instead of being laid
+   under it. Nothing else changes at that width. */
+@media(max-width:520px){#time-dock{min-width:0;width:calc(100vw - 2*var(--m));
+  bottom:calc(var(--m) + 3.4em + env(safe-area-inset-bottom,0px))}
+  #time-dock .clock-time{font-size:clamp(22px,7vw,34px)}}
 `;
 
 // ---------- upgraded DOM helper ----------
@@ -729,16 +740,17 @@ html.swae .scale-wrap{display:none}
   });
   // CRID, the mascot, replaces the sound orb: it grooms itself when idle, reacts to the desk and
   // pushes docked modules out of its own chest. ?bot=0 restores the orb, ?bot=bl|bc|br picks the
-  // spot (default bottom-right, immediately beside the lower-third identity strip), and
-  // ?bot.x= / ?bot.y= place it by percent. The two are independent — giving one anchors that axis
-  // and leaves the other on its default — so a corner can be nudged without restating both.
+  // spot (default bottom-centre: the centre column is his, and the lockup above him is the one band
+  // he never reaches), and ?bot.x= / ?bot.y= place it by percent. The two are independent — giving
+  // one anchors that axis and leaves the other on its default — so a corner can be nudged without
+  // restating both.
   const BOT_ARG = P.get("bot");
   const botPlaced = P.get("bot.x") != null || P.get("bot.y") != null;
   const bot = BOT_ARG === "0" ? null : createCridBot({
     root,
     swae: SWAE,
     lowPower: document.documentElement.classList.contains("low-power"),
-    position: ["bl", "bc", "br"].includes(BOT_ARG) ? BOT_ARG : "br",
+    position: ["bl", "bc", "br"].includes(BOT_ARG) ? BOT_ARG : "bc",
     x: botPlaced ? num("bot.x", 50, 0, 100) : null,
     y: botPlaced ? num("bot.y", 88, 0, 100) : null,
     // ?bot.scale= is the size knob: the mascot is drawn at broadcast size by default, and the
@@ -1018,6 +1030,27 @@ html.swae .scale-wrap{display:none}
   let xTimer = null;
   let xStarted = false;
 
+  // The feed is down: say so on the jumbotron instead of leaving the corner blank. No stand-in
+  // tweets — an empty panel that admits it is broken is honest, invented posts are not.
+  const renderXproblem = (message) => {
+    if (!xMode) return;
+    if (xEl && xKey === `problem|${message}`) return;
+    const head = h("div", "x-head", h("span", "x-brand", "X"), h("span", "x-kind", "Unavailable"));
+    const list = h("div", "x-list",
+      h("div", "x-item x-problem", h("span", "x-text", message)));
+    const foot = h("div", "", h("span", "x-count", `Retrying every ${Math.round(xJPollMs / 1000)}s`));
+    if (xEl) {
+      xEl.replaceChildren(head, list, foot);
+    } else {
+      xEl = h("div", { id: "x-jumbotron" }, head, list, foot);
+      dockRight.prepend(xEl);
+      bot?.summon(xEl);
+      requestAnimationFrame(() => requestAnimationFrame(() => xEl?.classList.add("in")));
+    }
+    xEl.classList.add("x-problem-panel");
+    xKey = `problem|${message}`;
+  };
+
   const renderXjumbotron = (feed) => {
     if (!xMode || !feed) {
       if (xEl) {
@@ -1084,18 +1117,26 @@ html.swae .scale-wrap{display:none}
       requestAnimationFrame(() => requestAnimationFrame(() => xEl?.classList.add("in")));
     }
     xKey = key;
+    xEl?.classList.remove("x-problem-panel");
     clearTimeout(xTimer);
     xTimer = setTimeout(fetchXfeed, xJPollMs);
   };
 
   const fetchXfeed = async () => {
     if (!xMode) return;
-    const params = new URLSearchParams({ mode: xMode });
-    if (xUserId) params.set("userId", xUserId);
-    try {
-      const r = await fetch(`/api/x/feed?${params}`, { cache: "no-store" });
-      if (r.ok) renderXjumbotron(await r.json());
-    } catch { }
+    clearTimeout(xTimer);
+    const result = await requestXFeed(globalThis.fetch, { mode: xMode, userId: xUserId });
+    if (!xMode) return;
+    if (result.ok) {
+      renderXjumbotron(result.feed);
+      return;
+    }
+    // A failure used to fall into an empty catch: nothing on air, nothing anywhere else, and the
+    // poll timer was never re-armed, so one bad response ended the feed for the whole stream.
+    console.warn("[desk] " + result.error);
+    renderXproblem(result.error);
+    clearTimeout(xTimer);
+    xTimer = setTimeout(fetchXfeed, xJPollMs);
   };
 
   const render = () => {
@@ -1186,47 +1227,54 @@ html.swae .scale-wrap{display:none}
   // ---------- clock plate ----------
   // The bottom-left corner: what this desk is, the time, and the zone that time belongs to. The
   // time is the server's, shifted by the offset each poll keeps, so a phone whose own clock is
-  // wrong still shows the stream's real time; the zone name is the device's, because the device
-  // rendering the overlay is the one standing in it. Seconds are written whole, once a second —
-  // a state change, not a tween — so a Swae snapshot can only ever catch a correct reading.
+  // wrong still shows the stream's real time. The zone is pinned to the operator's own, exactly as
+  // his timestamp file does it: the desk is a Lagos stream, so the reading is Lagos time on every
+  // renderer rather than whatever the machine drawing it happens to be set to. Seconds are written
+  // whole, four times a second as in his file, so a Swae snapshot can only ever catch a correct
+  // reading — the cadence never changes a digit that has not changed on the clock.
   if (P.get("clock") !== "0") {
-    let zone = "";
-    try { zone = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch { /* older engines */ }
+    const ZONE = "Africa/Lagos";
     const clockTime = h("time", "clock-time", "--- --, --:--:--");
     const clockDay = h("span", "clock-day", "");
     root.append(h("div", { id: "time-dock" },
       h("div", "clock-top",
-        h("span", "clock-brand", "CYBER LIVE DESK"),
-        h("span", "clock-zone-top", (zone || "LOCAL TIME").replace(/_/g, " / ").toUpperCase())),
+        h("span", "clock-market", "Black Market"),
+        h("span", "clock-live", h("i", { class: "clock-dot", "aria-hidden": "true" }), "Live")),
       clockTime,
       h("div", "clock-detail",
         clockDay,
         h("i", { class: "clock-sep", "aria-hidden": "true" }),
-        h("span", "clock-zone", zone ? zone.replace(/_/g, " / ") : "Device time"))));
+        h("span", "clock-place", "Africa / Lagos"))));
 
-    // Three formatters, one per line, because the original reads "Nov 05, 18:47:24" over
-    // "Wednesday, November 5" and neither is a substring of the other. en-GB gives the desk its
+    // Three formatters, one per line, because the original reads "Oct 20, 17:11:30" over
+    // "Tuesday, October 20" and neither is a substring of the other. h23 gives the desk its
     // 24-hour clock; the month and the weekday come from the same instant so the lines cannot
-    // disagree at a rollover.
-    const zoneOpts = { timeZone: zone || undefined };
-    const monthFormat = new Intl.DateTimeFormat("en-GB", { month: "short", ...zoneOpts });
-    const dayFormat = new Intl.DateTimeFormat("en-GB", { day: "2-digit", ...zoneOpts });
-    const hmsFormat = new Intl.DateTimeFormat("en-GB", {
-      hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, ...zoneOpts });
-    const longFormat = new Intl.DateTimeFormat("en-GB", {
-      weekday: "long", month: "long", day: "numeric", ...zoneOpts });
+    // disagree at a rollover. The detail row counts the day plainly ("October 20"), which is what
+    // the original does, so the two rows differ in day padding by design.
+    const monthFormat = new Intl.DateTimeFormat("en-US", { month: "short", timeZone: ZONE });
+    const partsFormat = new Intl.DateTimeFormat("en-US", {
+      day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
+      hourCycle: "h23", timeZone: ZONE });
+    const longFormat = new Intl.DateTimeFormat("en-US", {
+      weekday: "long", month: "long", day: "numeric", timeZone: ZONE });
     const drawClock = () => {
       const now = new Date(serverNow());
-      clockTime.textContent = `${monthFormat.format(now)} ${dayFormat.format(now)}, ${hmsFormat.format(now)}`;
+      const v = {};
+      for (const part of partsFormat.formatToParts(now)) v[part.type] = part.value;
+      clockTime.textContent = `${monthFormat.format(now)} ${v.day}, ${v.hour}:${v.minute}:${v.second}`;
       clockTime.dateTime = now.toISOString();
       clockDay.textContent = longFormat.format(now);
     };
     drawClock();
-    const clockTimer = setInterval(drawClock, 1000);
+    const clockTimer = setInterval(drawClock, 250);
     window.addEventListener("pagehide", () => clearInterval(clockTimer), { once: true });
   }
 
   window.DeskOverlay = { register, logo: lockup };
   refreshHeadlines();
+  // He was placed before the clock existed, so the floor he measured was the frame's own. Now that
+  // every plate is in the document, measure again: this is what puts him on top of the bottom band
+  // on a narrow frame and on the floor of a broadcast one.
+  if (bot) bot.place();
   tick();
 })();

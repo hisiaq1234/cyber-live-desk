@@ -874,13 +874,13 @@ html.swae #desk .jumbo{background:#0b0d12f5}
 `;
 
   register("jumbo", (c, opts) => {
-    const brand = h("span", "jumbo-brand", "Jumbo");
+    const brand = h("span", "jumbo-brand", "CRID");
     const clock = h("span", "jumbo-clock", "1:30");
     const letters = h("div", "jumbo-letters");
     const board = h("ol", "jumbo-board");
     const best = h("span", "jumbo-best", "");
     const words = h("span", "jumbo-words", "");
-    const el = h("section", { class: "jumbo", "aria-label": "Jumbo word game" },
+    const el = h("section", { class: "jumbo", "aria-label": "Crid word game" },
       h("div", "jumbo-top", brand, clock), letters, board, h("div", "jumbo-foot", best, words));
 
     let jumbo = null;

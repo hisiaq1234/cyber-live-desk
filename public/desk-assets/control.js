@@ -951,15 +951,15 @@ import { createCridVoice } from "./crid-voice.js";
         }, "small")),
       h("div", "grid", ...BOT_REACTS.map((kind) =>
         btn(kind.toUpperCase(), () => act("bot-react", { kind }), "small"))),
-      h("h3", { style: "margin:16px 0 4px" }, "Jumbo"),
-      h("p", "sub", "Crid's word game. Seven letters, 90 seconds. Chat types one word; the longest pays most. Opening a round puts the board on the desk, and Crid plays the open and the close."),
+      h("h3", { style: "margin:16px 0 4px" }, "Letters"),
+      h("p", "sub", "Seven letters, 90 seconds. Chat types one word; the longest pays most. The board is Crid's, and he plays the open and the close."),
       jumboOpen
         ? h("div", "row",
             h("span", "chip ok", (jumbo.letters || []).join(" · ")),
             h("span", "sub", `${Math.max(0, Math.ceil(((jumbo.endsAt ?? 0) - (Date.now() + offset)) / 1000))}s · ${(jumbo.claims || []).length} words`),
             btn("Close round", () => act("jumbo-close"), "small danger", "heavy"))
         : h("div", "row",
-            btn("Start a Jumbo round", () => act("jumbo-open"), "primary", "heavy"),
+            btn("Start a round", () => act("jumbo-open"), "primary", "heavy"),
             jumbo ? btn("Clear the board", () => act("jumbo-clear"), "small") : null));
   };
 

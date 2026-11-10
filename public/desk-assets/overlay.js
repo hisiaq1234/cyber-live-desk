@@ -836,21 +836,25 @@ html.swae .scale-wrap{display:none}
     .slice(0, 5);
 
   const JUMBO_CSS = `
-#desk .jumbo{width:min(38em,92vw);padding:18px 22px 16px;box-sizing:border-box;overflow:hidden;
+/* The card is sized by the slot it lives in (.layout-alive .slot caps at 460px), never by its own
+   idea of how wide it should be: an over-wide card pushed the last tiles and the clock past the
+   slot's edge and off the frame. Everything inside shrinks to fit instead. */
+#desk .jumbo{width:100%;max-width:100%;min-width:0;padding:18px 22px 16px;box-sizing:border-box;overflow:hidden;
   border:1px solid rgba(247,243,234,.14);border-left:3px solid #dc143c;border-radius:0 12px 12px 0;
   background:rgba(8,11,16,.86);color:#f7f3ea;font-family:"Space Grotesk",var(--brand),sans-serif;
   box-shadow:0 14px 40px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.05)}
-#desk .jumbo-top{display:flex;align-items:baseline;justify-content:space-between;gap:18px;
+#desk .jumbo-top{display:flex;align-items:baseline;justify-content:space-between;gap:12px;min-width:0;
   color:rgba(247,243,234,.62);font-size:clamp(10px,.72vw,13px);font-weight:600;
   letter-spacing:.18em;line-height:1;text-transform:uppercase}
-#desk .jumbo-brand{color:#dc143c}
-#desk .jumbo-clock{font-family:"IBM Plex Mono","Courier New",var(--mono);font-size:clamp(17px,1.5vw,28px);
+#desk .jumbo-brand{color:#dc143c;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#desk .jumbo-clock{flex:0 0 auto;white-space:nowrap;font-family:"IBM Plex Mono","Courier New",var(--mono);font-size:clamp(17px,1.5vw,28px);
   font-weight:500;letter-spacing:-.02em;color:#f7f3ea;font-variant-numeric:tabular-nums;text-transform:none}
 #desk .jumbo[data-state="over"] .jumbo-clock{color:#dc143c;letter-spacing:.02em}
-#desk .jumbo-letters{display:flex;gap:8px;margin:14px 0 12px}
-#desk .jumbo-tile{flex:1 1 0;display:grid;place-items:center;aspect-ratio:1;
+#desk .jumbo-letters{display:flex;gap:clamp(3px,.5em,8px);margin:14px 0 12px;min-width:0;container-type:inline-size}
+#desk .jumbo-tile{flex:1 1 0;min-width:0;display:grid;place-items:center;aspect-ratio:1;
   border:1px solid rgba(247,243,234,.18);border-radius:6px;background:rgba(247,243,234,.05);
   font-family:"IBM Plex Mono","Courier New",var(--mono);font-size:clamp(20px,2.1vw,38px);
+  font-size:clamp(9px,9cqi,38px);
   font-weight:600;line-height:1;text-transform:uppercase}
 #desk .jumbo-tile.vowel{color:#dc143c;border-color:rgba(220,20,60,.45)}
 #desk .jumbo-board{display:grid;gap:5px;margin:0;padding:0;list-style:none;

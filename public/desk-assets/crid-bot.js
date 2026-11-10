@@ -4,22 +4,20 @@
 
    Sprite: ./desk-assets/crid/body-<shape>-r7.webp (600x800, downscaled from the 1050x1400 masters:
    the biggest he is ever drawn is 340 CSS px wide, so 600px is ~2.5x the display box and ~1.3x a
-   retina one). Shapes lean -> fattest: 3, 0, 5, 1, 2. Each frame is a COMPLETE drawing with its own
-   painted face, so he is drawn as one layer. The eyes-<state>/mouth-<state> frames were never
+   retina one). Shapes lean -> fattest: 000, 00, 3, 0, 5, 1, 2. Each frame is a COMPLETE drawing with
+   its own painted face, so he is drawn as one layer. The eyes-<state>/mouth-<state> frames were never
    registered to these bodies (a different scale and position, squeezed into a 44x22 box over a face
    that already has eyes) and produced a second ghost face; they are unused until a real registered
    rig is built. Emotion therefore comes from a body swap + a motion beat + a hold — see FEEL.
-   The two other frames in ./crid, body-000 and body-00, are NOT complete drawings: they have the
-   eyes and mouth cut clean out (43% of the face box is transparent, against 0.4% on these five),
-   so on their own they read as a blank-faced head. They are the rig's sockets, and under one-drawing
-   they are not drawn at all.
+   All seven frames share one framing: ink 688px tall, feet on y=760, the body's centre of mass on
+   x=320 — so a body swap is a change of build, never a jump sideways or a change of height.
    Growth: every sub moves him up a notch. SUB_STEPS is where each body shape takes over, and
    between shapes he widens a little (STAGE_STRETCH) so every single sub is visible. The size is
    worked out from the sub total each time, so an overlay reload mid-stream restores it.
    Feed it with observe(state) where state.bot.subs is the sub count this stream, or call setSubs(n). */
 const NS="http://www.w3.org/2000/svg",XLINK="http://www.w3.org/1999/xlink",PAL={onyx:"#1F1736",screen:"#0F0B17",edge:"#3A1D9E",indigo:"#6531F8",indigoDk:"#3A1D9E",mint:"#86F6BC",bone:"#A98BFF",ink:"#F4F0FF",slate:"#2B2738",red:"#FF5B57",dead:"#5E5873"},
-DOZE_AFTER_MS=12e4,BODIES=[3,0,5,1,2],ROT=7,ASSETS="./desk-assets/crid",AV=b=>`${ASSETS}/body-${b}-r${ROT}.webp`,
-SUB_STEPS=[0,4,9,16,24],STAGE_STRETCH=.06,
+DOZE_AFTER_MS=12e4,BODIES=["000","00",3,0,5,1,2],ROT=7,ASSETS="./desk-assets/crid",AV=b=>`${ASSETS}/body-${b}-r${ROT}.webp`,
+SUB_STEPS=[0,4,8,12,16,20,24],STAGE_STRETCH=.06,
 // The eight micro-emotions from brain/micro-emotions.mjs. A painted face cannot be swapped, so a
 // feeling is a whole drawing that changes and is moved well: a different body (they carry their own
 // face and stance — 2 is turned away, 1 is the heaviest), one of the gesture sequences, and how long
@@ -28,7 +26,7 @@ FEEL={curious:{body:"3",seq:"peek",hold:1500},delighted:{body:"0",seq:"hop",hold
   smug:{body:"1",seq:"sideeye",hold:1900},flustered:{body:"5",seq:"wince",hold:1200},
   sleepy:{body:"1",seq:"sit",hold:2400},startled:{body:"2",seq:"surprise",hold:1000},
   proud:{body:"0",seq:"nod",hold:1700},sulky:{body:"3",seq:"shrug",hold:2100}},
-// Measured ink box of the five body frames (600x800): the feet stop at y=757, so a frame drawn to the
+// Measured ink box of all seven body frames (600x800): the feet stop at y=757, so a frame drawn to the
 // box edge leaves him hovering ~7% of his height over the floor. The sprite is drawn so the feet land
 // exactly on the box bottom, which is the floor band at every ?bot.scale= — the shadow is a filter on
 // the same drawing, so it tracks him.

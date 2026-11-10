@@ -930,6 +930,8 @@ import { createCridVoice } from "./crid-voice.js";
   const botPanel = h("section", "panel crid-bot-panel");
   const renderBotPanel = () => {
     const on = state?.bot?.on !== false;
+    const jumbo = state?.jumbo || null;
+    const jumboOpen = !!(jumbo && jumbo.status === "open");
     const last = state?.bot?.react;
     const subs = Number.isSafeInteger(state?.bot?.subs) ? state.bot.subs : 0;
     const subsInput = h("input", { type: "number", min: "0", max: "10000000", step: "1", value: String(subs), inputMode: "numeric", "aria-label": "Current stream subscriber total" });
@@ -948,7 +950,17 @@ import { createCridVoice } from "./crid-voice.js";
           void act("bot-subs", { count });
         }, "small")),
       h("div", "grid", ...BOT_REACTS.map((kind) =>
-        btn(kind.toUpperCase(), () => act("bot-react", { kind }), "small"))));
+        btn(kind.toUpperCase(), () => act("bot-react", { kind }), "small"))),
+      h("h3", { style: "margin:16px 0 4px" }, "Jumbo"),
+      h("p", "sub", "Crid's word game. Seven letters, 90 seconds. Chat types one word; the longest pays most. Opening a round puts the board on the desk, and Crid plays the open and the close."),
+      jumboOpen
+        ? h("div", "row",
+            h("span", "chip ok", (jumbo.letters || []).join(" · ")),
+            h("span", "sub", `${Math.max(0, Math.ceil(((jumbo.endsAt ?? 0) - (Date.now() + offset)) / 1000))}s · ${(jumbo.claims || []).length} words`),
+            btn("Close round", () => act("jumbo-close"), "small danger", "heavy"))
+        : h("div", "row",
+            btn("Start a Jumbo round", () => act("jumbo-open"), "primary", "heavy"),
+            jumbo ? btn("Clear the board", () => act("jumbo-clear"), "small") : null));
   };
 
   // ---------- desks ----------

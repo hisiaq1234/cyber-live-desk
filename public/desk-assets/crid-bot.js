@@ -282,12 +282,12 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // seconds, biased to one side, is what stops him reading as a sprite pinned to a grid.
   let post={hr:0,tr:0,hy:0},postTo={hr:0,tr:0,hy:0},postAt=BOOT,postFor=1;
   const postureAt=now=>{if(now>=postAt+postFor){post={...postTo}; postAt=now; postFor=rand(2600,4600)*(reduced?1.4:1);
-      postTo={hr:(Math.random()<.62?-1:1)*rand(.6,2.4),tr:rand(-1.6,1.6),hy:rand(0,1.3)}}
+      postTo={hr:(Math.random()<.62?-1:1)*rand(1.6,4.4),tr:rand(-3.2,3.2),hy:rand(0,2.2)}}
     const e=EASE.smooth(clamp((now-postAt)/postFor,0,1));
     return{hr:post.hr+(postTo.hr-post.hr)*e,tr:post.tr+(postTo.tr-post.tr)*e,hy:post.hy+(postTo.hy-post.hy)*e}};
   const baseOf=frame=>({...REST[mode],tag:tagText,fx,sx:growth.sx,sy:growth.sy,...(frame||{})});
   const dress=p=>{const now=Date.now(),q={...p};
-    if(mode==="on"||mode==="doze"){const br=breath(now); q.bs*=(1+.012*br); q.sy*=(1+.007*br); q.hy-=1.1*br}
+    if(mode==="on"||mode==="doze"){const br=breath(now); q.bs*=(1+.028*br); q.sy*=(1+.016*br); q.hy-=2.4*br}
     if(!frozen&&mode!=="dead"){const po=postureAt(now); q.hr+=po.hr; q.tr+=po.tr; q.hy+=po.hy}
     if(!gestureOn){if(mode==="doze")q.hr=[3,5,7,5][Math.floor(now/430)%4];
       if(grooving&&mode==="on"){q.hr=Math.floor(now/760)%2?-3:3; q.hy=Math.floor(now/1500)%2?2:0}}
@@ -305,15 +305,17 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     pose=p; return dress(pose)};
   // Fewer, larger gestures, and long gaps between them. The eye-only beats (blink, ledBlink) are
   // nearly invisible on a painted face, so they are the rare exception now, not the filler.
-  const pickIdle=()=>{const r=Math.random(); if(mode==="doze") return r<.5?[{led:"on"},{led:"dim"}]:SEQ.blink;
-    if(r<.28)return SEQ.sway; if(r<.42)return SEQ.weighted; if(r<.53)return SEQ.read;
-    if(r<.62)return rand(0,1)<.5?SEQ.glanceL:SEQ.glanceR; if(r<.7)return SEQ.peek;
-    if(r<.78)return SEQ.shrug; if(r<.86)return SEQ.sit.concat(SEQ.stand);
-    if(r<.92)return SEQ.crawl; if(r<.96)return SEQ.sideeye; return SEQ.blink};
+  const pickIdle=()=>{const r=Math.random(); if(mode==="doze") return r<.5?SEQ.sit:SEQ.weighted;
+    // A painted face cannot blink, so the idle set is only moves the body can show.
+    if(r<.22)return SEQ.sway; if(r<.38)return SEQ.weighted; if(r<.50)return SEQ.read;
+    if(r<.62)return rand(0,1)<.5?SEQ.glanceL:SEQ.glanceR; if(r<.72)return SEQ.peek;
+    if(r<.82)return SEQ.shrug; if(r<.90)return SEQ.sit.concat(SEQ.stand);
+    if(r<.96)return SEQ.crawl; return SEQ.sideeye};
   // The gap before the next gesture is drawn, not fixed: a few seconds of stillness, often much
   // longer, and never the same interval twice running.
   const nextWait=()=>{const r=Math.random();
-    const sec=mode==="doze"?(r<.4?rand(16,30):rand(9,16)):(r<.25?rand(15,28):r<.6?rand(8.5,15):rand(4.5,8.5));
+    // Stillness is part of him, but a painted body with a 28s gap reads as a statue.
+    const sec=mode==="doze"?(r<.4?rand(12,20):rand(7,12)):(r<.2?rand(8,12):r<.55?rand(5,8):rand(2.8,5));
     return sec*1000*(reduced?1.35:1)};
   const tick=()=>{if(frozen)return; const now=Date.now(); tickN++; if(walk&&(jobs.length||running))goHome(); advanceJob(); advanceWalk();
     if(now>=trAt+trFor){ // the previous beat has finished travelling: choose the next one
@@ -376,7 +378,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     if(talking&&mode==="on"&&tickN%9===0)play(SEQ.read);
     if(activityOf(s)){lastActive=Date.now(); if(mode==="doze"){mode="on";play([{eyes:"wide",mouth:"o",hy:-2},{eyes:"open",mouth:"flat",hy:0}],{urgent:!0})}}
     const verdict=s.crid?s.crid.verdict:null; tagText=s.crid?(verdict===1?"PAID":"DUE"):null;
-    if(prev){const pv=prev.crid?prev.crid.verdict:null; if(verdict===1&&pv!==1)react("paid"); else if(verdict===0&&pv!==0)react("due"); const pollNow=s.poll&&s.poll.active!==!1,pollBefore=prev.poll&&prev.poll.active!==!1; if(pollNow&&!pollBefore)react("think"); else if(!pollNow&&pollBefore&&s.poll&&s.poll.options)react("cheer"); if(s.card&&s.card.confidence==="disputed"&&!(prev.card&&prev.card.id===s.card.id))react("wince")} prev=s};
+    if(prev){const pv=prev.crid?prev.crid.verdict:null; if(verdict===1&&pv!==1)react("paid"); else if(verdict===0&&pv!==0)react("due"); const pollNow=s.poll&&s.poll.active!==!1,pollBefore=prev.poll&&prev.poll.active!==!1; if(pollNow&&!pollBefore)react("think"); else if(!pollNow&&pollBefore&&s.poll&&s.poll.options)react("cheer"); if(s.card&&s.card.confidence==="disputed"&&!(prev.card&&prev.card.id===s.card.id))react("wince"); const jNow=!!(s.jumbo&&s.jumbo.status==="open"),jBefore=!!(prev.jumbo&&prev.jumbo.status==="open"); if(jNow&&!jBefore)react("cheer"); else if(!jNow&&jBefore)react("nod")} prev=s};
   const watch=()=>{talking=host.classList.contains("is-active");grooving=host.classList.contains("music-playing")};
   const mo=typeof MutationObserver=="function"?new MutationObserver(watch):null; mo==null||mo.observe(host,{attributes:!0,attributeFilter:["class"]});
   // Boot him on the way in (the desk default), place him clear of the lower third, and keep the

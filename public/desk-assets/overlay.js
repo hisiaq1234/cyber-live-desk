@@ -68,6 +68,9 @@ import { youtubeEmbedUrl } from "./youtube-embed.js";
     crid: P.get("crid") !== "0",
     cridPos: "top",
   };
+  // ?game=0 removes the Jumbo card and its renderer with it: a frame that never wants the game
+  // never draws one, and the desk state it ignores costs it nothing.
+  const JUMBO_ON = P.get("game") !== "0";
   const theme = pick("theme", ["creative", "torn-paper", "cyber"], "cyber");
   document.documentElement.dataset.theme = theme;
   document.documentElement.dataset.crop = P.get("crop") === "0" ? "false" : "true";
@@ -824,9 +827,105 @@ html.swae .scale-wrap{display:none}
     } catch { return null; }
   });
 
+  // ---------- Jumbo, the word game ----------
+  // The board, its clock and the top five. The letters are read straight out of desk state, which
+  // is the only place a board is ever drawn, so this card can only show letters that were dealt.
+  const jumboTop = (j) => Object.entries(j?.scores ?? {})
+    .map(([user, points]) => ({ user, points }))
+    .sort((a, b) => b.points - a.points)
+    .slice(0, 5);
+
+  const JUMBO_CSS = `
+/* The card is sized by the slot it lives in (.layout-alive .slot caps at 460px), never by its own
+   idea of how wide it should be: an over-wide card pushed the last tiles and the clock past the
+   slot's edge and off the frame. Everything inside shrinks to fit instead. */
+#desk .jumbo{width:100%;max-width:100%;min-width:0;padding:18px 22px 16px;box-sizing:border-box;overflow:hidden;
+  border:1px solid rgba(247,243,234,.14);border-left:3px solid #dc143c;border-radius:0 12px 12px 0;
+  background:rgba(8,11,16,.86);color:#f7f3ea;font-family:"Space Grotesk",var(--brand),sans-serif;
+  box-shadow:0 14px 40px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.05)}
+#desk .jumbo-top{display:flex;align-items:baseline;justify-content:space-between;gap:12px;min-width:0;
+  color:rgba(247,243,234,.62);font-size:clamp(10px,.72vw,13px);font-weight:600;
+  letter-spacing:.18em;line-height:1;text-transform:uppercase}
+#desk .jumbo-brand{color:#dc143c;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#desk .jumbo-clock{flex:0 0 auto;white-space:nowrap;font-family:"IBM Plex Mono","Courier New",var(--mono);font-size:clamp(17px,1.5vw,28px);
+  font-weight:500;letter-spacing:-.02em;color:#f7f3ea;font-variant-numeric:tabular-nums;text-transform:none}
+#desk .jumbo[data-state="over"] .jumbo-clock{color:#dc143c;letter-spacing:.02em}
+#desk .jumbo-letters{display:flex;gap:clamp(3px,.5em,8px);margin:14px 0 12px;min-width:0;container-type:inline-size}
+#desk .jumbo-tile{flex:1 1 0;min-width:0;display:grid;place-items:center;aspect-ratio:1;
+  border:1px solid rgba(247,243,234,.18);border-radius:6px;background:rgba(247,243,234,.05);
+  font-family:"IBM Plex Mono","Courier New",var(--mono);font-size:clamp(20px,2.1vw,38px);
+  font-size:clamp(9px,9cqi,38px);
+  font-weight:600;line-height:1;text-transform:uppercase}
+#desk .jumbo-tile.vowel{color:#dc143c;border-color:rgba(220,20,60,.45)}
+#desk .jumbo-board{display:grid;gap:5px;margin:0;padding:0;list-style:none;
+  font-family:"IBM Plex Mono","Courier New",var(--mono);font-size:clamp(11px,.95vw,17px)}
+#desk .jumbo-row{display:grid;grid-template-columns:1.6em 1fr auto;align-items:baseline;gap:10px;
+  padding:3px 0;border-bottom:1px solid rgba(247,243,234,.08)}
+#desk .jumbo-row:last-child{border-bottom:0}
+#desk .jumbo-rank{color:#dc143c;font-weight:600}
+#desk .jumbo-who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#f7f3ea}
+#desk .jumbo-pts{color:rgba(247,243,234,.62);font-variant-numeric:tabular-nums}
+#desk .jumbo-empty{color:rgba(247,243,234,.5);font-size:clamp(11px,.9vw,16px);padding:4px 0}
+#desk .jumbo-foot{margin-top:12px;padding-top:10px;border-top:1px solid rgba(247,243,234,.12);
+  color:rgba(247,243,234,.62);font-size:clamp(10px,.8vw,14px);letter-spacing:.04em;
+  display:flex;justify-content:space-between;gap:12px}
+#desk .jumbo-foot b{color:#f7f3ea;font-family:"IBM Plex Mono","Courier New",var(--mono);font-weight:500}
+html.swae #desk .jumbo{background:#0b0d12f5}
+`;
+
+  register("jumbo", (c, opts) => {
+    const brand = h("span", "jumbo-brand", "Jumbo");
+    const clock = h("span", "jumbo-clock", "1:30");
+    const letters = h("div", "jumbo-letters");
+    const board = h("ol", "jumbo-board");
+    const best = h("span", "jumbo-best", "");
+    const words = h("span", "jumbo-words", "");
+    const el = h("section", { class: "jumbo", "aria-label": "Jumbo word game" },
+      h("div", "jumbo-top", brand, clock), letters, board, h("div", "jumbo-foot", best, words));
+
+    let jumbo = null;
+    const drawClock = () => {
+      if (!el.isConnected) { clearInterval(timer); return; }
+      if (!jumbo) return;
+      // The server's clock, shifted by the offset every poll keeps: a viewer's own machine cannot
+      // make the round end early or late.
+      const left = Math.max(0, (jumbo.endsAt ?? 0) - serverNow());
+      const over = jumbo.status === "closed" || left <= 0;
+      el.dataset.state = over ? "over" : "open";
+      const secs = Math.ceil(left / 1000);
+      clock.textContent = over ? "Round over" : `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+    };
+    const timer = setInterval(drawClock, 250);
+
+    el.updateJumbo = (j) => {
+      if (!j) return;
+      jumbo = j;
+      const key = (j.letters ?? []).join("");
+      if (letters.dataset.key !== key) {
+        letters.dataset.key = key;
+        letters.replaceChildren(...(j.letters ?? []).map((ch) =>
+          h("span", `jumbo-tile${"aeiou".includes(ch) ? " vowel" : ""}`, ch)));
+      }
+      const top = jumboTop(j);
+      board.replaceChildren(...(top.length
+        ? top.map((row, i) => h("li", "jumbo-row",
+          h("span", "jumbo-rank", String(i + 1)),
+          h("span", "jumbo-who", row.user),
+          h("span", "jumbo-pts", String(row.points))))
+        : [h("li", "jumbo-empty", "No words claimed yet")]));
+      best.replaceChildren(j.best
+        ? h("span", "", "Best word ", h("b", "", j.best.word.toUpperCase()), ` — ${j.best.user}`)
+        : h("span", "", "Best word —"));
+      const n = (j.claims ?? []).length;
+      words.textContent = `${n} word${n === 1 ? "" : "s"}`;
+      drawClock();
+    };
+    return el;
+  });
+
   // ---------- mount ----------
   const style = document.createElement("style");
-  style.textContent = CSS + CYBER_CSS;
+  style.textContent = CSS + CYBER_CSS + JUMBO_CSS;
   document.head.append(style);
 
   const slot = h("div", "slot");
@@ -1098,6 +1197,7 @@ html.swae .scale-wrap{display:none}
     const key = [card.id, opts.showSource, card.headline, card.summary, card.question, card.confidence, opts.poll?.id ?? ""].join("|");
     if (key === shownKey) {
       slot.lastElementChild?.updatePoll?.(opts.poll);
+      slot.lastElementChild?.updateJumbo?.(opts.jumbo);
       return;
     }
     dropCard(true);
@@ -1109,6 +1209,7 @@ html.swae .scale-wrap{display:none}
       requestAnimationFrame(() => {
         el.classList.add("in");
         el.updatePoll?.(opts.poll);
+        el.updateJumbo?.(opts.jumbo);
       })
     );
     shownKey = key;
@@ -1372,6 +1473,13 @@ html.swae .scale-wrap{display:none}
     if (xMode && !xStarted) {
       xStarted = true;
       fetchXfeed();
+    }
+    // The game owns the jumbotron while a round exists — open, timed out, or just closed — because
+    // it is the main event. Clearing it (jumbo-clear) hands the slot back to the cards.
+    const jumbo = JUMBO_ON ? state.jumbo : null;
+    if (jumbo) {
+      showCard({ id: `jumbo-${jumbo.id}`, type: "jumbo", category: "Jumbo" }, { jumbo });
+      return;
     }
     const poll = state.poll || null;
     const card = state.card || (poll ? { id: "poll-" + poll.id, type: "poll", category: "Live poll", headline: poll.question } : null);

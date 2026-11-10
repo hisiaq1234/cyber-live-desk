@@ -628,6 +628,35 @@ html.swae .scale-wrap{display:none}
   #location-readout .loc-place{font-size:10px;letter-spacing:.06em}
   #location-readout .loc-fix{font-size:9px;gap:6px}
   #location-readout .loc-coords,#location-readout .loc-sep{display:none}}
+
+/* The Cyber Radar location plate: the radar's own map, in the desk's frame. Lower-right, sitting
+   directly on top of the news ticker, drawn in the clock plate's Black Market language — onyx
+   plate, crimson edge, IBM Plex Mono readout — because it is the same fact about the same moment
+   as the timestamp. It is geography and never a position: this overlay has no GPS, so the plate
+   carries no marker, no accuracy circle and no rotation, and its one readout line names the MAP
+   VIEW centre (where the map is looking), not where anybody is. */
+#map-plate{position:fixed;right:var(--m);bottom:calc(var(--m) + 5.4em + env(safe-area-inset-bottom,0px));
+  z-index:24;box-sizing:border-box;width:min(342px,calc(100vw - 2*var(--m)));
+  padding:11px 13px 12px 15px;overflow:hidden;isolation:isolate;pointer-events:none;
+  border:1px solid rgba(247,243,234,.14);border-right:3px solid #dc143c;border-radius:12px 0 0 12px;
+  background:rgba(8,11,16,.84);color:#f7f3ea;
+  box-shadow:0 14px 40px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.05)}
+#map-plate[hidden]{display:none}
+#map-plate::after{position:absolute;z-index:-1;right:-30px;bottom:-44px;width:170px;height:110px;
+  border:1px solid rgba(220,20,60,.2);border-radius:50%;content:"";transform:rotate(-18deg)}
+#map-plate .map-top{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:8px;
+  color:rgba(247,243,234,.62);font-family:"Space Grotesk",var(--brand),sans-serif;
+  font-size:clamp(9px,.66vw,12px);font-weight:600;letter-spacing:.18em;line-height:1;text-transform:uppercase}
+#map-plate .map-name{color:#dc143c}
+#map-plate .map-canvas{position:relative;height:clamp(108px,14vh,168px);border-radius:8px;overflow:hidden;
+  border:1px solid rgba(247,243,234,.12);background:#0b0c0a}
+#map-plate .map-canvas .cr-map{position:absolute;inset:0}
+#map-plate .map-readout{margin:9px 0 0;color:rgba(247,243,234,.66);
+  font-family:"IBM Plex Mono","Courier New",var(--mono);font-size:clamp(9px,.6vw,11px);
+  font-weight:500;letter-spacing:.03em;line-height:1.45;text-transform:uppercase;
+  font-variant-numeric:tabular-nums lining-nums}
+@media(max-width:520px){#map-plate{width:calc(100vw - 2*var(--m));padding:8px 10px 9px 12px}
+  #map-plate .map-canvas{height:clamp(92px,13vh,130px)}}
 `;
 
 // ---------- upgraded DOM helper ----------
@@ -1428,6 +1457,96 @@ html.swae .scale-wrap{display:none}
     drawClock();
     const clockTimer = setInterval(drawClock, 250);
     window.addEventListener("pagehide", () => clearInterval(clockTimer), { once: true });
+  }
+
+  // ---------- location plate (Cyber Radar) ----------
+  // The radar's own map in the desk's frame: UNILAG read from our shipped PMTiles archive with
+  // self-hosted glyphs, so every label is a real OSM name and the geometry is the real campus.
+  // This plate is geography and nothing else. The overlay has no GPS — no marker, no accuracy
+  // circle, no rotation — and the single readout line names the MAP VIEW centre, which is where
+  // the map is looking, never where anybody is.
+  // ?map=0 removes the plate and, because every map asset is loaded from this block and nowhere
+  // else, removes the MapLibre scripts, the archive and the glyph requests with it.
+  if (P.get("map") !== "0") {
+    // The Cyber Radar app's own demo centre and zoom (UNILAG), unchanged from its map component.
+    const MAP_CENTER = [3.398, 6.517]; // lon, lat
+    const MAP_ZOOM = 15.5;
+    const SOURCE_LINE = "SOURCE: OSM VIA GEOFABRIK · SNAPSHOT";
+    const readout = h("p", "map-readout", `MAP VIEW —— · Z${MAP_ZOOM} · ${SOURCE_LINE}`);
+    const canvas = h("div", "map-canvas", h("div", "cr-map"));
+    const plate = h("section", { id: "map-plate", "aria-label": "Cyber Radar location plate" },
+      h("div", "map-top",
+        h("span", "map-name", "Cyber Radar"),
+        h("span", "map-place", "UNILAG")),
+      canvas,
+      readout);
+    root.append(plate);
+
+    // Sit directly on top of the news ticker instead of at a guessed offset: the ticker's height
+    // follows its type size and the frame, and this plate must never cover it or be covered.
+    const placePlate = () => {
+      const ticker = document.getElementById("auto-headlines");
+      if (!ticker) { plate.style.bottom = ""; return; }
+      const top = ticker.getBoundingClientRect().top;
+      plate.style.bottom = `${Math.round(Math.max(0, window.innerHeight - top)) + 12}px`;
+    };
+    placePlate();
+    window.addEventListener("resize", placePlate);
+    setTimeout(placePlate, 600);
+    setTimeout(placePlate, 2500);
+
+    // Build-free vendored browser scripts: maplibre-gl (UMD), pmtiles (UMD) and the ported style.
+    const loadAsset = (tag, attrs) => new Promise((res, rej) => {
+      const el = document.createElement(tag);
+      for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+      el.onload = () => res(el);
+      el.onerror = () => rej(new Error(attrs.src || attrs.href));
+      document.head.append(el);
+    });
+    const fmtLat = (v) => `${Math.abs(v).toFixed(4)}° ${v >= 0 ? "N" : "S"}`;
+    const fmtLon = (v) => `${Math.abs(v).toFixed(4)}° ${v >= 0 ? "E" : "W"}`;
+
+    (async () => {
+      await loadAsset("link", { rel: "stylesheet", href: "/desk-assets/vendor/maplibre-gl.css" });
+      await loadAsset("script", { src: "/desk-assets/vendor/maplibre-gl.js" });
+      await loadAsset("script", { src: "/desk-assets/vendor/pmtiles.js" });
+      await loadAsset("script", { src: "/desk-assets/map-style.js" });
+      const maplibregl = window.maplibregl;
+      const pmtiles = window.pmtiles;
+      const mapStyle = window.DESK_MAP_STYLE;
+      if (!maplibregl || !pmtiles || !mapStyle) throw new Error("map assets missing");
+      maplibregl.addProtocol("pmtiles", new pmtiles.Protocol().tile);
+      const map = new maplibregl.Map({
+        container: canvas.firstElementChild,
+        style: mapStyle,
+        center: MAP_CENTER,
+        zoom: MAP_ZOOM,
+        pitch: 0,
+        bearing: 0,
+        interactive: false,
+        attributionControl: false,
+        preserveDrawingBuffer: true,
+      });
+      const draw = () => {
+        const c = map.getCenter();
+        readout.textContent =
+          `MAP VIEW ${fmtLat(c.lat)} ${fmtLon(c.lng)} · Z${map.getZoom().toFixed(1)} · ${SOURCE_LINE}`;
+      };
+      let loaded = false;
+      map.on("load", () => { loaded = true; draw(); });
+      map.on("moveend", draw);
+      // A map that never loads must say so rather than showing an empty box as if it were the
+      // campus: the readout is the only place this plate makes a claim about what it is showing.
+      setTimeout(() => {
+        if (loaded) return;
+        canvas.dataset.state = "unloaded";
+        readout.textContent = `MAP VIEW —— · Z${MAP_ZOOM} · ${SOURCE_LINE} · NOT LOADED`;
+      }, 12000);
+    })().catch(() => {
+      canvas.remove();
+      plate.dataset.state = "unavailable";
+      readout.textContent = `MAP VIEW —— · ${SOURCE_LINE} · UNAVAILABLE`;
+    });
   }
 
   window.DeskOverlay = { register, logo: lockup };

@@ -49,8 +49,8 @@ function draw(){
   const svg=el("svg",{viewBox:"-6 -4 160 168","aria-hidden":"true",focusable:"false"});
   const shadow=el("ellipse",{class:"shadow",cx:70,cy:159,rx:34,ry:5,fill:PAL.indigoDk});
   const avatarBase=el("image",{class:"avatar-base",x:18,y:18,width:112,height:142,preserveAspectRatio:"xMidYMax meet"});
-  const avatarEyes=el("image",{class:"avatar-eyes",x:18,y:18,width:112,height:142,preserveAspectRatio:"xMidYMax meet"});
-  const avatarMouth=el("image",{class:"avatar-mouth",x:18,y:18,width:112,height:142,preserveAspectRatio:"xMidYMax meet"});
+  const avatarEyes=el("image",{class:"avatar-eyes",x:48,y:40,width:44,height:22,preserveAspectRatio:"xMidYMid meet"});
+  const avatarMouth=el("image",{class:"avatar-mouth",x:54,y:62,width:32,height:24,preserveAspectRatio:"xMidYMid meet"});
   const ph=el("g",{class:"ph",display:"none"},
     el("path",{d:"M44 152C44 110 56 92 70 92C84 92 96 110 96 152Z",fill:PAL.indigo,stroke:PAL.bone,"stroke-width":5,"stroke-linejoin":"round"}),
     el("circle",{cx:70,cy:56,r:21,fill:PAL.indigo,stroke:PAL.bone,"stroke-width":5}),

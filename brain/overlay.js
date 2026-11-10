@@ -81,15 +81,19 @@ const LOOK = {
  * plus a CSS-drawn mark over the sprite (see `.crid-micro` in overlay.css). No image
  * assets, no new frames, and each is capped at 2s so the quiet layer stays quiet.
  */
+// The eight micro-emotions. The mark and the shape are the caption this page draws; the feeling
+// itself is the body work, and that lives with the body (FEEL in crid-bot.js): a different drawing,
+// one of the gesture sequences, and how long he holds it. Nothing here swaps a face, because the
+// bodies are complete drawings and have no registered face layer.
 const MICRO = {
-  curious: { pose: "peek", mark: "?", shape: "ask" },
-  delighted: { pose: "hop", mark: "*", shape: "spark" },
-  smug: { pose: "sideeye", mark: "hm", shape: "smirk" },
-  flustered: { pose: "wince", mark: "~", shape: "blush" },
-  sleepy: { pose: "sit", mark: "z", shape: "zzz" },
-  startled: { pose: "surprise", mark: "!", shape: "jolt" },
-  proud: { pose: "nod", mark: "", shape: "bar" },
-  sulky: { pose: "shrug", mark: "...", shape: "puff" },
+  curious: { mark: "?", shape: "ask" },
+  delighted: { mark: "*", shape: "spark" },
+  smug: { mark: "hm", shape: "smirk" },
+  flustered: { mark: "~", shape: "blush" },
+  sleepy: { mark: "z", shape: "zzz" },
+  startled: { mark: "!", shape: "jolt" },
+  proud: { mark: "", shape: "bar" },
+  sulky: { mark: "...", shape: "puff" },
 };
 
 // A card, an effect or a drag owns the frame while it plays; a small feeling waits.
@@ -344,7 +348,7 @@ function playMicro(name, line = "", duration = 1600) {
   microEl.classList.remove("on");
   void microEl.offsetWidth; // restart the animation
   microEl.classList.add("on");
-  if (m.pose) bot.react(m.pose);
+  bot.feel(name);
   clearTimeout(microTimer);
   microTimer = setTimeout(() => microEl?.classList.remove("on"), ms + 260);
 }

@@ -25,34 +25,40 @@ const widthAt = (ramp, vw, vh) => {
 test("the mascot's shadow scales with the mascot, not with the desk's type", () => {
   // Break caught: a fixed px offset, or an em offset, both resolve against something other than
   // the bot — an em inherits #desk's font-size, so the shadow stays put while the bot grows.
+  // The size he is actually drawn at is --bot-w (the broadcast clamp times ?bot.scale=), so that
+  // is what the shadow is bound to.
   const rule = CYBER_CSS.match(/#crid-bot svg\{[^}]*\}/)?.[0];
   assert.ok(rule, "the theme must own the mascot's shadow");
   const shadow = rule.match(/drop-shadow\((.*)\)/)?.[1];
   assert.ok(shadow, `no drop-shadow in ${rule}`);
-  const offsets = shadow.split(/\s+/).slice(0, 2);
-  assert.equal(offsets.length, 2);
-  for (const off of offsets) {
-    assert.match(off, /^calc\(var\(--bw\)\*[\d.]+\)$/, `offset must be bound to --bw, got ${off}`);
-  }
-  assert.equal(shadow.split(/\s+/)[2], "0", "the shadow stays hard: no blur radius");
+  const [x, y, blur] = shadow.split(/\s+/);
+  assert.equal(x, "0", "a soft cast shadow has no sideways offset");
+  assert.match(y, /^calc\(var\(--bot-w\)\*[\d.]+\)$/, `the drop must be bound to --bot-w, got ${y}`);
+  assert.match(blur, /^calc\(var\(--bot-w\)\*[\d.]+\)$/, `the blur must be bound to --bot-w, got ${blur}`);
+  // Pure black at low opacity: a tinted shadow was the purple blob under his feet.
+  assert.match(shadow, /rgba\(0,0,0,[\d.]+\)$/, `the shadow must be untinted, got ${shadow}`);
 });
 
 test("the mascot keeps a readable floor on a phone and grows on a 720p stream frame", () => {
-  // Break caught: reverting to the module's vmin ramp, which renders a 65px bot on a 1280x720
-  // browser source — the size the desk is actually captured at.
+  // Break caught: a vmin ramp or a small px clamp, which renders a miniature on a 1280x720 browser
+  // source — the size the desk is actually captured at. The broadcast size lives in the bot module
+  // now (one clamp, one source of truth), and the theme may not shrink it behind the module's back.
+  assert.ok(moduleWidth, "the bot module must declare the broadcast --bw ramp");
   const rule = CYBER_CSS.match(/#crid-bot\{[^}]*\}/)?.[0];
-  assert.ok(rule, "the theme must set the mascot's presence");
-  const ramp = rule.match(/--bw:(clamp\([^)]*\))/)?.[1];
-  assert.ok(ramp, `no --bw ramp in ${rule}`);
-  assert.ok(moduleWidth, "the bot module must still declare a default --bw");
-
-  assert.equal(widthAt(ramp, 390, 844), 64);
-  assert.equal(widthAt(ramp, 1280, 720), 92.16);
-  assert.equal(widthAt(ramp, 1920, 1080), 104);
-  assert.ok(widthAt(ramp, 1280, 720) >= 90, "a 720p capture must not get a miniature");
-  for (const [vw, vh] of [[390, 844], [1280, 720], [1920, 1080]]) {
-    assert.ok(widthAt(ramp, vw, vh) >= widthAt(moduleWidth, vw, vh), `${vw}x${vh} shrank`);
+  if (rule) {
+    assert.ok(!/--bw:/.test(rule), "the theme must not compete with the module's one size");
   }
+
+  assert.equal(widthAt(moduleWidth, 390, 844), 150);
+  assert.equal(widthAt(moduleWidth, 1280, 720), 224);
+  assert.equal(widthAt(moduleWidth, 1920, 1080), 336);
+  assert.ok(widthAt(moduleWidth, 1280, 720) >= 200, "a 720p capture must not get a miniature");
+  assert.ok(widthAt(moduleWidth, 1920, 1080) >= 320, "a 1080p stream must get the broadcast size");
+
+  // His feet land on the frame, not behind the clock or the ticker, and a raised ?bot.scale= can
+  // never crop him: both are module rules, measured at placement time.
+  assert.match(botModule, /--bot-floor/, "the module must place his feet against the floor");
+  assert.match(botModule, /--bot-max:min\(/, "the module must cap the drawn width to the frame");
 });
 
 test("the mascot answers on the classes the desk actually toggles", () => {

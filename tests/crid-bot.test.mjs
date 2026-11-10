@@ -28,6 +28,7 @@ class FakeEl {
     this.style = { setProperty: (k, v) => { this.style[k] = v; }, removeProperty: (k) => { delete this.style[k]; } };
   }
   setAttribute(k, v) { this.attrs[k] = String(v); }
+  setAttributeNS(ns, k, v) { this.attrs[k] = String(v); }
   getAttribute(k) { return this.attrs[k] ?? null; }
   removeAttribute(k) { delete this.attrs[k]; }
   append(...kids) { for (const k of kids) if (k) { k.parent = this; this.children.push(k); } }
@@ -119,11 +120,27 @@ test("the sprite payload ships as downscaled webp inside the budget", async () =
   const dir = new URL("../public/desk-assets/crid/", import.meta.url);
   const files = await readdir(dir);
   assert.deepEqual(files.filter((f) => f.endsWith(".png")), [], "the oversized png masters must not ship");
-  const webp = files.filter((f) => f.endsWith(".webp"));
-  assert.equal(webp.length, 5, "one sprite per body shape");
-  let total = 0;
-  for (const f of webp) total += (await stat(new URL(f, dir))).size;
-  assert.ok(total < 200 * 1024, `all five sprites must stay under 200 KB, got ${(total / 1024).toFixed(1)} KB`);
+  // Seven body shapes, one drawing each — the shapes he grows through as subs land.
+  const bodies = files.filter((f) => /^body-.*\.webp$/.test(f));
+  assert.equal(bodies.length, 7, "one sprite per body shape");
+  for (const f of bodies) {
+    const size = (await stat(new URL(f, dir))).size;
+    assert.ok(size < 60 * 1024, `${f} must stay small enough to load on air, got ${(size / 1024).toFixed(1)} KB`);
+  }
+});
+
+test("no state can paint an invisible sprite", async () => {
+  // Break caught: eyes-sleep, eyes-dim, eyes-spark and mouth-slam shipped as 42-byte 1x1
+  // placeholders while real states referenced them — so dozing or waking painted a blank over his
+  // face. Anything under 1 KB is a placeholder, and a placeholder must not ship.
+  const dir = new URL("../public/desk-assets/crid/", import.meta.url);
+  const files = await readdir(dir);
+  const tiny = [];
+  for (const f of files) {
+    const size = (await stat(new URL(f, dir))).size;
+    if (size < 1024) tiny.push(`${f} (${size} B)`);
+  }
+  assert.deepEqual(tiny, [], "no sprite under 1 KB may ship — supply real art or stop the state rendering");
 });
 
 test("the mascot is drawn at broadcast size and can be scaled from the URL", async () => {

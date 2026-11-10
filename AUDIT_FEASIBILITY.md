@@ -3,11 +3,11 @@
 ## What works immediately (no code change)
 
 - **Card desk (cards mode)** — Approve, show, next, previous, hold, hide, source toggle, bulk approval, desk filters (politics/streamers/music/movies/business/trends), slang cards, viewer questions from chat, presenter notes, auto-play, auto-research.
-- **CRID segment (Cyber's Rent Is Due)** — Open a jumbotron segment (kind/title/credit), stamp verdict (rent paid / still owing), run a Strangers' poll, close segment. Verdict + poll result render on the jumbotron.
+- **CRID segment (Cyber's Rent Is Due)** — Open a card segment (kind/title/credit), stamp verdict (rent paid / still owing), run a Strangers' poll, close segment. Verdict + poll result render on the card.
 - **Live poll** — Start/end/clear poll, vote manually, chat tally via the read-only Twitch chat reader, results show on the active card.
 - **Twitch server control** — EventSub webhook at `/api/twitch/eventsub`, signature verification, challenge response, duplicate delivery protection, broadcaster/allowlist authorization, `desk next/prev/hold/hide/stop/poll/auto/desk` commands from chat.
 - **Research pipeline** — Fetch headlines/trends from Nigeria + US feeds (Google News, Google Trends, RSS), held bucket for full queues, auto-approval modes (manual/trusted/all), scheduled cron every 15 min, 3-day freshness window, age-out pruning.
-- **X jumbotron** — Native top/bottom bar showing X trends or tweets (following/for-you), fetched via `/api/x/feed` proxy (X_Bearer token never reaches browser).
+- **X feed** — Native top/bottom bar showing X trends or tweets (following/for-you), fetched via `/api/x/feed` proxy (X_Bearer token never reaches browser).
 - **Swae preview** — Controller preview iframe with 9:16 / 16:9 ratio toggle, "Copy Swae URL", connection dot. The preview is a real browser, so it is smoother than Swae's on-stream snapshots; treat it as a layout check, not a fidelity check.
 - **Tests** — 161 tests pass (`node --test`). Syntax checks pass on all frontend + functions files.
 
@@ -18,7 +18,7 @@
 | **Swae audio** | Swae's published stream mixes the microphone only (`AVCaptureDevice.default(for: .audio)`), so nothing inside a widget can reach the broadcast — this is not fixable in the page. The overlay does carry an `<audio>` element driven by `crid.audioUrl` (play/pause/mute from the controller), but it is heard on the rendering device only. | Keep the element for on-device playback, and say so plainly in the UI. Put overlay audio on air with a renderer that mixes page audio, e.g. a desktop browser source. |
 | **CRID audio** | Done: `crid-open` takes an optional `audioUrl`, it persists on the CRID state, and `crid-audio` handles play/pause/mute. | None. |
 | **Command parity** | `desk-commands.js` (browser) and `_twitch-core.mjs` (server) maintain duplicate command parsers. They stay in sync via a parity test, but drift is possible. | Extract one shared command module; both sides import it. |
-| **X feed iframe** | X `following`/`for-you` mode still loads an external iframe via `xbase`. The native X jumbotron replaces it but the iframe path remains. | Remove the iframe path; use only the native `/api/x/feed` jumbotron. |
+| **X feed iframe** | X `following`/`for-you` mode still loads an external iframe via `xbase`. The native X feed replaces it but the iframe path remains. | Remove the iframe path; use only the native `/api/x/feed` card. |
 
 ## What needs backend / OAuth / external service / second device
 
@@ -43,7 +43,7 @@
 | `TWITCH_CLIENT_ID` / `TWITCH_CLIENT_SECRET` | Status panel (optional) | Also used to create clips. |
 | `TWITCH_CLIP_ACCESS_TOKEN` | Clip creation (optional) | Needs the `clips:edit` scope. |
 | `TWITCH_EVENTSUB_CALLBACK` | Optional | Overrides the callback URL the controller displays. |
-| `X_BEARER_TOKEN` | X jumbotron / brief | Legacy `X_ACCESS_TOKEN` still works as a fallback. |
+| `X_BEARER_TOKEN` | X feed / brief | Legacy `X_ACCESS_TOKEN` still works as a fallback. |
 | `GEMINI_API_KEY` | Trends + brief (optional) | Enriches trends and powers the brief and the witty rewrite. |
 | `AUDIOMACK_KEY` / `AUDIOMACK_SECRET` | Audiomack station (optional) | A curated station is served when these are absent. |
 | `YOUTUBE_API_KEY` | Music Desk search (optional) | A Google Cloud key with the **YouTube Data API v3** enabled. Powers `crid music play <song>` and the controller's "Search YouTube" box. Without it a spoken song name is refused and the queue stays manual. This only resolves which video is on air; the player itself stays a Swae web-page layer. |

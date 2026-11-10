@@ -68,9 +68,9 @@ import { youtubeEmbedUrl } from "./youtube-embed.js";
     crid: P.get("crid") !== "0",
     cridPos: "top",
   };
-  // ?game=0 removes the Jumbo card and its renderer with it: a frame that never wants the game
+  // ?game=0 removes the Letters card and its renderer with it: a frame that never wants the game
   // never draws one, and the desk state it ignores costs it nothing.
-  const JUMBO_ON = P.get("game") !== "0";
+  const LETTERS_ON = P.get("game") !== "0";
   const theme = pick("theme", ["creative", "torn-paper", "cyber"], "cyber");
   document.documentElement.dataset.theme = theme;
   document.documentElement.dataset.crop = P.get("crop") === "0" ? "false" : "true";
@@ -273,7 +273,7 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 @keyframes pulse-dot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.55;transform:scale(1.15)}}
 
 /* CRID Broadcast Bug (Top-Left docked) */
-#crid-jumbotron {
+#crid-live {
   position: absolute;
   top: calc(var(--m) + env(safe-area-inset-top, 0px));
   left: var(--m);
@@ -292,8 +292,8 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
   transition: opacity 0.55s cubic-bezier(0.2, 0.9, 0.25, 1),
               transform 0.55s cubic-bezier(0.2, 0.9, 0.25, 1);
 }
-#crid-jumbotron.in { opacity: 1; transform: translateX(0) scale(1); animation: bug-breathe 4s ease-in-out infinite; }
-#crid-jumbotron.out { opacity: 0; transform: translateX(-20px) scale(0.96); }
+#crid-live.in { opacity: 1; transform: translateX(0) scale(1); animation: bug-breathe 4s ease-in-out infinite; }
+#crid-live.out { opacity: 0; transform: translateX(-20px) scale(0.96); }
 .crid-logo { width: 3.2em; height: 3.2em; border-radius: 50%; object-fit: contain; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center; text-align: center;
   font-size: .78em; font-weight: 900; letter-spacing: .05em; line-height: 1.05;
@@ -376,8 +376,8 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 #dock-right:empty { display: none; }
 #dock-right > * { width: 100%; box-sizing: border-box; }
 
-/* X jumbotron (docks at top of #dock-right) */
-#x-jumbotron {
+/* X feed (docks at top of #dock-right) */
+#x-feed {
   max-height: 20dvh; overflow: hidden;
   background:#111214f0;backdrop-filter:blur(16px) saturate(180%);
   -webkit-backdrop-filter:blur(16px) saturate(180%);
@@ -401,7 +401,7 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 .x-trend .x-count{color:#8E8E93;font-size:.78em;font-weight:600}
 /* The unavailable panel carries a sentence, not a one-line trend, so it gets a little more
    room than the trend list and keeps its "retrying" footer on screen. */
-#x-jumbotron.x-problem-panel{max-height:28dvh}
+#x-feed.x-problem-panel{max-height:28dvh}
 .x-item.x-problem{font-size:.86em;-webkit-line-clamp:4}
 
 /* Module Component Styles — individual caps keep the dock total bounded */
@@ -479,7 +479,7 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 
 @media (prefers-reduced-motion:reduce){
   .card{transform:none;transition:none;animation:none!important}
-  #crid-jumbotron,#crid-jumbotron.in{transform:none;transition:none;animation:none!important}
+  #crid-live,#crid-live.in{transform:none;transition:none;animation:none!important}
   #sound-orb,#sound-orb.is-active{transition:none;transform:none}
   #sound-orb::before,#sound-orb::after,#sound-orb .orb-ring,#sound-orb.is-active::after,#sound-orb.is-active .orb-ring{animation:none!important}
   #auto-headlines{transition:none}
@@ -513,7 +513,7 @@ html[data-theme="torn-paper"] #desk{
 .layout-alive #dock-right>*{width:100%;box-sizing:border-box}
 .layout-alive #modules{display:flex;flex-direction:column;align-items:stretch;gap:.55em}
 .layout-alive .card{max-height:36dvh;overflow:auto;border-radius:var(--radius);padding:var(--cp,1.1em 1.25em)}
-.layout-alive #crid-jumbotron{left:var(--m);top:var(--m);max-width:min(460px,calc(100vw - 2*var(--m)));border-radius:1.2em}
+.layout-alive #crid-live{left:var(--m);top:var(--m);max-width:min(460px,calc(100vw - 2*var(--m)));border-radius:1.2em}
 .layout-alive .meta{font-family:var(--mono);font-size:.64em;color:#9d9587}
 .layout-alive .headline,.layout-alive .ask,.layout-alive .court-question,.layout-alive .music-current,.layout-alive .ledger-title{
   font-family:var(--serif);letter-spacing:.005em}
@@ -561,7 +561,7 @@ html[data-theme="torn-paper"] #desk .mod{background:var(--glass) var(--paper-gra
 html[data-theme="torn-paper"] #desk .card,html[data-theme="torn-paper"] #desk .court-wrap,
 html[data-theme="torn-paper"] #desk .music-wrap,html[data-theme="torn-paper"] #desk .ledger-wrap,
 html[data-theme="torn-paper"] #desk .space-wrap,html[data-theme="torn-paper"] #desk .riad-wrap,
-html[data-theme="torn-paper"] #desk #x-jumbotron{clip-path:polygon(0 2%,4% 0,10% 1.5%,17% 0,24% 1.7%,33% 0,42% 1.5%,52% 0,63% 1.8%,72% 0,82% 1.4%,92% 0,100% 1%,100% 98%,96% 100%,87% 98.5%,77% 100%,66% 98%,56% 100%,44% 98.3%,34% 100%,23% 98.4%,13% 100%,4% 98.2%,0 99%)}
+html[data-theme="torn-paper"] #desk #x-feed{clip-path:polygon(0 2%,4% 0,10% 1.5%,17% 0,24% 1.7%,33% 0,42% 1.5%,52% 0,63% 1.8%,72% 0,82% 1.4%,92% 0,100% 1%,100% 98%,96% 100%,87% 98.5%,77% 100%,66% 98%,56% 100%,44% 98.3%,34% 100%,23% 98.4%,13% 100%,4% 98.2%,0 99%)}
 html[data-theme="torn-paper"] #desk .headline,html[data-theme="torn-paper"] #desk .ask,
 html[data-theme="torn-paper"] #desk .court-question,html[data-theme="torn-paper"] #desk .music-current,
 html[data-theme="torn-paper"] #desk .ledger-title{font-family:var(--serif);font-weight:700;line-height:1.12}
@@ -576,7 +576,7 @@ html[data-theme="torn-paper"].low-power #desk .mod,html.low-power #desk .mod{bac
    drawn with solid scrims instead of blur, and state changes land instantly and completely. */
 html.swae #desk .card,html.swae #desk .court-wrap,html.swae #desk .music-wrap,
 html.swae #desk .space-wrap,html.swae #desk .ledger-wrap,html.swae #desk .riad-wrap,
-html.swae #desk #x-jumbotron,html.swae #desk .news-drop-card,html.swae #desk .mod{
+html.swae #desk #x-feed,html.swae #desk .news-drop-card,html.swae #desk .mod{
   backdrop-filter:none!important;-webkit-backdrop-filter:none!important;background:#0b0d12f5}
 html.swae #desk *{transition:none!important;animation:none!important}
 html.swae .scale-wrap{display:none}
@@ -827,92 +827,92 @@ html.swae .scale-wrap{display:none}
     } catch { return null; }
   });
 
-  // ---------- Jumbo, the word game ----------
+  // ---------- Letters, the word game ----------
   // The board, its clock and the top five. The letters are read straight out of desk state, which
   // is the only place a board is ever drawn, so this card can only show letters that were dealt.
-  const jumboTop = (j) => Object.entries(j?.scores ?? {})
+  const lettersTop = (j) => Object.entries(j?.scores ?? {})
     .map(([user, points]) => ({ user, points }))
     .sort((a, b) => b.points - a.points)
     .slice(0, 5);
 
-  const JUMBO_CSS = `
+  const LETTERS_CSS = `
 /* The card is sized by the slot it lives in (.layout-alive .slot caps at 460px), never by its own
    idea of how wide it should be: an over-wide card pushed the last tiles and the clock past the
    slot's edge and off the frame. Everything inside shrinks to fit instead. */
-#desk .jumbo{width:100%;max-width:100%;min-width:0;padding:18px 22px 16px;box-sizing:border-box;overflow:hidden;
+#desk .letters{width:100%;max-width:100%;min-width:0;padding:18px 22px 16px;box-sizing:border-box;overflow:hidden;
   border:1px solid rgba(247,243,234,.14);border-left:3px solid #dc143c;border-radius:0 12px 12px 0;
   background:rgba(8,11,16,.86);color:#f7f3ea;font-family:"Space Grotesk",var(--brand),sans-serif;
   box-shadow:0 14px 40px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.05)}
-#desk .jumbo-top{display:flex;align-items:baseline;justify-content:space-between;gap:12px;min-width:0;
+#desk .letters-top{display:flex;align-items:baseline;justify-content:space-between;gap:12px;min-width:0;
   color:rgba(247,243,234,.62);font-size:clamp(10px,.72vw,13px);font-weight:600;
   letter-spacing:.18em;line-height:1;text-transform:uppercase}
-#desk .jumbo-brand{color:#dc143c;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#desk .jumbo-clock{flex:0 0 auto;white-space:nowrap;font-family:"IBM Plex Mono","Courier New",var(--mono);font-size:clamp(17px,1.5vw,28px);
+#desk .letters-brand{color:#dc143c;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#desk .letters-clock{flex:0 0 auto;white-space:nowrap;font-family:"IBM Plex Mono","Courier New",var(--mono);font-size:clamp(17px,1.5vw,28px);
   font-weight:500;letter-spacing:-.02em;color:#f7f3ea;font-variant-numeric:tabular-nums;text-transform:none}
-#desk .jumbo[data-state="over"] .jumbo-clock{color:#dc143c;letter-spacing:.02em}
-#desk .jumbo-letters{display:flex;gap:clamp(3px,.5em,8px);margin:14px 0 12px;min-width:0;container-type:inline-size}
-#desk .jumbo-tile{flex:1 1 0;min-width:0;display:grid;place-items:center;aspect-ratio:1;
+#desk .letters[data-state="over"] .letters-clock{color:#dc143c;letter-spacing:.02em}
+#desk .letters-letters{display:flex;gap:clamp(3px,.5em,8px);margin:14px 0 12px;min-width:0;container-type:inline-size}
+#desk .letters-tile{flex:1 1 0;min-width:0;display:grid;place-items:center;aspect-ratio:1;
   border:1px solid rgba(247,243,234,.18);border-radius:6px;background:rgba(247,243,234,.05);
   font-family:"IBM Plex Mono","Courier New",var(--mono);font-size:clamp(20px,2.1vw,38px);
   font-size:clamp(9px,9cqi,38px);
   font-weight:600;line-height:1;text-transform:uppercase}
-#desk .jumbo-tile.vowel{color:#dc143c;border-color:rgba(220,20,60,.45)}
-#desk .jumbo-board{display:grid;gap:5px;margin:0;padding:0;list-style:none;
+#desk .letters-tile.vowel{color:#dc143c;border-color:rgba(220,20,60,.45)}
+#desk .letters-board{display:grid;gap:5px;margin:0;padding:0;list-style:none;
   font-family:"IBM Plex Mono","Courier New",var(--mono);font-size:clamp(11px,.95vw,17px)}
-#desk .jumbo-row{display:grid;grid-template-columns:1.6em 1fr auto;align-items:baseline;gap:10px;
+#desk .letters-row{display:grid;grid-template-columns:1.6em 1fr auto;align-items:baseline;gap:10px;
   padding:3px 0;border-bottom:1px solid rgba(247,243,234,.08)}
-#desk .jumbo-row:last-child{border-bottom:0}
-#desk .jumbo-rank{color:#dc143c;font-weight:600}
-#desk .jumbo-who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#f7f3ea}
-#desk .jumbo-pts{color:rgba(247,243,234,.62);font-variant-numeric:tabular-nums}
-#desk .jumbo-empty{color:rgba(247,243,234,.5);font-size:clamp(11px,.9vw,16px);padding:4px 0}
-#desk .jumbo-foot{margin-top:12px;padding-top:10px;border-top:1px solid rgba(247,243,234,.12);
+#desk .letters-row:last-child{border-bottom:0}
+#desk .letters-rank{color:#dc143c;font-weight:600}
+#desk .letters-who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#f7f3ea}
+#desk .letters-pts{color:rgba(247,243,234,.62);font-variant-numeric:tabular-nums}
+#desk .letters-empty{color:rgba(247,243,234,.5);font-size:clamp(11px,.9vw,16px);padding:4px 0}
+#desk .letters-foot{margin-top:12px;padding-top:10px;border-top:1px solid rgba(247,243,234,.12);
   color:rgba(247,243,234,.62);font-size:clamp(10px,.8vw,14px);letter-spacing:.04em;
   display:flex;justify-content:space-between;gap:12px}
-#desk .jumbo-foot b{color:#f7f3ea;font-family:"IBM Plex Mono","Courier New",var(--mono);font-weight:500}
-html.swae #desk .jumbo{background:#0b0d12f5}
+#desk .letters-foot b{color:#f7f3ea;font-family:"IBM Plex Mono","Courier New",var(--mono);font-weight:500}
+html.swae #desk .letters{background:#0b0d12f5}
 `;
 
-  register("jumbo", (c, opts) => {
-    const brand = h("span", "jumbo-brand", "Jumbo");
-    const clock = h("span", "jumbo-clock", "1:30");
-    const letters = h("div", "jumbo-letters");
-    const board = h("ol", "jumbo-board");
-    const best = h("span", "jumbo-best", "");
-    const words = h("span", "jumbo-words", "");
-    const el = h("section", { class: "jumbo", "aria-label": "Jumbo word game" },
-      h("div", "jumbo-top", brand, clock), letters, board, h("div", "jumbo-foot", best, words));
+  register("letters", (c, opts) => {
+    const brand = h("span", "letters-brand", "CRID");
+    const clock = h("span", "letters-clock", "1:30");
+    const letters = h("div", "letters-letters");
+    const board = h("ol", "letters-board");
+    const best = h("span", "letters-best", "");
+    const words = h("span", "letters-words", "");
+    const el = h("section", { class: "letters", "aria-label": "Crid letters" },
+      h("div", "letters-top", brand, clock), letters, board, h("div", "letters-foot", best, words));
 
-    let jumbo = null;
+    let round = null;
     const drawClock = () => {
       if (!el.isConnected) { clearInterval(timer); return; }
-      if (!jumbo) return;
+      if (!round) return;
       // The server's clock, shifted by the offset every poll keeps: a viewer's own machine cannot
       // make the round end early or late.
-      const left = Math.max(0, (jumbo.endsAt ?? 0) - serverNow());
-      const over = jumbo.status === "closed" || left <= 0;
+      const left = Math.max(0, (round.endsAt ?? 0) - serverNow());
+      const over = round.status === "closed" || left <= 0;
       el.dataset.state = over ? "over" : "open";
       const secs = Math.ceil(left / 1000);
       clock.textContent = over ? "Round over" : `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
     };
     const timer = setInterval(drawClock, 250);
 
-    el.updateJumbo = (j) => {
+    el.updateLetters = (j) => {
       if (!j) return;
-      jumbo = j;
+      round = j;
       const key = (j.letters ?? []).join("");
       if (letters.dataset.key !== key) {
         letters.dataset.key = key;
         letters.replaceChildren(...(j.letters ?? []).map((ch) =>
-          h("span", `jumbo-tile${"aeiou".includes(ch) ? " vowel" : ""}`, ch)));
+          h("span", `letters-tile${"aeiou".includes(ch) ? " vowel" : ""}`, ch)));
       }
-      const top = jumboTop(j);
+      const top = lettersTop(j);
       board.replaceChildren(...(top.length
-        ? top.map((row, i) => h("li", "jumbo-row",
-          h("span", "jumbo-rank", String(i + 1)),
-          h("span", "jumbo-who", row.user),
-          h("span", "jumbo-pts", String(row.points))))
-        : [h("li", "jumbo-empty", "No words claimed yet")]));
+        ? top.map((row, i) => h("li", "letters-row",
+          h("span", "letters-rank", String(i + 1)),
+          h("span", "letters-who", row.user),
+          h("span", "letters-pts", String(row.points))))
+        : [h("li", "letters-empty", "No words claimed yet")]));
       best.replaceChildren(j.best
         ? h("span", "", "Best word ", h("b", "", j.best.word.toUpperCase()), ` — ${j.best.user}`)
         : h("span", "", "Best word —"));
@@ -925,7 +925,7 @@ html.swae #desk .jumbo{background:#0b0d12f5}
 
   // ---------- mount ----------
   const style = document.createElement("style");
-  style.textContent = CSS + CYBER_CSS + JUMBO_CSS;
+  style.textContent = CSS + CYBER_CSS + LETTERS_CSS;
   document.head.append(style);
 
   const slot = h("div", "slot");
@@ -998,8 +998,8 @@ html.swae #desk .jumbo{background:#0b0d12f5}
   window.addEventListener("pagehide", disposeSoundOrb, { once: true });
 
   // The desk lockup: the robot, the wordmark and the rule, arriving one layer at a time. It is a
-  // separate thing from the mascot below it and from the CRID badge inside the jumbotron. Top-centre
-  // is the one band of this layout nothing else claims — the jumbotron owns top-left, the dock owns
+  // separate thing from the mascot below it and from the CRID badge inside the card. Top-centre
+  // is the one band of this layout nothing else claims — the card owns top-left, the dock owns
   // the right, the identity strip and clock own the bottom corners. state.logo wins over the URL,
   // so the operator can move, resize, silence or replay it on air without touching a browser source.
   const LOGO_ARG = P.get("logo");
@@ -1197,7 +1197,7 @@ html.swae #desk .jumbo{background:#0b0d12f5}
     const key = [card.id, opts.showSource, card.headline, card.summary, card.question, card.confidence, opts.poll?.id ?? ""].join("|");
     if (key === shownKey) {
       slot.lastElementChild?.updatePoll?.(opts.poll);
-      slot.lastElementChild?.updateJumbo?.(opts.jumbo);
+      slot.lastElementChild?.updateLetters?.(opts.letters);
       return;
     }
     dropCard(true);
@@ -1209,7 +1209,7 @@ html.swae #desk .jumbo{background:#0b0d12f5}
       requestAnimationFrame(() => {
         el.classList.add("in");
         el.updatePoll?.(opts.poll);
-        el.updateJumbo?.(opts.jumbo);
+        el.updateLetters?.(opts.letters);
       })
     );
     shownKey = key;
@@ -1339,7 +1339,7 @@ html.swae #desk .jumbo{background:#0b0d12f5}
     if (cridEl) {
       cridEl.replaceChildren(logo, textBody);
     } else {
-      cridEl = h("div", { id: "crid-jumbotron" }, logo, textBody);
+      cridEl = h("div", { id: "crid-live" }, logo, textBody);
       root.append(cridEl);
       bot?.summon(cridEl);
       requestAnimationFrame(() => requestAnimationFrame(() => cridEl?.classList.add("in")));
@@ -1347,13 +1347,13 @@ html.swae #desk .jumbo{background:#0b0d12f5}
     cridKey = key;
   };
 
-  // ---------- X jumbotron (docks top-right inside #dock-right) ----------
+  // ---------- X feed (docks top-right inside #dock-right) ----------
   let xEl = null;
   let xKey = null;
   let xTimer = null;
   let xStarted = false;
 
-  // The feed is down: say so on the jumbotron instead of leaving the corner blank. No stand-in
+  // The feed is down: say so on the card instead of leaving the corner blank. No stand-in
   // tweets — an empty panel that admits it is broken is honest, invented posts are not.
   const renderXproblem = (message) => {
     if (!xMode) return;
@@ -1365,7 +1365,7 @@ html.swae #desk .jumbo{background:#0b0d12f5}
     if (xEl) {
       xEl.replaceChildren(head, list, foot);
     } else {
-      xEl = h("div", { id: "x-jumbotron" }, head, list, foot);
+      xEl = h("div", { id: "x-card" }, head, list, foot);
       dockRight.prepend(xEl);
       bot?.summon(xEl);
       requestAnimationFrame(() => requestAnimationFrame(() => xEl?.classList.add("in")));
@@ -1374,7 +1374,7 @@ html.swae #desk .jumbo{background:#0b0d12f5}
     xKey = `problem|${message}`;
   };
 
-  const renderXjumbotron = (feed) => {
+  const renderXfeed = (feed) => {
     if (!xMode || !feed) {
       if (xEl) {
         xEl.remove();
@@ -1434,7 +1434,7 @@ html.swae #desk .jumbo{background:#0b0d12f5}
     if (xEl) {
       xEl.replaceChildren(head, list, foot);
     } else {
-      xEl = h("div", { id: "x-jumbotron" }, head, list, foot);
+      xEl = h("div", { id: "x-card" }, head, list, foot);
       dockRight.prepend(xEl);
       bot?.summon(xEl);
       requestAnimationFrame(() => requestAnimationFrame(() => xEl?.classList.add("in")));
@@ -1451,7 +1451,7 @@ html.swae #desk .jumbo{background:#0b0d12f5}
     const result = await requestXFeed(globalThis.fetch, { mode: xMode, userId: xUserId });
     if (!xMode) return;
     if (result.ok) {
-      renderXjumbotron(result.feed);
+      renderXfeed(result.feed);
       return;
     }
     // A failure used to fall into an empty catch: nothing on air, nothing anywhere else, and the
@@ -1474,11 +1474,11 @@ html.swae #desk .jumbo{background:#0b0d12f5}
       xStarted = true;
       fetchXfeed();
     }
-    // The game owns the jumbotron while a round exists — open, timed out, or just closed — because
-    // it is the main event. Clearing it (jumbo-clear) hands the slot back to the cards.
-    const jumbo = JUMBO_ON ? state.jumbo : null;
-    if (jumbo) {
-      showCard({ id: `jumbo-${jumbo.id}`, type: "jumbo", category: "Jumbo" }, { jumbo });
+    // The game owns the card while a round exists — open, timed out, or just closed — because
+    // it is the main event. Clearing it (letters-clear) hands the slot back to the cards.
+    const letters = LETTERS_ON ? state.letters : null;
+    if (letters) {
+      showCard({ id: `letters-${letters.id}`, type: "letters", category: "CRID" }, { letters });
       return;
     }
     const poll = state.poll || null;

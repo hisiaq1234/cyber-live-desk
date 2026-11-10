@@ -25,7 +25,7 @@
            default 34 x 34) and stacks the right column above it.                              */
 
 const T = 'html[data-theme="cyber"]';
-const PANEL = ".card,.court-wrap,.music-wrap,.space-wrap,.ledger-wrap,.riad-wrap,#x-jumbotron";
+const PANEL = ".card,.court-wrap,.music-wrap,.space-wrap,.ledger-wrap,.riad-wrap,#x-feed";
 
 export const CYBER_CSS = `
 @font-face{font-family:"Anton";src:url(/desk-assets/fonts/anton-latin-400-normal.woff2) format("woff2");font-weight:400;font-style:normal;font-display:swap}
@@ -60,7 +60,7 @@ ${T} #desk .court-wrap,${T} #desk .riad-wrap{--lean:.4deg;--chaos-radius:1.5em 1
 ${T} #desk .music-wrap,${T} #desk .space-wrap{--lean:-.55deg;--chaos-radius:.42em 1.5em 1.5em 1.5em;
   --sticker:.2em .24em 0 var(--indigo-700)}
 ${T} #desk .ledger-wrap{--lean:.3deg;--chaos-radius:1.5em 1.5em 1.5em .42em}
-${T} #desk #x-jumbotron{--lean:0deg;--chaos-radius:1.5em}
+${T} #desk #x-feed{--lean:0deg;--chaos-radius:1.5em}
 
 /* label pill: category on indigo, confidence nested inside it */
 ${T} #desk .meta{display:inline-flex;align-items:center;gap:.6em;margin:0 0 .65em;padding:.2em .25em .2em .9em;
@@ -107,9 +107,9 @@ ${T} #desk .opt.lead .fill::after{content:"";position:absolute;inset:0;
 
 /* CRID segment bug. The breathe is an opacity pulse, so the theme lets it run; taking the stage
    lifts the badge onto a deeper cut than the resting sticker. */
-${T} #desk #crid-jumbotron{background:var(--onyx-900);border:.14em solid var(--indigo-500);box-shadow:var(--sticker);
+${T} #desk #crid-live{background:var(--onyx-900);border:.14em solid var(--indigo-500);box-shadow:var(--sticker);
   backdrop-filter:none;-webkit-backdrop-filter:none}
-${T} #desk #crid-jumbotron.in{box-shadow:.4em .46em 0 var(--indigo-700)}
+${T} #desk #crid-live.in{box-shadow:.4em .46em 0 var(--indigo-700)}
 ${T} #desk .crid-logo{background:var(--onyx-950);border:.14em solid var(--indigo-500)}
 ${T} #desk .crid-logo:not(img){font-family:var(--display);font-weight:400;letter-spacing:.08em;color:var(--mint)}
 

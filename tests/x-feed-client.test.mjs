@@ -86,10 +86,10 @@ test("xFeedFailureMessage stays honest when there is nothing to report", () => {
 test("the overlay surfaces a failed feed and keeps polling instead of swallowing it", () => {
   assert.ok(overlay.includes('import { requestXFeed } from "./x-feed-client.js";'));
   assert.ok(overlay.includes("const result = await requestXFeed(globalThis.fetch"), "the overlay uses the shared client");
-  assert.ok(overlay.includes("renderXproblem(result.error)"), "a failure is rendered on the jumbotron");
+  assert.ok(overlay.includes("renderXproblem(result.error)"), "a failure is rendered on the card");
   assert.ok(overlay.includes('h("span", "x-kind", "Unavailable")'), "the panel says the feed is unavailable");
   // The old silent path: a bare `if (r.ok)` with a catch that discarded everything.
-  assert.ok(!/if \(r\.ok\) renderXjumbotron/.test(overlay), "the if (r.ok) shortcut is gone");
+  assert.ok(!/if \(r\.ok\) renderXfeed/.test(overlay), "the if (r.ok) shortcut is gone");
   assert.ok(!/catch \{ \}/.test(overlay), "the empty catch is gone");
   // A failure used to leave the timer unarmed, so one bad response ended the feed for the stream.
   const failureBranch = overlay.slice(overlay.indexOf("renderXproblem(result.error)"));

@@ -24,8 +24,9 @@ import { createCridAudioSync } from "./crid-audio.js";
      logo=0 | tl|tc|tr|bl|bc|br|custom   (desk lockup, see ./logo.js; 0 hides it; default tc)
      logo.w=6–46               (lockup width in vw; the server's state.logo wins over this)
      logo.x= logo.y=0–100      (percent placement, with logo=custom)
-     lat= lon= alt= place=     (where the creator is: the readout top-right and the clock's topline;
-                                falls back to the desk state, then to the browser's geolocation)
+     lat= lon= alt= place=     (where the creator is: the readout top-right, the clock's topline and
+                                the centre of the map plate; falls back to the desk state, then to
+                                the browser's geolocation)
      Add a card type: DeskOverlay.register("my-type", (card, opts) => HTMLElement)  */
 import { createSoundOrbSync } from "./sound-orb.js";
 import { requestXFeed } from "./x-feed-client.js";
@@ -911,7 +912,37 @@ html.swae .scale-wrap{display:none}
     y: P.get("logo.y") != null ? num("logo.y", 6, 0, 100) : null,
     mark: LOGO_MARKS.includes(P.get("logo.mark")) ? P.get("logo.mark") : "bot",
   });
-  const renderLogo = (l) => { if (lockup) lockup.update(l || {}); };
+  const renderLogo = (l) => { if (lockup) { lockup.update(l || {}); capBot(); } };
+
+  // ?bot.scale= may only grow him into space that is actually empty. crid-bot caps the width it
+  // draws against the frame's own edges; the desk adds the two bands *inside* the frame — the
+  // lockup over his head and the floor band under his feet — because both are measured here and
+  // move on their own. The cap is handed over as --bot-max, the one variable crid-bot already
+  // multiplies into --bot-w, so a raised scale shrinks him instead of drawing his head over the
+  // logo lockup or his feet past the floor band.
+  const BOT_ASPECT = 160 / 168; // the sprite's width:height, from crid-bot's stylesheet
+  const capBot = () => {
+    if (!bot) return;
+    const host = bot.el;
+    // --m on #desk resolved by hand: a custom property's computed value is the clamp() token
+    // itself, so it cannot be read back as pixels. This is the same clamp(12px, 4vmin, 32px).
+    const m = Math.min(32, Math.max(12, 0.04 * Math.min(innerWidth, innerHeight)));
+    const frameCap = Math.min(innerWidth - 2 * m, (innerHeight - 2 * m) * BOT_ASPECT);
+    const band = host.getBoundingClientRect();
+    const lock = lockup?.el.getBoundingClientRect();
+    let cap = frameCap;
+    if (lock && lock.height > 0 && lock.left < band.right && lock.right > band.left) {
+      // The room between the lockup's measured bottom and his own feet — his feet, not the frame's,
+      // because crid-bot has already lifted him onto the clock and the ticker where they reach his
+      // column. Carried back through the aspect so the width he is given stays inside that room.
+      const room = Math.max(0, band.bottom - lock.bottom - 8);
+      if (room > 0) cap = Math.min(cap, room * BOT_ASPECT);
+    }
+    host.style.setProperty("--bot-max", `${Math.round(cap)}px`);
+  };
+  // The lockup and the floor band both move with the frame, and his feet are re-measured a frame
+  // after a resize, so the cap is measured again on the next frame as well as immediately.
+  window.addEventListener("resize", () => { bot?.place(); capBot(); requestAnimationFrame(capBot); });
 
   // ---------- location readout ----------
   // The place, the coordinate and the altitude, top-right, drawn in the clock's language because
@@ -924,7 +955,12 @@ html.swae .scale-wrap{display:none}
   const locationReadout = h("div", { id: "location-readout", hidden: true, "aria-live": "off" },
     locationPlace, locationFix);
   const fmtDegrees = (v, pos, neg) => `${Math.abs(v).toFixed(4)}° ${v >= 0 ? pos : neg}`;
+  // The map plate is built further down the file, so a location reaches it through this hook rather
+  // than through a second render path: renderLocation() stays the one place where a location lands
+  // on the frame, and the plate registers itself here when it exists (?map=0 means it never does).
+  let syncMapLocation = null;
   const renderLocation = () => {
+    if (syncMapLocation) syncMapLocation(currentLocation);
     // The clock's topline is the place when there is one, and his own "Black Market" when there is
     // not — the label it has always carried. Nothing else about the clock changes, and the
     // "Africa / Lagos" line below it is his, always.
@@ -1460,27 +1496,45 @@ html.swae .scale-wrap{display:none}
   }
 
   // ---------- location plate (Cyber Radar) ----------
-  // The radar's own map in the desk's frame: UNILAG read from our shipped PMTiles archive with
+  // The radar's own map in the desk's frame: his archive read from our shipped PMTiles with
   // self-hosted glyphs, so every label is a real OSM name and the geometry is the real campus.
   // This plate is geography and nothing else. The overlay has no GPS — no marker, no accuracy
   // circle, no rotation — and the single readout line names the MAP VIEW centre, which is where
   // the map is looking, never where anybody is.
+  // The centre and the name are the location source's, the same one the readout and the clock
+  // topline draw: the coordinate from ?lat=&lon=, the stored point or the browser's fix, and the
+  // campus point with the name it has always carried when there is no fix at all.
   // ?map=0 removes the plate and, because every map asset is loaded from this block and nowhere
   // else, removes the MapLibre scripts, the archive and the glyph requests with it.
   if (P.get("map") !== "0") {
-    // The Cyber Radar app's own demo centre and zoom (UNILAG), unchanged from its map component.
-    const MAP_CENTER = [3.398, 6.517]; // lon, lat
+    // The Cyber Radar app's own demo centre (UNILAG) and zoom: what the plate shows when the desk
+    // does not know where he is, so a frame with no location looks exactly as it did before.
+    const FALLBACK_CENTER = [3.398, 6.517]; // lon, lat
+    const FALLBACK_PLACE = "UNILAG";
     const MAP_ZOOM = 15.5;
     const SOURCE_LINE = "SOURCE: OSM VIA GEOFABRIK · SNAPSHOT";
+    const centreOf = (loc) => (loc ? [loc.lon, loc.lat] : FALLBACK_CENTER);
     const readout = h("p", "map-readout", `MAP VIEW —— · Z${MAP_ZOOM} · ${SOURCE_LINE}`);
     const canvas = h("div", "map-canvas", h("div", "cr-map"));
+    const placeName = h("span", "map-place", currentLocation?.place || FALLBACK_PLACE);
     const plate = h("section", { id: "map-plate", "aria-label": "Cyber Radar location plate" },
       h("div", "map-top",
         h("span", "map-name", "Cyber Radar"),
-        h("span", "map-place", "UNILAG")),
+        placeName),
       canvas,
       readout);
     root.append(plate);
+    // Registered before the map itself exists, so a fix that lands while MapLibre is still loading
+    // is not lost: the name moves at once and the camera takes it when the map is ready.
+    let map = null;
+    syncMapLocation = (loc) => {
+      placeName.textContent = loc?.place || FALLBACK_PLACE;
+      if (!map) return;
+      const [lng, lat] = centreOf(loc);
+      // Jumped, not eased: the plate is non-interactive and Swae renders it as a snapshot, so the
+      // camera moves in one frame and the readout redraws from the map's own centre on moveend.
+      if (map.getCenter().lng !== lng || map.getCenter().lat !== lat) map.jumpTo({ center: [lng, lat] });
+    };
 
     // Sit directly on top of the news ticker instead of at a guessed offset: the ticker's height
     // follows its type size and the frame, and this plate must never cover it or be covered.
@@ -1516,10 +1570,10 @@ html.swae .scale-wrap{display:none}
       const mapStyle = window.DESK_MAP_STYLE;
       if (!maplibregl || !pmtiles || !mapStyle) throw new Error("map assets missing");
       maplibregl.addProtocol("pmtiles", new pmtiles.Protocol().tile);
-      const map = new maplibregl.Map({
+      map = new maplibregl.Map({
         container: canvas.firstElementChild,
         style: mapStyle,
-        center: MAP_CENTER,
+        center: centreOf(currentLocation),
         zoom: MAP_ZOOM,
         pitch: 0,
         bearing: 0,
@@ -1558,6 +1612,6 @@ html.swae .scale-wrap{display:none}
   // He was placed before the clock existed, so the floor he measured was the frame's own. Now that
   // every plate is in the document, measure again: this is what puts him on top of the bottom band
   // on a narrow frame and on the floor of a broadcast one.
-  if (bot) bot.place();
+  if (bot) { bot.place(); capBot(); }
   tick();
 })();

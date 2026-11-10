@@ -189,7 +189,8 @@ export const moveLayer = (target, to = "left", { travelMs = 900, dragMs = 700, w
  * A micro-emotion: one miniature feeling from the quiet layer.
  *
  * The brain names the emotion, its caption and how long it lasts. The renderer owns the
- * glyph and the pose (see MICRO in brain/overlay.js) — same split as the layer drag.
+ * glyph and the body work (see MICRO in brain/overlay.js and FEEL in crid-bot.js) — same
+ * split as the layer drag.
  * `interrupt: "none"` and the lowest visual priority mean a small feeling can never
  * displace a hype jump, a roast wince or a card: it plays underneath them or not at all.
  */

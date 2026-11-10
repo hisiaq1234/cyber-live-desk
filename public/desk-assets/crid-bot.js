@@ -4,16 +4,35 @@
 
    Sprite: ./desk-assets/crid/body-<shape>-r7.webp (600x800, downscaled from the 1050x1400 masters:
    the biggest he is ever drawn is 340 CSS px wide, so 600px is ~2.5x the display box and ~1.3x a
-   retina one). Shapes lean -> fattest: 000, 00, 3, 0, 5, 1, 2. He is drawn as three layers of the
-   same character: the body, and separate eyes-<state> and mouth-<state> sprites registered to the
-   painted face, so an expression is a real drawing and not a stand-in.
+   retina one). Shapes lean -> fattest: 3, 0, 5, 1, 2. Each frame is a COMPLETE drawing with its own
+   painted face, so he is drawn as one layer. The eyes-<state>/mouth-<state> frames were never
+   registered to these bodies (a different scale and position, squeezed into a 44x22 box over a face
+   that already has eyes) and produced a second ghost face; they are unused until a real registered
+   rig is built. Emotion therefore comes from a body swap + a motion beat + a hold — see FEEL.
+   The two other frames in ./crid, body-000 and body-00, are NOT complete drawings: they have the
+   eyes and mouth cut clean out (43% of the face box is transparent, against 0.4% on these five),
+   so on their own they read as a blank-faced head. They are the rig's sockets, and under one-drawing
+   they are not drawn at all.
    Growth: every sub moves him up a notch. SUB_STEPS is where each body shape takes over, and
    between shapes he widens a little (STAGE_STRETCH) so every single sub is visible. The size is
    worked out from the sub total each time, so an overlay reload mid-stream restores it.
    Feed it with observe(state) where state.bot.subs is the sub count this stream, or call setSubs(n). */
 const NS="http://www.w3.org/2000/svg",XLINK="http://www.w3.org/1999/xlink",PAL={onyx:"#1F1736",screen:"#0F0B17",edge:"#3A1D9E",indigo:"#6531F8",indigoDk:"#3A1D9E",mint:"#86F6BC",bone:"#A98BFF",ink:"#F4F0FF",slate:"#2B2738",red:"#FF5B57",dead:"#5E5873"},
-DOZE_AFTER_MS=12e4,BODIES=["000","00",3,0,5,1,2],ROT=7,ASSETS="./desk-assets/crid",AV=b=>`${ASSETS}/body-${b}-r${ROT}.webp`,
-SUB_STEPS=[0,2,5,9,14,21,30],STAGE_STRETCH=.06,
+DOZE_AFTER_MS=12e4,BODIES=[3,0,5,1,2],ROT=7,ASSETS="./desk-assets/crid",AV=b=>`${ASSETS}/body-${b}-r${ROT}.webp`,
+SUB_STEPS=[0,4,9,16,24],STAGE_STRETCH=.06,
+// The eight micro-emotions from brain/micro-emotions.mjs. A painted face cannot be swapped, so a
+// feeling is a whole drawing that changes and is moved well: a different body (they carry their own
+// face and stance — 2 is turned away, 1 is the heaviest), one of the gesture sequences, and how long
+// he stays in that body before his own weight takes it back. No two triples are the same.
+FEEL={curious:{body:"3",seq:"peek",hold:1500},delighted:{body:"0",seq:"hop",hold:1300},
+  smug:{body:"1",seq:"sideeye",hold:1900},flustered:{body:"5",seq:"wince",hold:1200},
+  sleepy:{body:"1",seq:"sit",hold:2400},startled:{body:"2",seq:"surprise",hold:1000},
+  proud:{body:"0",seq:"nod",hold:1700},sulky:{body:"3",seq:"shrug",hold:2100}},
+// Measured ink box of the five body frames (600x800): the feet stop at y=757, so a frame drawn to the
+// box edge leaves him hovering ~7% of his height over the floor. The sprite is drawn so the feet land
+// exactly on the box bottom, which is the floor band at every ?bot.scale= — the shadow is a filter on
+// the same drawing, so it tracks him.
+INK_BOTTOM=757/800,FIG_H=142,FIG_W=FIG_H*.75,FIG_X=74-FIG_W/2,FIG_Y=164-INK_BOTTOM*FIG_H,
 el=(t,a={},...k)=>{const e=document.createElementNS(NS,t);for(const[n,v]of Object.entries(a))e.setAttribute(n,v);for(const c of k)c&&e.append(c);return e},
 clamp=(n,lo,hi)=>Math.min(hi,Math.max(lo,n)),rand=(lo,hi)=>lo+Math.random()*(hi-lo),
 stageFor=n=>{n=Math.max(0,n|0);let i=0;for(let k=0;k<SUB_STEPS.length;k++)if(n>=SUB_STEPS[k])i=k;
@@ -52,23 +71,21 @@ function draw(){
   // ellipse, which read as a purple sticker under a painted character on a dark frame.
   const sticker={fill:PAL.ink,stroke:PAL.ink,"stroke-width":9,"stroke-linejoin":"round","stroke-linecap":"round"};
   const svg=el("svg",{viewBox:"-6 -4 160 168","aria-hidden":"true",focusable:"false"});
-  // Three layers of one drawing: the body, and the eyes and mouth registered to the painted face.
-  // A whole character is all three at once — a face with no body under it is not him.
-  const avatarBase=el("image",{class:"avatar-base",x:18,y:18,width:112,height:142,preserveAspectRatio:"xMidYMax meet"});
-  const avatarEyes=el("image",{class:"avatar-eyes",x:48,y:40,width:44,height:22,preserveAspectRatio:"xMidYMid meet"});
-  const avatarMouth=el("image",{class:"avatar-mouth",x:54,y:62,width:32,height:24,preserveAspectRatio:"xMidYMid meet"});
-  const ph=el("g",{class:"ph",display:"none"},
+  // One drawing, moved well: the body carries its own painted face, and there is nothing stacked on
+  // top of it. The eyes/mouth frames are gone — they were never registered to the bodies.
+  const avatarBase=el("image",{class:"avatar-base",x:FIG_X,y:FIG_Y,width:FIG_W,height:FIG_H,preserveAspectRatio:"xMidYMax meet"});
+  const ph=el("g",{class:"ph",display:"none",transform:"translate(0 12)"},
     el("path",{d:"M44 152C44 110 56 92 70 92C84 92 96 110 96 152Z",fill:PAL.slate,stroke:PAL.ink,"stroke-width":5,"stroke-linejoin":"round"}),
     el("circle",{cx:70,cy:56,r:21,fill:PAL.slate,stroke:PAL.ink,"stroke-width":5}),
     el("circle",{cx:63,cy:54,r:2.8,fill:PAL.mint}),el("circle",{cx:77,cy:54,r:2.8,fill:PAL.mint}));
-  const figG=el("g",{class:"fig"},avatarBase,avatarEyes,avatarMouth,ph),bodyG=el("g",{class:"body"},figG);
+  const figG=el("g",{class:"fig"},avatarBase,ph),bodyG=el("g",{class:"body"},figG);
   const ticket=el("g",{class:"ticket",opacity:0});
   const tkFill=[el("path",{d:"M100 4H138V22H100Z",fill:PAL.red,class:"ticket-fill"}),el("path",{d:"M108 22L106 31L118 22Z",fill:PAL.red,class:"ticket-fill"})];
   const ticketText=el("text",{x:119,y:17.2,"text-anchor":"middle","font-size":10.5,"font-weight":800,"letter-spacing":.6,fill:PAL.onyx,"font-family":"ui-monospace,'SF Mono','JetBrains Mono',Menlo,Consolas,monospace"});
   ticketText.textContent="";
   ticket.append(el("path",{d:"M100 4H138V22H100ZM108 22L106 31L118 22Z",...sticker,"stroke-width":6}),...tkFill,ticketText);
   svg.append(bodyG,ticket);
-  return{svg,parts:{ticket,ticketText,tkFill,bodyG,figG,avatarBase,avatarEyes,avatarMouth,ph}};
+  return{svg,parts:{ticket,ticketText,tkFill,bodyG,figG,avatarBase,ph}};
 }
 const CSS=`
 /* He is drawn at broadcast size: ~17.5vw is a full torso-and-head read on a 1080p stream, and the
@@ -102,8 +119,8 @@ const CSS=`
 #crid-bot svg{width:100%;height:100%;display:block;overflow:visible;filter:drop-shadow(0 calc(var(--bot-w)*.028) calc(var(--bot-w)*.07) rgba(0,0,0,.42))}
 html.low-power #crid-bot svg,html.swae #crid-bot svg{filter:none}
 #crid-bot[data-mode="dead"] .ticket-fill{fill:${PAL.dead}}
-#crid-bot[data-mode="dead"] .avatar-base,#crid-bot[data-mode="dead"] .avatar-eyes,#crid-bot[data-mode="dead"] .avatar-mouth{opacity:.55}
-#crid-bot[data-mode="doze"] .avatar-base,#crid-bot[data-mode="doze"] .avatar-eyes,#crid-bot[data-mode="doze"] .avatar-mouth{opacity:.88}
+#crid-bot[data-mode="dead"] .avatar-base{opacity:.55}
+#crid-bot[data-mode="doze"] .avatar-base{opacity:.88}
 `;
 export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="bc",x=null,y=null,step=null,scale=1}={}){
   if(!document.getElementById("crid-bot-css")){const st=document.createElement("style");st.id="crid-bot-css",st.textContent=CSS,document.head.append(st)}
@@ -127,12 +144,10 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const readMotion=()=>{reduced=!!(mq&&mq.matches)};
   readMotion(); if(mq){const onmq=()=>{readMotion();lastDrawn=""}; mq.addEventListener?mq.addEventListener("change",onmq):mq.addListener&&mq.addListener(onmq)}
   for(const b of BODIES){const im=new Image();im.src=AV(b)}
-  // A layer that will not load is hidden, never left painting an invisible sprite over the face:
-  // if the body itself fails he falls back to the drawn placeholder figure.
+  // A sprite that will not load falls back to the drawn placeholder figure rather than leaving an
+  // invisible image painting over the frame.
   parts.avatarBase.addEventListener("error",()=>{parts.avatarBase.setAttribute("display","none");parts.ph.removeAttribute("display")});
-  parts.avatarBase.addEventListener("load",()=>{parts.ph.setAttribute("display","none");parts.avatarBase.removeAttribute("display");parts.avatarEyes.removeAttribute("display");parts.avatarMouth.removeAttribute("display")});
-  parts.avatarEyes.addEventListener("error",()=>{parts.avatarEyes.setAttribute("display","none")});
-  parts.avatarMouth.addEventListener("error",()=>{parts.avatarMouth.setAttribute("display","none")});
+  parts.avatarBase.addEventListener("load",()=>{parts.ph.setAttribute("display","none");parts.avatarBase.removeAttribute("display")});
   let mode="dead",tagText=null,talking=!1,grooving=!1,tickN=0,waitUntil=Date.now()+3000,idleQ=[],gestureQ=[],timer=null,frozen=!1,dying=!1;
   // online is null, not true: "nothing has told me otherwise yet" is a different state from "the
   // desk says he is on". Starting at true made the first observe({bot:{on:true}}) a no-op — it only
@@ -236,26 +251,15 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // theme's idle animation and any on-air check read, and it must never lag a mode change.
     host.dataset.mode=mode;
     const sig=JSON.stringify(p)+bodyI; if(sig===lastDrawn)return; lastDrawn=sig;
-    // Swap expression layers only when state actually changes. The eyes and the mouth are drawings
-    // registered to the body's painted face, so the expression is real art, not a caption.
-    const eyeState=p.eyes||"open";
-    if(parts.avatarEyes.dataset.state!==eyeState){
-      const src=`${ASSETS}/eyes-${eyeState}.webp`;
-      parts.avatarEyes.setAttribute("href",src);
-      parts.avatarEyes.setAttributeNS(XLINK,"href",src);
-      parts.avatarEyes.dataset.state=eyeState;
-    }
-    const mouthState=p.mouth||"flat";
-    if(parts.avatarMouth.dataset.state!==mouthState){
-      const src=`${ASSETS}/mouth-${mouthState}.webp`;
-      parts.avatarMouth.setAttribute("href",src);
-      parts.avatarMouth.setAttributeNS(XLINK,"href",src);
-      parts.avatarMouth.dataset.state=mouthState;
-    }
+    // A pose may still name eyes:/mouth: (every sequence does). There is no face layer to write to
+    // any more — the drawing's own face is the face — so those keys are carried and ignored, and the
+    // beat around them still plays.
     const plank=Math.abs(Math.sin(p.pr*Math.PI/180)),L=(p.hr*.8+p.pr)*p.fx,k=1-.16*plank,shift=plank*60*p.fx;
     parts.ticketText.textContent=p.tag||""; parts.ticket.setAttribute("opacity",p.tag?1:0);
     const tkc=p.tag==="PAID"||p.tag==="+SUB"?PAL.mint:PAL.red; for(const n of parts.tkFill)n.setAttribute("fill",tkc);
-    parts.bodyG.setAttribute("transform",`translate(0 ${p.by}) translate(70 160) scale(${(1+(1-p.bs)*.6).toFixed(3)} ${p.bs}) translate(-70 -160)`);
+    // The squash pivots on the box bottom (164), which is where his feet now are, so a breath or a
+    // landing compresses him downwards instead of lifting him off the floor.
+    parts.bodyG.setAttribute("transform",`translate(0 ${p.by}) translate(70 164) scale(${(1+(1-p.bs)*.6).toFixed(3)} ${p.bs}) translate(-70 -164)`);
     // gx used to be scaled by .4 — a 3px glance at the old 104px size, i.e. nothing. A glance now
     // reads as a look: the sprite is the only face he has, so its travel is the expression.
     parts.figG.setAttribute("transform",`translate(${(shift+p.gx*1.15).toFixed(2)} ${(p.hy*.85-plank*14).toFixed(2)}) translate(70 158) rotate(${L.toFixed(2)}) scale(${(p.fx*p.sx*k).toFixed(3)} ${(p.sy*k).toFixed(3)}) translate(-70 -158)`);
@@ -335,8 +339,19 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       const k=JSON.stringify(g); if(!seen.has(k)){seen.add(k); out.push(g)}}
     return out.length?out:[frames[frames.length-1]||{}]};
   const play=(frames,{urgent=!1}={})=>{if(urgent)gestureQ=[]; gestureQ.push(...(reduced?calm(frames):frames))};
-  function setMode(next){if(next===mode&&!dying)return; const was=mode; idleQ=[]; if(next!=="on")goHome(); if(next==="dead"){if(was==="dead"||dying)return; cancelJobs(); pendingReact.length=0; dying=!0; play(SEQ.die,{urgent:!0}); if(reduced){mode="dead";dying=!1;host.dataset.mode=mode} return} dying=!1; mode=next; host.dataset.mode=mode; if(was==="dead")play(SEQ.wake,{urgent:!0}); lastActive=Date.now()}
+  function setMode(next){if(next===mode&&!dying)return; const was=mode; idleQ=[]; if(next!=="on")goHome(); if(next==="dead"){if(was==="dead"||dying)return; cancelJobs(); clearTimeout(feelTimer); pendingReact.length=0; dying=!0; play(SEQ.die,{urgent:!0}); if(reduced){mode="dead";dying=!1;host.dataset.mode=mode} return} dying=!1; mode=next; host.dataset.mode=mode; if(was==="dead")play(SEQ.wake,{urgent:!0}); lastActive=Date.now()}
   const react=kind=>{if(mode==="dead"||dying||!SEQ[kind])return; if(mode==="doze"){mode="on";lastActive=Date.now()} if(running||jobs.length){if(pendingReact.length<3)pendingReact.push(kind); return} play(SEQ[kind],{urgent:!0})};
+  // A micro-emotion, from FEEL: swap the body, play its beat, hold the body, then let his own weight
+  // take it back. The beat is queued, never urgent, so a small feeling can never interrupt the loud
+  // layer — the same promise the brain's bus makes (interrupt "none", lowest priority).
+  let feelTimer=null;
+  const feel=(name,{hold}={})=>{const f=FEEL[name]; if(!f||mode==="dead"||dying)return false;
+    if(mode==="doze"){mode="on";lastActive=Date.now()}
+    const i=BODIES.findIndex(b=>String(b)===String(f.body)); if(i>=0)setBody(i);
+    if(f.seq&&SEQ[f.seq])play(SEQ[f.seq]);
+    lastActive=Date.now(); clearTimeout(feelTimer);
+    feelTimer=setTimeout(()=>{if(mode!=="dead")setBody(stageFor(subs).i)},clamp(Number(hold)||f.hold,400,4e3));
+    return true};
   const centre=r=>({x:r.left+r.width/2,y:r.top+r.height/2});
   const setFlight=(node,f)=>{if(!f){for(const k of["transform","opacity","transition","zIndex","willChange","transformOrigin","visibility"])node.style[k]=""; if(flights.has(node)&&flights.get(node).madeRelative)node.style.position=""; flights.delete(node); return} node.style.transform=`translate(${f.tx}px,${f.ty}px) scale(${f.s}) rotate(${f.r}deg)`; node.style.opacity=f.o; node.style.visibility=f.o===0?"hidden":"visible"};
   const prepare=node=>{const info={madeRelative:!1}; node.style.transition="none"; node.style.willChange="transform"; node.style.transformOrigin="50% 50%"; node.style.zIndex="40"; if(getComputedStyle(node).position=="static"){node.style.position="relative"; info.madeRelative=!0} flights.set(node,info)};
@@ -373,5 +388,5 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const replace=()=>{home=null; if(placeFrame)return; placeFrame=(typeof requestAnimationFrame=="function"?requestAnimationFrame:setTimeout)(()=>{placeFrame=0; place()},0)};
   if(typeof addEventListener=="function")addEventListener("resize",replace);
   if(typeof ResizeObserver=="function"){const strip=document.getElementById("auto-headlines"); if(strip){stripWatch=new ResizeObserver(replace); stripWatch.observe(strip)}}
-  return{el:host,summon,dismiss,cancel,react,observe,setMode,setSubs:n=>{lastSubN=n|0;applySubs(n,!1)},setOnline(v){online=!!v;power()},get mode(){return mode},get subs(){return subs},setMood,say,nudge,randomLine,place:replace,freeze(pose={}){frozen=!0;clearTimeout(timer); if(pose.mode)mode=pose.mode; if(pose.tag!==void 0)tagText=pose.tag; if(pose.subs!=null)applySubs(pose.subs,!1); lastDrawn=""; render({...REST[mode],tag:tagText,fx:pose.fx||1,sx:growth.sx,sy:growth.sy,...pose})},destroy(){clearTimeout(timer); mo==null||mo.disconnect(); stripWatch==null||stripWatch.disconnect(); if(typeof removeEventListener=="function")removeEventListener("resize",replace); cancelJobs(); goHome(); host.remove()}}
+  return{el:host,summon,dismiss,cancel,react,feel,observe,setMode,setSubs:n=>{lastSubN=n|0;applySubs(n,!1)},setOnline(v){online=!!v;power()},get mode(){return mode},get subs(){return subs},setMood,say,nudge,randomLine,place:replace,freeze(pose={}){frozen=!0;clearTimeout(timer); if(pose.mode)mode=pose.mode; if(pose.tag!==void 0)tagText=pose.tag; if(pose.subs!=null)applySubs(pose.subs,!1); lastDrawn=""; render({...REST[mode],tag:tagText,fx:pose.fx||1,sx:growth.sx,sy:growth.sy,...pose})},destroy(){clearTimeout(timer); clearTimeout(feelTimer); mo==null||mo.disconnect(); stripWatch==null||stripWatch.disconnect(); if(typeof removeEventListener=="function")removeEventListener("resize",replace); cancelJobs(); goHome(); host.remove()}}
 }

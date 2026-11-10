@@ -94,18 +94,35 @@ test("the vocabulary is eight named miniature feelings", () => {
 test("every emotion the vocabulary can name has something for the renderer to draw", async () => {
   const js = await readFile(new URL("../overlay.js", import.meta.url), "utf8");
   const css = await readFile(new URL("../overlay.css", import.meta.url), "utf8");
+  // The bodies are complete drawings with a painted face, so a feeling is a body swap + a motion
+  // beat + a hold, and that table lives with the body (FEEL in crid-bot.js). The page only owns
+  // the caption it draws over him.
+  const bot = await readFile(new URL("../../public/desk-assets/crid-bot.js", import.meta.url), "utf8");
   const start = js.indexOf("const MICRO = {");
   assert.ok(start > 0, "the renderer has a MICRO map");
   const block = js.slice(start, js.indexOf("\n};", start));
   const shapes = new Set();
+  const feels = new Set();
   for (const name of MICRO_NAMES) {
     const entry = block.match(new RegExp(`\\b${name}:\\s*\\{([^}]*)\\}`));
     assert.ok(entry, `${name} is in the renderer's MICRO map`);
-    assert.match(entry[1], /pose:\s*"/, `${name} has a body pose`);
+    assert.doesNotMatch(entry[1], /pose:\s*"/, `${name} does not reach for a face pose`);
     const shape = entry[1].match(/shape:\s*"(\w+)"/);
     assert.ok(shape, `${name} has a shape`);
     shapes.add(shape[1]);
+    const feel = bot.match(new RegExp(`\\b${name}:\\{body:"([^"]+)",seq:"(\\w+)",hold:(\\d+)\\}`));
+    assert.ok(feel, `${name} has a body + beat + hold in crid-bot.js FEEL`);
+    assert.ok(Number(feel[3]) >= 400 && Number(feel[3]) <= 4000, `${name} holds for a readable beat`);
+    assert.match(bot, new RegExp(`\\bSEQ\\.${feel[2]}\\b|\\b${feel[2]}:\\[`), `${name}'s beat exists in SEQ`);
+    const bodies = bot.match(/BODIES=\[([^\]]+)\]/);
+    assert.ok(bodies, "crid-bot.js has a body list");
+    assert.ok(
+      bodies[1].split(",").map((s) => s.trim().replace(/"/g, "")).includes(feel[1]),
+      `${name}'s body ${feel[1]} is one of the drawings he may wear`,
+    );
+    feels.add(`${feel[1]}/${feel[2]}/${feel[3]}`);
   }
+  assert.equal(feels.size, MICRO_NAMES.length, "no two micro-emotions read the same");
   for (const shape of shapes) {
     assert.ok(css.includes(`data-shape="${shape}"`), `overlay.css draws the "${shape}" shape`);
   }

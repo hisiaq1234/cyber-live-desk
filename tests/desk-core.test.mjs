@@ -728,14 +728,14 @@ test("a nearly full queue shares what is left instead of feeding the first feed"
 
 const cridStore = () => makeStore({ cards: JSON.stringify(deskSet()) });
 const openCrid = (store, over = {}) =>
-  runAction(store, { action: "crid-open", kind: "music", title: "Does this album survive the Jumbotron?", ...over }, NOW);
+  runAction(store, { action: "crid-open", kind: "music", title: "Does this album survive the night?", ...over }, NOW);
 
 test("a CRID segment opens with its own entry number and nothing else changes", async () => {
   const store = cridStore();
   const { state } = await openCrid(store);
 
   assert.equal(state.crid.kind, "music");
-  assert.equal(state.crid.title, "Does this album survive the Jumbotron?");
+  assert.equal(state.crid.title, "Does this album survive the night?");
   assert.equal(state.crid.entry, 1, "the first segment of the run is entry 1");
   assert.equal(state.crid.verdict, null, "no verdict until someone stamps one");
   assert.equal(state.visible, false, "opening CRID does not put a card on air");
@@ -857,7 +857,7 @@ test("a vote with no poll running cannot write a result onto the segment", async
   assert.equal((await readState(store)).crid.result ?? null, null);
 });
 
-test("a state blob from before CRID reads with nothing on the jumbotron", async () => {
+test("a state blob from before CRID reads with nothing on the card", async () => {
   const old = { ...DEFAULT_STATE };
   delete old.crid;
   delete old.cridSeq;
@@ -881,7 +881,7 @@ test("the overlay's state carries the segment and still nothing private", async 
   assert.equal("presenterNotes" in (res.body.card ?? {}), false);
 });
 
-test("credit and title are clipped to what a jumbotron can hold", async () => {
+test("credit and title are clipped to what a card can hold", async () => {
   const store = cridStore();
   const { state } = await openCrid(store, { title: "T".repeat(200), credit: "C".repeat(90) });
 

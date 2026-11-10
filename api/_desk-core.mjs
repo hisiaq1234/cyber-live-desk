@@ -15,14 +15,14 @@ export const LIMITS = {
   summary: 280,
   question: 140,
   notes: 2000,
-  cridTitle: 120, // a jumbotron line a phone viewer has to read in seconds
+  cridTitle: 120, // a card line a phone viewer has to read in seconds
   cridCredit: 30,
-  cridAudioUrl: 2000, // https audio URL the jumbotron plays on Swae / stream audio
+  cridAudioUrl: 2000, // https audio URL the card plays on Swae / stream audio
   place: 80, // a named place: long enough for a street, a district and a city, short enough to read
-  jumboUser: 30, // a Twitch display name, which the game shows on the leaderboard
+  lettersUser: 30, // a Twitch display name, which the game shows on the leaderboard
 };
 
-// CRID — Cyber's Rent Is Due. The branded segment the desk puts on the jumbotron: one subject,
+// CRID — Cyber's Rent Is Due. The branded segment the desk puts on the card: one subject,
 // optionally a vote, and a verdict the operator stamps. It sits beside the card desk rather than
 // replacing it, so news keeps flowing underneath a live segment.
 export const CRID_KINDS = ["topic", "news", "debate", "music", "question"];
@@ -46,10 +46,10 @@ export const DEFAULT_STATE = {
   cridSeq: 0, // counts segments since the store existed; entry numbers never repeat
   // CRID Court — structured debate: question, opposing viewpoints, audience votes, verdict.
   court: null, // { id, question, viewpointA, viewpointB, votes: { a: number, b: number }, verdict: 1|0|null, status: "open"|"closed", openedAt }
-  // Jumbo — the word game. The board itself is state: seven letters drawn once, the deadline,
+  // Letters — the word game. The board itself is state: seven letters drawn once, the deadline,
   // and the words chat has claimed so far. null means no round has ever been opened, which is
   // how every frame looked before there was a game, so an old desk renders unchanged.
-  jumbo: null, // { id, letters: string[7], openedAt, endsAt, status: "open"|"closed", closedAt, claims: [{word, user, score, at}], scores: {user: points}, best: {word, user, score}|null }
+  letters: null, // { id, letters: string[7], openedAt, endsAt, status: "open"|"closed", closedAt, claims: [{word, user, score, at}], scores: {user: points}, best: {word, user, score}|null }
   // Music Desk — independent audio queue, independent of Spotify.
   music: null, // { queue: [{id, title, artist, audioUrl}], current: {id, title, artist, audioUrl}|null, playing: boolean, volume: number, muted: boolean }
   // X Space Radar — selected public X Spaces (info card + external link only).
@@ -533,7 +533,7 @@ const cryptoRandomId = () => globalThis.crypto.randomUUID();
 // ---------- operator actions ----------
 
 // What a closed poll actually said. A tie reports no winner rather than picking the first
-// option, because a jumbotron that invents a winner is lying to the people who voted.
+// option, because a card that invents a winner is lying to the people who voted.
 export function pollResult(poll) {
   const options = poll?.options ?? [];
   const total = options.reduce((n, o) => n + (o.count || 0), 0);
@@ -604,24 +604,24 @@ export async function bulkUpdateApproval(store, b, state, cards, now = Date.now(
 }
 
 
-// ---------- Jumbo, the word game ----------
-// The board is drawn here, once, and stored in desk state, so the seven letters on the jumbotron
+// ---------- Letters, the word game ----------
+// The board is drawn here, once, and stored in desk state, so the seven letters on the card
 // and the seven letters the brain validates against are the same seven letters by construction —
 // there is no second copy to drift. The round closes on the clock (`endsAt`), which every renderer
 // can read for itself, so nothing has to be scheduled to end it.
-export const JUMBO_LETTERS = 7;
-export const JUMBO_ROUND_SEC = 90;
-export const JUMBO_WORD_MIN = 3;
-export const JUMBO_WORD_MAX = JUMBO_LETTERS; // a board of seven cannot spell anything longer
-export const JUMBO_MIN_VOWELS = 2;
-export const JUMBO_MAX_REPEAT = 2; // never three of the same letter
-const JUMBO_VOWELS = "aeiou";
+export const LETTERS_COUNT = 7;
+export const LETTERS_ROUND_SEC = 90;
+export const LETTERS_WORD_MIN = 3;
+export const LETTERS_WORD_MAX = LETTERS_COUNT; // a board of seven cannot spell anything longer
+export const LETTERS_MIN_VOWELS = 2;
+export const LETTERS_MAX_REPEAT = 2; // never three of the same letter
+const LETTERS_VOWELS = "aeiou";
 // A bag weighted the way English letters actually fall: e is common, z is not. Drawing from it
 // rather than picking uniformly is what makes a board feel like a word game and not a lottery.
-const JUMBO_BAG =
+const LETTERS_BAG =
   "eeeeeeeeeeeeeeaaaaaaaaaiiiiiiiiioooooooouuuuuunnnnnnnnrrrrrrttttttllllllssssssddddggggbbccmmppffhhvvwwyykjxqz";
 
-export const jumboScore = (word) => word.length ** 2;
+export const lettersScore = (word) => word.length ** 2;
 
 const letterCounts = (letters) => {
   const counts = new Map();
@@ -630,24 +630,24 @@ const letterCounts = (letters) => {
 };
 
 /** Seven letters: at least two vowels, never three of a kind, shuffled. */
-export function drawJumboLetters(rand = Math.random) {
-  const bag = JUMBO_BAG.split("");
+export function drawLetters(rand = Math.random) {
+  const bag = LETTERS_BAG.split("");
   const drawn = [];
-  for (let i = 0; i < JUMBO_LETTERS; i++) drawn.push(bag[Math.floor(rand() * bag.length)]);
-  const vowels = () => drawn.filter((ch) => JUMBO_VOWELS.includes(ch)).length;
+  for (let i = 0; i < LETTERS_COUNT; i++) drawn.push(bag[Math.floor(rand() * bag.length)]);
+  const vowels = () => drawn.filter((ch) => LETTERS_VOWELS.includes(ch)).length;
   // Top up the vowels by replacing a consonant.
-  while (vowels() < JUMBO_MIN_VOWELS) {
-    const i = drawn.findIndex((ch) => !JUMBO_VOWELS.includes(ch));
+  while (vowels() < LETTERS_MIN_VOWELS) {
+    const i = drawn.findIndex((ch) => !LETTERS_VOWELS.includes(ch));
     if (i < 0) break;
-    drawn[i] = JUMBO_VOWELS[Math.floor(rand() * JUMBO_VOWELS.length)];
+    drawn[i] = LETTERS_VOWELS[Math.floor(rand() * LETTERS_VOWELS.length)];
   }
   // Break up any triple by swapping the surplus letter for one that is not already doubled.
   for (let guard = 0; guard < 50; guard++) {
     const counts = letterCounts(drawn);
-    const triple = [...counts.entries()].find(([, n]) => n > JUMBO_MAX_REPEAT);
+    const triple = [...counts.entries()].find(([, n]) => n > LETTERS_MAX_REPEAT);
     if (!triple) break;
     const i = drawn.lastIndexOf(triple[0]);
-    const spare = bag.filter((ch) => (counts.get(ch) ?? 0) < JUMBO_MAX_REPEAT && ch !== triple[0]);
+    const spare = bag.filter((ch) => (counts.get(ch) ?? 0) < LETTERS_MAX_REPEAT && ch !== triple[0]);
     if (!spare.length) break;
     drawn[i] = spare[Math.floor(rand() * spare.length)];
   }
@@ -660,22 +660,22 @@ export function drawJumboLetters(rand = Math.random) {
 
 // Letters an operator (or a brain) asked for explicitly. Refused rather than repaired: a board
 // that quietly ignores what it was handed is a board nobody can trust.
-function jumboLetters(value) {
+function readLetters(value) {
   const raw = String(value ?? "").toLowerCase().replace(/[^a-z]/g, "");
-  if (raw.length !== JUMBO_LETTERS) throw new HttpError(422, "A Jumbo board is exactly seven letters.");
+  if (raw.length !== LETTERS_COUNT) throw new HttpError(422, "The board is exactly seven letters.");
   const counts = letterCounts(raw);
-  if ([...counts.keys()].filter((ch) => JUMBO_VOWELS.includes(ch)).length < JUMBO_MIN_VOWELS) {
-    throw new HttpError(422, "A Jumbo board needs at least two vowels.");
+  if ([...counts.keys()].filter((ch) => LETTERS_VOWELS.includes(ch)).length < LETTERS_MIN_VOWELS) {
+    throw new HttpError(422, "The board needs at least two vowels.");
   }
-  if ([...counts.values()].some((n) => n > JUMBO_MAX_REPEAT)) {
-    throw new HttpError(422, "A Jumbo board never has three of the same letter.");
+  if ([...counts.values()].some((n) => n > LETTERS_MAX_REPEAT)) {
+    throw new HttpError(422, "The board never has three of the same letter.");
   }
   return raw.split("");
 }
 
 // One word against one board: length, then letters, then how many of each the board has.
-export function jumboWordFits(letters, word) {
-  if (word.length < JUMBO_WORD_MIN || word.length > JUMBO_WORD_MAX) return false;
+export function lettersWordFits(letters, word) {
+  if (word.length < LETTERS_WORD_MIN || word.length > LETTERS_WORD_MAX) return false;
   const board = letterCounts(letters);
   const used = new Map();
   for (const ch of word) {
@@ -689,8 +689,8 @@ export function jumboWordFits(letters, word) {
 
 // The leaderboard, highest first. Equal totals keep the order they were first scored in, because
 // a board that reshuffles ties flickers on air every poll.
-export function jumboLeaders(jumbo) {
-  return Object.entries(jumbo?.scores ?? {})
+export function lettersLeaders(letters) {
+  return Object.entries(letters?.scores ?? {})
     .map(([user, points]) => ({ user, points }))
     .sort((a, b) => b.points - a.points);
 }
@@ -710,8 +710,8 @@ export async function runAction(store, b, now = Date.now()) {
   };
 
   let patch;
-  // Jumbo answers its caller with what it decided, and a refusal must not repaint the board.
-  let jumboResult = null;
+  // Letters answers its caller with what it decided, and a refusal must not repaint the board.
+  let lettersResult = null;
   let quiet = false;
   switch (b.action) {
     case "show": {
@@ -828,7 +828,7 @@ export async function runAction(store, b, now = Date.now()) {
     case "crid-open": {
       const kind = String(b.kind ?? "").trim().toLowerCase();
       if (!CRID_KINDS.includes(kind)) throw new HttpError(422, `kind must be one of ${CRID_KINDS.join(", ")}.`);
-      // A jumbotron title is display text, so an over-long one is shortened rather than
+      // A card title is display text, so an over-long one is shortened rather than
       // refused: an operator typing on a phone mid-segment should never be blocked by it.
       const rawTitle = typeof b.title === "string" ? b.title.trim() : "";
       if (!rawTitle) throw new HttpError(422, "title is required.");
@@ -948,56 +948,56 @@ export async function runAction(store, b, now = Date.now()) {
       patch = { court: null };
       break;
     }
-    // ---------- Jumbo, the word game ----------
-    case "jumbo-open": {
+    // ---------- Letters, the word game ----------
+    case "letters-open": {
       // The letters can be handed in (a replayed board, a test) or drawn here. Drawn is the normal
       // path, because the desk is the only thing that invents a board and the brain reads it back.
-      const letters = b.letters == null || b.letters === "" ? drawJumboLetters() : jumboLetters(b.letters);
-      const secs = Math.round(Number(b.seconds ?? JUMBO_ROUND_SEC));
-      if (!Number.isFinite(secs) || secs < 30 || secs > 600) throw new HttpError(422, "A Jumbo round is 30 to 600 seconds.");
+      const letters = b.letters == null || b.letters === "" ? drawLetters() : readLetters(b.letters);
+      const secs = Math.round(Number(b.seconds ?? LETTERS_ROUND_SEC));
+      if (!Number.isFinite(secs) || secs < 30 || secs > 600) throw new HttpError(422, "A round is 30 to 600 seconds.");
       patch = {
-        jumbo: {
+        letters: {
           id: cryptoRandomId(), letters, openedAt: now, endsAt: now + secs * 1000,
           status: "open", closedAt: null, claims: [], scores: {}, best: null,
         },
       };
       break;
     }
-    case "jumbo-claim": {
-      const jumbo = state.jumbo;
-      if (!jumbo || jumbo.status !== "open") throw new HttpError(409, "No Jumbo round is open.");
-      if (jumbo.endsAt <= now) throw new HttpError(409, "That Jumbo round is over.");
-      const user = text(b.user, LIMITS.jumboUser, "user");
+    case "letters-claim": {
+      const letters = state.letters;
+      if (!letters || letters.status !== "open") throw new HttpError(409, "No Letters round is open.");
+      if (letters.endsAt <= now) throw new HttpError(409, "That Letters round is over.");
+      const user = text(b.user, LIMITS.lettersUser, "user");
       if (!user) throw new HttpError(422, "A claim needs a viewer name.");
       const word = String(b.word ?? "").trim().toLowerCase();
       // Every refusal answers the caller and leaves the board exactly as it was: no points, no
       // version bump, nothing on air. That is what makes the second viewer's copy of a word free.
-      if (!/^[a-z]{3,7}$/.test(word)) { jumboResult = { accepted: false, reason: "not-a-word", word }; quiet = true; break; }
-      if (!jumboWordFits(jumbo.letters, word)) { jumboResult = { accepted: false, reason: "letters", word }; quiet = true; break; }
-      if (jumbo.claims.some((c) => c.word === word)) { jumboResult = { accepted: false, reason: "taken", word }; quiet = true; break; }
-      const score = jumboScore(word);
-      const claims = [...jumbo.claims, { word, user, score, at: now }];
-      const scores = { ...jumbo.scores, [user]: (jumbo.scores?.[user] ?? 0) + score };
-      const newBest = !jumbo.best || word.length > jumbo.best.word.length;
-      const best = newBest ? { word, user, score } : jumbo.best;
-      patch = { jumbo: { ...jumbo, claims, scores, best } };
+      if (!/^[a-z]{3,7}$/.test(word)) { lettersResult = { accepted: false, reason: "not-a-word", word }; quiet = true; break; }
+      if (!lettersWordFits(letters.letters, word)) { lettersResult = { accepted: false, reason: "letters", word }; quiet = true; break; }
+      if (letters.claims.some((c) => c.word === word)) { lettersResult = { accepted: false, reason: "taken", word }; quiet = true; break; }
+      const score = lettersScore(word);
+      const claims = [...letters.claims, { word, user, score, at: now }];
+      const scores = { ...letters.scores, [user]: (letters.scores?.[user] ?? 0) + score };
+      const newBest = !letters.best || word.length > letters.best.word.length;
+      const best = newBest ? { word, user, score } : letters.best;
+      patch = { letters: { ...letters, claims, scores, best } };
       // The beats Crid plays are decided by what actually happened, here, once.
-      jumboResult = { accepted: true, word, user, score, total: scores[user], best, firstBlood: claims.length === 1, newBest };
+      lettersResult = { accepted: true, word, user, score, total: scores[user], best, firstBlood: claims.length === 1, newBest };
       break;
     }
-    case "jumbo-close": {
-      if (!state.jumbo) throw new HttpError(409, "No Jumbo round to close.");
-      const leaders = jumboLeaders(state.jumbo);
-      jumboResult = {
-        closed: true, best: state.jumbo.best, leaders: leaders.slice(0, 5),
-        leader: leaders[0] ?? null, words: state.jumbo.claims.length,
+    case "letters-close": {
+      if (!state.letters) throw new HttpError(409, "No Letters round to close.");
+      const leaders = lettersLeaders(state.letters);
+      lettersResult = {
+        closed: true, best: state.letters.best, leaders: leaders.slice(0, 5),
+        leader: leaders[0] ?? null, words: state.letters.claims.length,
       };
-      if (state.jumbo.status === "closed") { quiet = true; break; } // closing twice is not news
-      patch = { jumbo: { ...state.jumbo, status: "closed", closedAt: now } };
+      if (state.letters.status === "closed") { quiet = true; break; } // closing twice is not news
+      patch = { letters: { ...state.letters, status: "closed", closedAt: now } };
       break;
     }
-    case "jumbo-clear":
-      patch = { jumbo: null };
+    case "letters-clear":
+      patch = { letters: null };
       break;
     // ---------- Music Desk ----------
     case "music-add": {
@@ -1255,9 +1255,9 @@ export async function runAction(store, b, now = Date.now()) {
       throw new HttpError(422, "Unknown action.");
   }
 
-  if (quiet) return { state, queueLength: queue.length, ...(jumboResult ? { jumbo: jumboResult } : {}) };
+  if (quiet) return { state, queueLength: queue.length, ...(lettersResult ? { letters: lettersResult } : {}) };
   const committed = await commitState(store, state, patch, now);
-  return { state: committed, queueLength: queue.length, ...(jumboResult ? { jumbo: jumboResult } : {}) };
+  return { state: committed, queueLength: queue.length, ...(lettersResult ? { letters: lettersResult } : {}) };
 }
 
 // ---------- Twitch clipping ----------
@@ -1689,7 +1689,7 @@ export const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 export const sameTopic = (a, b) => a === b || (Math.min(a.length, b.length) >= 5 && (a.includes(b) || b.includes(a)));
 
 // W/L visual mapping: 1 = W, 0 = L. Used in poll results, challenges, community decisions,
-// jumbotron graphics, scoreboards and CRID verdicts.
+// card graphics, scoreboards and CRID verdicts.
 export const wl = (value) => value === 1 ? "W" : value === 0 ? "L" : null;
 
 // Manual button and scheduled run both call this. Approval is read from the persisted state

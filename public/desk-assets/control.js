@@ -865,7 +865,7 @@ import { createCridVoice } from "./crid-voice.js";
     h("option", { value: "news" }, "News"),
     h("option", { value: "debate" }, "Debate"),
     h("option", { value: "question" }, "Question"));
-  const cridTitleIn = h("input", { placeholder: "Subject / Album / Debate (e.g. Does this album survive the Jumbotron?)", maxlength: 120 });
+  const cridTitleIn = h("input", { placeholder: "Subject / Album / Debate (e.g. Does this album survive the night?)", maxlength: 120 });
   const cridCreditIn = h("input", { placeholder: "Stranger credit / community handle (optional)", maxlength: 30 });
   const cridAudioIn = h("input", { placeholder: "Audio URL (MP3/AAC/WebM) — heard on the overlay device only", maxlength: 2000 });
 
@@ -887,7 +887,7 @@ import { createCridVoice } from "./crid-voice.js";
 
       cridPanel.append(
         h("div", { class: "row", style: "justify-content:space-between;margin-bottom:6px" },
-          h("h2", { style: "margin:0" }, `CRID #${crid.entry} — Jumbotron Active`),
+          h("h2", { style: "margin:0" }, `CRID #${crid.entry} — Live`),
           h("span", "chip ok", crid.kind.toUpperCase())),
         h("div", "crid-card",
           h("h3", { style: "margin:0 0 6px;font-size:1.15rem;color:#FFF" }, crid.title),
@@ -905,14 +905,14 @@ import { createCridVoice } from "./crid-voice.js";
           btn("Close CRID Segment", () => act("crid-close"), "small danger", "heavy")));
     } else {
       cridPanel.append(
-        h("h2", {}, "CRID — Cyber's Rent Is Due", h("span", { class: "chip" }, "Jumbotron")),
-        h("p", "sub", "Broadcast a live topic or debate to the viewer jumbotron. Credit a Stranger and stamp rent verdicts."),
+        h("h2", {}, "CRID — Cyber's Rent Is Due", h("span", { class: "chip" }, "card")),
+        h("p", "sub", "Broadcast a live topic or debate to the desk. Credit a Stranger and stamp rent verdicts."),
         h("label", "f", h("span", {}, "Segment Kind"), cridKindSel),
         h("label", "f", h("span", {}, "Segment Title / Subject (max 120 chars)"), cridTitleIn),
         h("label", "f", h("span", {}, "Stranger Credit (community member, max 30 chars)"), cridCreditIn),
         h("label", "f", h("span", {}, "Audio URL (MP3 / AAC / WebM)"), cridAudioIn),
         h("p", "sub", "Plays on whatever device renders the overlay. Swae broadcasts microphone audio only, so this is not heard on the stream there; a desktop browser source that routes its audio is the way to get it on air."),
-        btn("Open Jumbotron Segment", async () => {
+        btn("Open segment", async () => {
           const title = cridTitleIn.value.trim();
           if (!title) return toast("Enter a segment title", true);
           await act("crid-open", { kind: cridKindSel.value, title, credit: cridCreditIn.value.trim() || undefined, audioUrl: cridAudioIn.value.trim() || undefined });
@@ -930,8 +930,8 @@ import { createCridVoice } from "./crid-voice.js";
   const botPanel = h("section", "panel crid-bot-panel");
   const renderBotPanel = () => {
     const on = state?.bot?.on !== false;
-    const jumbo = state?.jumbo || null;
-    const jumboOpen = !!(jumbo && jumbo.status === "open");
+    const letters = state?.letters || null;
+    const lettersOpen = !!(letters && letters.status === "open");
     const last = state?.bot?.react;
     const subs = Number.isSafeInteger(state?.bot?.subs) ? state.bot.subs : 0;
     const subsInput = h("input", { type: "number", min: "0", max: "10000000", step: "1", value: String(subs), inputMode: "numeric", "aria-label": "Current stream subscriber total" });
@@ -953,14 +953,14 @@ import { createCridVoice } from "./crid-voice.js";
         btn(kind.toUpperCase(), () => act("bot-react", { kind }), "small"))),
       h("h3", { style: "margin:16px 0 4px" }, "Letters"),
       h("p", "sub", "Seven letters, 90 seconds. Chat types one word; the longest pays most. The board is Crid's, and he plays the open and the close."),
-      jumboOpen
+      lettersOpen
         ? h("div", "row",
-            h("span", "chip ok", (jumbo.letters || []).join(" · ")),
-            h("span", "sub", `${Math.max(0, Math.ceil(((jumbo.endsAt ?? 0) - (Date.now() + offset)) / 1000))}s · ${(jumbo.claims || []).length} words`),
-            btn("Close round", () => act("jumbo-close"), "small danger", "heavy"))
+            h("span", "chip ok", (letters.letters || []).join(" · ")),
+            h("span", "sub", `${Math.max(0, Math.ceil(((letters.endsAt ?? 0) - (Date.now() + offset)) / 1000))}s · ${(letters.claims || []).length} words`),
+            btn("Close round", () => act("letters-close"), "small danger", "heavy"))
         : h("div", "row",
-            btn("Start a round", () => act("jumbo-open"), "primary", "heavy"),
-            jumbo ? btn("Clear the board", () => act("jumbo-clear"), "small") : null));
+            btn("Start a round", () => act("letters-open"), "primary", "heavy"),
+            letters ? btn("Clear the board", () => act("letters-clear"), "small") : null));
   };
 
   // ---------- desks ----------
@@ -1543,7 +1543,7 @@ import { createCridVoice } from "./crid-voice.js";
           cridAudioIn.value = t.audioUrl || "";
           currentTab = "crid";
           renderApp();
-          toast("Loaded into CRID Jumbotron!");
+          toast("Loaded into CRID!");
         }, "small")
       );
 
@@ -1553,7 +1553,7 @@ import { createCridVoice } from "./crid-voice.js";
 
   const audiomackPanel = h("section", "panel stack",
     h("h2", {}, "Audiomack Music Station"),
-    h("p", "sub", "Stream Afrobeats & Naija tracks directly through the Broadcast Music Desk and CRID Jumbotron."),
+    h("p", "sub", "Stream Afrobeats & Naija tracks directly through the Broadcast Music Desk and CRID."),
     h("div", "row", audiomackQueryIn, audiomackSearchBtn),
     h("div", "row", audiomackTrendingBtn),
     audiomackStatus,
@@ -1829,8 +1829,8 @@ import { createCridVoice } from "./crid-voice.js";
       : c ? c.headline : state.poll ? "Poll: " + state.poll.question : "Overlay is on but empty";
 
     const cridPill = state.crid
-      ? h("span", "chip ok", `CRID #${state.crid.entry} ${state.crid.verdict === 1 ? 'PAID' : state.crid.verdict === 0 ? 'OWING' : 'ON JUMBOTRON'}`)
-      : h("span", "chip", "JUMBOTRON IDLE");
+      ? h("span", "chip ok", `CRID #${state.crid.entry} ${state.crid.verdict === 1 ? 'PAID' : state.crid.verdict === 0 ? 'OWING' : 'LIVE'}`)
+      : h("span", "chip", "IDLE");
 
     statusEl.append(
       h("div", { class: "row", style: "justify-content:space-between;margin-bottom:4px" },

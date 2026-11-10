@@ -135,10 +135,10 @@ test("the identity surfaces never lean", () => {
   const rule = CYBER_CSS.match(/[^{}]*\{[^}]*rotate:var\(--lean[^}]*\}/)?.[0];
   assert.ok(rule);
   const selector = rule.slice(0, rule.indexOf("{"));
-  for (const pinned of ["#time-dock", "#auto-headlines", "#desk-logo", "#crid-bot", "#crid-jumbotron"]) {
+  for (const pinned of ["#time-dock", "#auto-headlines", "#desk-logo", "#crid-bot", "#crid-live"]) {
     assert.ok(!selector.includes(pinned), `${pinned} must stay square`);
   }
-  for (const leaning of [".card", ".court-wrap", ".music-wrap", ".ledger-wrap", "#x-jumbotron"]) {
+  for (const leaning of [".card", ".court-wrap", ".music-wrap", ".ledger-wrap", "#x-feed"]) {
     assert.ok(selector.includes(leaning), `${leaning} should carry the hand`);
   }
 });
@@ -164,17 +164,17 @@ test("the CRID bug breathes in opacity, and the theme stops killing it", () => {
   assert.ok(breathe);
   assert.ok(!/filter/.test(breathe), `the breathe must not be a filter: ${breathe}`);
   assert.match(breathe, /opacity/);
-  assert.match(overlay, /#crid-jumbotron\.in\s*\{[^}]*animation: bug-breathe 4s ease-in-out infinite/);
+  assert.match(overlay, /#crid-live\.in\s*\{[^}]*animation: bug-breathe 4s ease-in-out infinite/);
 
-  const bug = CYBER_CSS.match(/#crid-jumbotron\{[^}]*\}/)?.[0];
+  const bug = CYBER_CSS.match(/#crid-live\{[^}]*\}/)?.[0];
   assert.ok(bug);
   assert.ok(!/animation:none/.test(bug), "the theme must let the cheap breathe run");
-  const lifted = CYBER_CSS.match(/#crid-jumbotron\.in\{[^}]*\}/)?.[0];
+  const lifted = CYBER_CSS.match(/#crid-live\.in\{[^}]*\}/)?.[0];
   assert.ok(lifted, "the promoted badge needs its own depth");
   const deep = lifted.match(/box-shadow:([\d.]+)em ([\d.]+)em 0/);
   assert.ok(deep, `no hard shadow on .in: ${lifted}`);
   assert.ok(Number(deep[1]) > 0.28 && Number(deep[2]) > 0.32, "the promoted badge must sit deeper than the resting sticker");
-  assert.match(overlay, /#crid-jumbotron\s*\{[^}]*transition: opacity 0\.55s cubic-bezier\(0\.2, 0\.9, 0\.25, 1\)/s);
+  assert.match(overlay, /#crid-live\s*\{[^}]*transition: opacity 0\.55s cubic-bezier\(0\.2, 0\.9, 0\.25, 1\)/s);
 });
 
 test("the label pill carries a live mint tick, pulsing in opacity", () => {

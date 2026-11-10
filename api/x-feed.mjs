@@ -1,4 +1,4 @@
-// CYBER LIVE DESK — X feed proxy for the desk jumbotron and private briefs.
+// CYBER LIVE DESK — X feed proxy for the desk and private briefs.
 // Credentials stay server-side. Trend requests are explicit and bounded.
 // Routes:
 //   GET /api/x/feed?mode=trends&woeid=23424908   Nigeria trends (default)

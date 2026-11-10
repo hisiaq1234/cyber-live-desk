@@ -1,6 +1,6 @@
 // CYBER LIVE DESK — Audiomack Music Station proxy.
 // Connects to the Audiomack v1 Data API for trending tracks, music discovery,
-// and playable stream URLs for the Broadcast Music Desk and CRID Jumbotron.
+// and playable stream URLs for the Broadcast Music Desk and CRID.
 // Never exposes API credentials to the browser.
 //
 // Routes:
@@ -123,7 +123,7 @@ const CURATED_TRACKS = [
   },
   {
     id: "am-03",
-    title: "Oya Na (Jumbotron Vibe)",
+    title: "Oya Na",
     artist: "Black Market Studio",
     image: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300&h=300&fit=crop",
     genre: "Amapiano",

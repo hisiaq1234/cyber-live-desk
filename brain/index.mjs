@@ -16,7 +16,7 @@ import { loadPersonality, PERSONALITY_PATH } from "./personality.mjs";
 import { createTwitchIrc } from "./twitch-irc.mjs";
 import { createDemoSource, createReactionDemo, mulberry32 } from "./demo.mjs";
 import { createBrainServer } from "./server.mjs";
-import { createJumboGame } from "./jumbo.mjs";
+import { createLettersGame } from "./letters.mjs";
 
 const DEFAULT_PORT = 7311;
 
@@ -150,9 +150,9 @@ async function main() {
 
   engine.onAction = (action, commands) => server.broadcastDecision({ ...action }, commands);
 
-  // Jumbo rides on the chat the brain already reads. It needs one thing nothing else in here does —
+  // Letters rides on the chat the brain already reads. It needs one thing nothing else in here does —
   // a way to write desk state — so it stays off, and says why once, until that is configured.
-  const jumbo = createJumboGame({ bus, log });
+  const letters = createLettersGame({ bus, log });
 
   // live personality edits: the owner can pour himself in without restarting the brain
   watchFile(PERSONALITY_PATH, { interval: 1500 }, (curr, prev) => {
@@ -188,17 +188,17 @@ async function main() {
   banner({ args, personality, port, engine, log });
 
   engine.start();
-  jumbo.start();
+  letters.start();
 
   let source = null;
   if (args.demo) {
     if (args.scenario === "reactions") {
-      source = createReactionDemo({ onEvent: (evt) => { jumbo.onEvent(evt); engine.handleEvent(evt); }, log });
+      source = createReactionDemo({ onEvent: (evt) => { letters.onEvent(evt); engine.handleEvent(evt); }, log });
       source.start();
       log("[reactions] looping the owner's vocabulary: Ws/1s hype → L tears → drag a layer aside");
     } else {
       if (args.scenario) log(`[brain] unknown scenario "${args.scenario}" — running the full demo instead`);
-      source = createDemoSource({ onEvent: (evt) => { jumbo.onEvent(evt); engine.handleEvent(evt); }, log, random });
+      source = createDemoSource({ onEvent: (evt) => { letters.onEvent(evt); engine.handleEvent(evt); }, log, random });
       source.start();
       log("[demo] synthetic chat started — watch the overlay, or this log");
     }
@@ -212,7 +212,7 @@ async function main() {
     } else {
       source = createTwitchIrc({
         channel: args.channel,
-        onEvent: (evt) => { jumbo.onEvent(evt); engine.handleEvent(evt); },
+        onEvent: (evt) => { letters.onEvent(evt); engine.handleEvent(evt); },
         log,
         onStatus: (s) => {
           status.twitch = { state: s.state, channel: s.channel, detail: s.detail, attempts: s.attempts };
@@ -229,7 +229,7 @@ async function main() {
   const shutdown = async (sig) => {
     log(`\n[brain] ${sig} — shutting down`);
     engine.stop();
-    jumbo.stop();
+    letters.stop();
     source?.stop?.();
     watchFile(PERSONALITY_PATH, { interval: 1500 }, () => {});
     try {

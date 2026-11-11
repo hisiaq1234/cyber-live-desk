@@ -107,7 +107,7 @@ export const RESEARCH_APPROVAL_MODES = ["manual", "trusted", "all"];
 // The desk lockup. These names are the contract; the choreography that gives each one its own
 // window on screen lives in public/desk-assets/logo.js. The server stores a subset and refuses
 // anything else, so a typo can never quietly drop a layer on air. tests/logo.test.mjs keeps the
-// two lists in step, the same way the two copies of _commands.mjs are kept in step.
+// two lists in step.
 export const LOGO_LAYERS = ["sweep", "mark", "word", "rule"];
 export const LOGO_POSITIONS = ["tl", "tc", "tr", "bl", "bc", "br", "custom"];
 export const LOGO_WIDTH = { min: 6, max: 46, default: 24, step: 6 }; // vw

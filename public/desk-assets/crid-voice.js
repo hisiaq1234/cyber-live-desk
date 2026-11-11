@@ -1,7 +1,7 @@
 import { parseDeskCommand } from "./desk-commands.js";
-// commandBody lives in the browser copy of the shared rules. The api/ copy is a
-// server-only module: /api/_commands.mjs is a 404 in the browser, so importing it
-// here cascade-fails control.js and blanks the operator panel.
+// commandBody lives in the shared rules, which the browser and the api both import
+// as this same served file: importing anything out of api/ here would 404 and
+// cascade-fail control.js, blanking the operator panel.
 import { commandBody } from "./_commands.mjs";
 
 const TOKEN_KEY = "desk.token";

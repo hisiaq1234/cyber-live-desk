@@ -1,7 +1,8 @@
 // CYBER LIVE DESK — shared chat command rules.
-// Single source of truth for command parsing, used by both the browser controller
-// (public/desk-assets/desk-commands.js) and the Twitch EventSub webhook
-// (api/_twitch-core.mjs). Pure JS: no Node imports, no DOM, so the
+// Single source of truth for command parsing. The browser controller
+// (public/desk-assets/desk-commands.js, crid-voice.js) and the api side
+// (api/desk.mjs, api/_twitch-core.mjs) all import this one file — there is no
+// second copy to keep in step. Pure JS: no Node imports, no DOM, so the
 // same file runs in both environments.
 
 // "crid" then the verb, glued, spaced, dashed or underscored: cridnext, crid next, !crid_next.
@@ -204,11 +205,3 @@ export const commandText = (cmd) =>
     : cmd.verb === "research" ? `crid research ${cmd.topic ?? ""}`.trim()
     : cmd.verb === "deeper" ? `crid deeper ${cmd.focus ?? ""}`.trim()
     : `crid ${cmd.verb}`;
-
-// Vercel makes a function out of every file in the api directory. This module is imported by
-// _twitch-core.mjs and desk-commands.js, so it refuses a direct request instead of half-working.
-export default () =>
-  new Response(JSON.stringify({ error: "Internal module. Import parseDeskCommand, parsePollSpec, validatePollDraft, parseAllowIds, chatMayCommand, COMMAND_HELP instead." }), {
-    status: 501,
-    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
-  });

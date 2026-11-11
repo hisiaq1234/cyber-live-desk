@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { BOT_REACTS, COMMAND_HELP, chatMayCommand, commandText, parseAllowIds, parseDeskCommand, parsePollSpec, validatePollDraft } from "../public/desk-assets/desk-commands.js";
-import { BOT_REACTS as serverBotReacts, commandBody as serverCommandBody, commandText as serverCommandText, parseDeskCommand as parseServerDeskCommand } from "../api/_commands.mjs";
+import { BOT_REACTS as serverBotReacts, commandBody as serverCommandBody, commandText as serverCommandText, parseDeskCommand as parseServerDeskCommand } from "../public/desk-assets/_commands.mjs";
 import { commandBody as publicCommandBody, commandText as publicCommandText, parseDeskCommand as parsePublicDeskCommand } from "../public/desk-assets/_commands.mjs";
 import { BOT_REACTS as coreBotReacts } from "../api/_desk-core.mjs";
 

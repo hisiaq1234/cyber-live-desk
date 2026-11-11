@@ -166,18 +166,42 @@ test("the body ladder is a real ladder, not seven near-identical frames", async 
   assert.ok(last.slow > first.slow && last.heft > first.heft, "the huge stage must move heavier than the lanky one");
 });
 
-test("no state can paint an invisible sprite", async () => {
-  // Break caught: eyes-sleep, eyes-dim, eyes-spark and mouth-slam shipped as 42-byte 1x1
-  // placeholders while real states referenced them — so dozing or waking painted a blank over his
-  // face. Anything under 1 KB is a placeholder, and a placeholder must not ship.
+test("sprite and rig assets are present, readable, and not placeholders", async () => {
+  // Anything under 1 KB is a placeholder, and a placeholder must not ship. Inspect recursively
+  // (including rig pieces) and validate the assets the engine actually loads are readable files.
   const dir = new URL("../public/desk-assets/crid/", import.meta.url);
-  const files = await readdir(dir);
-  const tiny = [];
-  for (const f of files) {
-    const size = (await stat(new URL(f, dir))).size;
-    if (size < 1024) tiny.push(`${f} (${size} B)`);
+  async function walk(u, rel = "") {
+    const out = [];
+    for (const f of await readdir(u)) {
+      const child = new URL(f, u + (u.pathname.endsWith("/") ? "" : "/"));
+      const r = rel ? `${rel}/${f}` : f;
+      const s = await stat(child);
+      if (s.isDirectory()) out.push(...await walk(child, r));
+      else out.push({ rel: r, size: s.size, path: child });
+    }
+    return out;
   }
-  assert.deepEqual(tiny, [], "no sprite under 1 KB may ship — supply real art or stop the state rendering");
+  const files = await walk(dir);
+  const tiny = files.filter((f) => f.size < 1024).map((f) => `${f.rel} (${f.size} B)`);
+  assert.deepEqual(tiny, [], "no sprite/rig asset under 1 KB may ship — supply real art or remove it");
+
+  // Expected files the bot/rig load must exist and be readable (not just present in name).
+  const expected = [
+    "ladder.json", "rig.json", "rig.mjs", "spritesheet.webp",
+    ...["000", "00", "0", "1", "2", "3", "5"].map((b) => `body-${b}-r7.webp`),
+    ...["arm-fore-l.png", "arm-fore-r.png", "arm-upper-l.png", "arm-upper-r.png", "head.png", "shin-l.png", "shin-r.png", "thigh-l.png", "thigh-r.png", "torso.png"].map((f) => `rig/${f}`),
+  ];
+  const missing = [];
+  for (const rel of expected) {
+    const p = new URL(rel, dir + "/");
+    try {
+      const b = await readFile(p);
+      if (!b || b.length === 0) missing.push(`${rel} (empty/unreadable)`);
+    } catch (e) {
+      missing.push(`${rel} (${e.code || "missing"})`);
+    }
+  }
+  assert.deepEqual(missing, [], "expected CRID sprite/rig assets must exist and be readable");
 });
 
 test("the mascot is drawn at broadcast size and can be scaled from the URL", async () => {

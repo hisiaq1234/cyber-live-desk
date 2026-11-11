@@ -191,8 +191,9 @@ html.low-power #crid-bot svg,html.swae #crid-bot svg{filter:none}
   text-align:center;white-space:pre-wrap;opacity:0;transition:opacity .22s ease;pointer-events:none}
 #crid-bot .bot-bubble::after{content:"";position:absolute;top:100%;left:50%;margin-left:-5px;
   border:5px solid transparent;border-top-color:var(--bone,${PAL.bone})}
-#crid-bot[data-mode="dead"] .ticket-fill{fill:${PAL.dead}}
-#crid-bot[data-mode="dead"] .avatar-base{opacity:.55}
+#crid-bot[data-mode="dead"] .ticket-fill,#crid-bot[data-mode="dying"] .ticket-fill{fill:${PAL.dead}}
+#crid-bot[data-mode="dead"] .avatar-base,#crid-bot[data-mode="dying"] .avatar-base{opacity:.55}
+#crid-bot[data-mode="dead"] svg,#crid-bot[data-mode="dying"] svg{filter:grayscale(.15) drop-shadow(0 calc(var(--bot-w)*.028) calc(var(--bot-w)*.07) rgba(0,0,0,.42))}
 #crid-bot[data-mode="doze"] .avatar-base{opacity:.88}
 `;
 // The ladder is exported so a test can hold it to the measurement in ladder.json; nothing in the
@@ -509,32 +510,58 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // down to the floor.
   const swingOf=t=>{if(t<.5)return 0; const x=(t-.5)*2; return .5-.5*Math.cos(2*Math.PI*x)};
   let rigOn=!1;
-  const showRig=(on,u)=>{
+  // Walking is an alternating-step cycle (feet leave the floor, arms swing with the step).
+  // Standing idle is different on purpose: a living hold — slow weight shift onto one leg, a gentle
+  // body sway/settle and small natural arm movement — not a march played slowly. Dead/dying never
+  // reach showRig (render falls back to the flat drawing) so the character can show dead treatment.
+  const showRig=(on,u,kind="walk")=>{
     // The flat drawing is the same figure, so it has to go while the rig is on: left underneath, it
     // is a second pair of legs that stay planted and a second pair of arms that do not swing, and
     // the whole gait reads as a body walking out of its own skin.
     if(on!==rigOn){rigOn=on; parts.rigG.setAttribute("display",on?"":"none"); parts.avatarBase.setAttribute("display",on?"none":"")}
     if(!on)return;
-    const tL=(u*2)%1,tR=(u*2+.5)%1,          // the left leg steps first, the right on the second half
-      wL=swingOf(tL),wR=swingOf(tR),         // 0 with the foot down, 1 at the top of the step
-      kickL=wL>0?Math.sin(Math.PI*(tL-.5)*2):0, kickR=wR>0?Math.sin(Math.PI*(tR-.5)*2):0,
-      arm=Math.sin(2*Math.PI*tL)*RIG_ARM,    // both shoulders turn the same way: one out, one across
-      bob=Math.max(wL,wR)*RIG_BOB,
-      sway=-Math.sin(2*Math.PI*tL)*RIG_SWAY, // towards whichever foot is planted
-      twist=Math.sin(2*Math.PI*tL)*RIG_TWIST,
-      set=(j,deg,dx=0,dy=0)=>{const q=RIG.pivot[j]; parts.rigJ[j].setAttribute("transform",
-        `translate(${dx.toFixed(2)} ${dy.toFixed(2)}) rotate(${deg.toFixed(2)} ${q.x} ${q.y})`)};
-    // The planted leg is untouched: no lift, no lean, so its foot stays exactly on the floor line.
-    set("hip-l",RIG_HIP*kickL,0,-RIG_LIFT*wL); set("knee-l",-RIG_KNEE*wL);
-    set("hip-r",-RIG_HIP*kickR,0,-RIG_LIFT*wR); set("knee-r",RIG_KNEE*wR);
-    set("shoulder-l",arm,0,-twist); set("elbow-l",-arm*.5);
-    set("shoulder-r",arm,0,twist); set("elbow-r",-arm*.5);
-    parts.rigUpper.setAttribute("transform",`translate(${sway.toFixed(2)} ${(-bob).toFixed(2)})`);
+    const set=(j,deg,dx=0,dy=0)=>{const q=RIG.pivot[j]; parts.rigJ[j].setAttribute("transform",
+      `translate(${dx.toFixed(2)} ${dy.toFixed(2)}) rotate(${deg.toFixed(2)} ${q.x} ${q.y})`)};
+    if(kind==="walk"){
+      const tL=(u*2)%1,tR=(u*2+.5)%1,          // the left leg steps first, the right on the second half
+        wL=swingOf(tL),wR=swingOf(tR),         // 0 with the foot down, 1 at the top of the step
+        kickL=wL>0?Math.sin(Math.PI*(tL-.5)*2):0, kickR=wR>0?Math.sin(Math.PI*(tR-.5)*2):0,
+        arm=Math.sin(2*Math.PI*tL)*RIG_ARM,    // both shoulders turn the same way: one out, one across
+        bob=Math.max(wL,wR)*RIG_BOB,
+        sway=-Math.sin(2*Math.PI*tL)*RIG_SWAY, // towards whichever foot is planted
+        twist=Math.sin(2*Math.PI*tL)*RIG_TWIST;
+      // The planted leg is untouched: no lift, no lean, so its foot stays exactly on the floor line.
+      set("hip-l",RIG_HIP*kickL,0,-RIG_LIFT*wL); set("knee-l",-RIG_KNEE*wL);
+      set("hip-r",-RIG_HIP*kickR,0,-RIG_LIFT*wR); set("knee-r",RIG_KNEE*wR);
+      set("shoulder-l",arm,0,-twist); set("elbow-l",-arm*.5);
+      set("shoulder-r",arm,0,twist); set("elbow-r",-arm*.5);
+      parts.rigUpper.setAttribute("transform",`translate(${sway.toFixed(2)} ${(-bob).toFixed(2)})`);
+      return;
+    }
+    // Idle: no stepping, both feet stay planted. Weight shifts slowly side to side (hips/torso carry
+    // it), the upper body eases and settles, and the arms move a little with the shift — a standing
+    // person, not a walking cycle. Motions are out of phase so they read as organic, not metronomic.
+    const w=Math.sin(2*Math.PI*u), w2=Math.sin(2*Math.PI*u+.9), w3=Math.sin(4*Math.PI*u+.4);
+    const sway=w*2.1, bob=(.5+.5*w2)*3.2, twist=w*1.1;
+    const hipShift=w*.7, load=.5+.5*w; // weight biased to one side, easing back
+    set("hip-l",hipShift,0,0); set("knee-l",0);
+    set("hip-r",hipShift,0,0); set("knee-r",0);
+    set("shoulder-l",-w*1.8,0,-twist); set("elbow-l",-w3*.9);
+    set("shoulder-r",-w*1.2,0,twist); set("elbow-r",w3*.7);
+    parts.rigUpper.setAttribute("transform",`translate(${sway.toFixed(2)} ${(-bob).toFixed(2)}) rotate(${(w*.35).toFixed(2)} ${RIG.pivot["shoulder-l"].x} ${RIG.pivot["shoulder-l"].y})`);
+  };
+  // The rig's own clock. Mid-stride it is the step's progress so feet land with the travel;
+  // standing still it is a slower cycle for an idle weight shift (not a walk).
+  let rigIdleAt=0;
+  const rigPhase=()=>{
+    if(walk&&walk.to) return clamp((Date.now()-walk.t0)/walk.dur,0,1);
+    const now=Date.now(); if(!rigIdleAt)rigIdleAt=now;
+    return ((now-rigIdleAt)/5200)%1; // ~5.2s idle cycle, slow weight shift
   };
   const render=p=>{
-    // Stamped before the unchanged-pose early return: the mode is the attribute the overlay, the
-    // theme's idle animation and any on-air check read, and it must never lag a mode change.
-    host.dataset.mode=mode;
+    // Stamped before the unchanged-pose early return: the mode/dying state is what the overlay,
+    // theme and checks read, and it must never lag a transition (including the dying beat).
+    host.dataset.mode=dying?"dying":mode;
     // A lean is drawn from a bitmap that already carries the tilt (see bakeLean), so the pose below
     // has nothing left to rotate at display size. Resolved before the signature so a bake that only
     // becomes possible once the frame has decoded still gets drawn. A prone pose (pr) is left on the
@@ -542,12 +569,16 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // second pivot rule.
     const plank=Math.abs(Math.sin(p.pr*Math.PI/180)),L=(p.hr*.8+p.pr)*p.fx,k=1-.16*plank,shift=plank*60*p.fx;
     const baked=leanAt&&p.fx===1&&plank===0?bakeLean(leanAt.angle):null;
-    // The rig is only cut for the base stage so far, and it is only drawn while he is actually
-    // stepping: between steps, at rest and in every other body the flat drawing is what shows,
-    // which is also the only path that carries a baked lean.
-    const rigStep=!!(walk&&walk.to&&!leanAt&&BODIES[bodyI]==="000"),
-      rigU=rigStep?clamp((Date.now()-walk.t0)/walk.dur,0,1):0,
-      sig=JSON.stringify(p)+bodyI+(leanAt?leanAt.angle:0)+(pondering?1:0)+(baked?"b":"")+(rigStep?":"+Math.round(rigU*100):"");
+    // The rig is cut for the base stage only (scripts/build-crid-rig.py measures body-000; the
+    // other six stages fail its anatomy read — see PROGRESS/notes), so it is drawn only for that
+    // stage when not leaning and not dead/dying. Dead/dying always fall back to the flat drawing so
+    // the rendered character shows the dead-state treatment and the limbs stop moving. At rest the
+    // rig is a living idle (subtle weight/posture/arm shifts), distinct from an actual walk.
+    const stepping=!!(walk&&walk.to), alive=mode!=="dead"&&!dying;
+    const rigStep=!!(alive&&!leanAt&&BODIES[bodyI]==="000"),
+      rigU=rigStep?rigPhase():0,
+      rigKind=stepping?"walk":"idle",
+      sig=JSON.stringify(p)+bodyI+(leanAt?leanAt.angle:0)+(pondering?1:0)+(baked?"b":"")+(rigStep?":"+rigKind+":"+Math.round(rigU*100):":flat:"+(dying?"d":"")+mode);
     if(sig===lastDrawn)return; lastDrawn=sig;
     // A pose may still name eyes:/mouth: (every sequence does). There is no face layer to write to
     // any more — the drawing's own face is the face — so those keys are carried and ignored, and the
@@ -569,7 +600,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // into the bitmap there is nothing to rotate here: the bitmap is already tipped about the same
     // feet, so the pose goes on unchanged and the drawing stays sharp.
     parts.figG.setAttribute("transform",`${leanAt&&!baked?`rotate(${leanAt.angle.toFixed(2)} ${VB_CX} ${VB_FEET}) `:""}translate(${(shift+p.gx*1.15).toFixed(2)} ${(p.hy*.85-plank*14).toFixed(2)}) translate(70 158) rotate(${L.toFixed(2)}) scale(${(p.fx*p.sx*k).toFixed(3)} ${(p.sy*k).toFixed(3)}) translate(-70 -158)`);
-    showSprite(baked); showRig(rigStep,rigU);
+    showSprite(baked); showRig(rigStep,rigU,stepping?"walk":"idle");
   };
   // ---- human timing ----------------------------------------------------------------------
   // The sprite is a still drawing, so the only life it has is what the engine moves. Two layers:
@@ -642,18 +673,21 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const tick=()=>{if(frozen)return; const now=Date.now(); tickN++; if(walk&&(jobs.length||running))stopWalk(); advanceJob(); advanceWalk();
     if(now>=trAt+trFor){ // the previous beat has finished travelling: choose the next one
       let frame=null; if(walk&&!walk.done&&!gestureQ.length)gestureQ.push(...SEQ.crawl);
-      if(gestureQ.length)frame=gestureQ.shift(); else if(mode!=="dead"){
+      if(gestureQ.length)frame=gestureQ.shift(); else if(mode!=="dead"&&!dying){
         // Against a panel, or inside a thought, he is not pottering about: the staged hold is the
         // performance, so nothing picks a wander for him until he lets go.
         if(!idleQ.length&&!walk&&!leanAt&&!pondering&&now>=waitUntil){const q=pickIdle();
           if(q===SEQ.crawl){crawlScreen();idleQ=[]}else idleQ=[...q]; waitUntil=now+nextWait()}
         frame=idleQ.shift()||null; if(mode==="on"&&now-lastActive>DOZE_AFTER_MS)setMode("doze")}
       stepTo(frame,now);
-      if(dying&&!gestureQ.length){mode="dead";dying=!1}
-      else if(!running&&!jobs.length&&!gestureQ.length&&pendingReact.length)play(SEQ[pendingReact.shift()]||[]);
+      if(dying&&!gestureQ.length){mode="dead";dying=!1;host.dataset.mode="dead";lastDrawn=""}
+      else if(!dying&&!running&&!jobs.length&&!gestureQ.length&&pendingReact.length)play(SEQ[pendingReact.shift()]||[]);
     }
+    // Dead/dying: render the pose (die sequence while dying, prone at rest when dead) but do not
+    // run the rig/idle loop — the flat drawing carries the dead treatment and limbs stay still.
     render(advancePose(now));
-    timer=setTimeout(tick,(walk||Date.now()<trAt+trFor)?ANIM:STEP)};
+    const fast=!dying&&mode!=="dead"&&(walk||Date.now()<trAt+trFor);
+    timer=setTimeout(tick,fast?ANIM:(mode==="dead"?STEP*4:STEP))};
   // The reduced-motion cut of a sequence: the same beats, without the travel. Anything that moves
   // him across the frame (by, bs, pr) is dropped and what remains is clamped to a twitch, so the
   // loop still ticks and still reads as a character — it just stops throwing him around.
@@ -667,7 +701,9 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // lean away here was what sent him home the moment the desk went still. Only a mode that takes
   // him off the desk (dead) comes home; a lean is released by unlean(), by another lean, or by
   // dying — never by the clock running out on his attention.
-  function setMode(next){if(next===mode&&!dying)return; const was=mode; idleQ=[]; if(next!=="on"&&next!=="doze")goHome(); if(next==="dead"){if(was==="dead"||dying)return; cancelJobs(); clearTimeout(feelTimer); pendingReact.length=0; dying=!0; play(SEQ.die,{urgent:!0}); if(reduced){mode="dead";dying=!1;host.dataset.mode=mode} return} dying=!1; mode=next; host.dataset.mode=mode; if(was==="dead")play(SEQ.wake,{urgent:!0}); lastActive=Date.now()}
+  function setMode(next){if(next===mode&&!dying)return; const was=mode; idleQ=[]; if(next!=="on"&&next!=="doze")goHome();
+    if(next==="dead"){if(was==="dead"||dying)return; cancelJobs(); clearTimeout(feelTimer); pendingReact.length=0; dying=!0; play(SEQ.die,{urgent:!0}); lastDrawn=""; host.dataset.mode="dying"; if(reduced){mode="dead";dying=!1;host.dataset.mode="dead"; lastDrawn=""} return}
+    dying=!1; mode=next; host.dataset.mode=mode; lastDrawn=""; if(was==="dead")play(SEQ.wake,{urgent:!0}); lastActive=Date.now()}
   const react=kind=>{if(mode==="dead"||dying||!SEQ[kind])return; if(mode==="doze"){mode="on";lastActive=Date.now()} if(running||jobs.length){if(pendingReact.length<3)pendingReact.push(kind); return} play(SEQ[kind],{urgent:!0})};
   // A micro-emotion, from FEEL: swap the body, play its beat, hold the body, then let his own weight
   // take it back. The beat is queued, never urgent, so a small feeling can never interrupt the loud

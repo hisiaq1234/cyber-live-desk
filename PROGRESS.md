@@ -26,6 +26,13 @@ Two things worth knowing:
 
 ## In flight
 
+**Crid rig at rest + brand overlay mount** (branch `fix/crid-rig-rest-brand`, unmerged). Targeted fixes for two gaps on `main` (`ee25427`):
+
+- **Rig at rest:** `public/desk-assets/crid-bot.js` only animated the cut-out rig while a step was travelling (`walk && walk.to`, base body `000`), showing the flat drawing between steps/at rest. Now the rig runs at rest for base body `000` when not leaning, at reduced amplitude on a slow idle cycle (walk uses full step amplitude/phase); render dirty-signature includes phase/amp so idle animation advances. Rig still only applies to base stage `000` and not while leaning; other body stages remain flat drawings.
+- **Brand overlay:** `public/desk-assets/overlay-brand.js` (`/desk?overlay=brand|variant=brand|brand=1`) rendered only the jumbotron/feed and did not mount CRID. Now mounts `createCridBot` on `document.body` (outside skew/scale), moves scale to the jumbotron card, preserves existing feed/poll/jumbotron options, honors `?bot*` params, and observes desk state when provided.
+- **Tests:** added `tests/crid-rig-rest.test.mjs` (rig visible at rest, joints move). Fixed `tests/crid-bot.test.mjs` sprite-size scan to ignore directories (e.g. `public/desk-assets/crid/rig/`) so it inspects real sprite files only.
+- **Verification:** targeted tests/syntax checks pass locally (see branch diff/test run); full suite and actual browser-overlay verification (`/desk`, `/desk?overlay=brand`, walk/lean/gestures/non-`000` stages, `?bot=0`) still required before merge.
+
 **A cut-out rig for Crid's body** (PR #28, branch `crid-cut-out-rig`). Slices the existing render at
 shoulder, elbow, hip and knee and pivots the pieces, so the walk is a walk: one leg planted and
 vertical with its foot on the floor line while the other lifts ~80px, folds at the knee and comes

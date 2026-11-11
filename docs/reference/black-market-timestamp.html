@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Black Market — Live Timestamp</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --crimson: #dc143c;
+      --paper: #f7f3ea;
+      --muted: rgba(247, 243, 234, .62);
+      --panel: rgba(8, 11, 16, .84);
+      --line: rgba(247, 243, 234, .14);
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: transparent;
+    }
+
+    body {
+      display: flex;
+      justify-content: flex-end;
+      align-items: flex-start;
+      padding: clamp(18px, 2.8vw, 54px);
+      color: var(--paper);
+      pointer-events: none;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: geometricPrecision;
+    }
+
+    .timestamp {
+      position: relative;
+      min-width: min(390px, 82vw);
+      padding: 16px 22px 17px 24px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--crimson);
+      border-radius: 0 12px 12px 0;
+      background: var(--panel);
+      box-shadow:
+        0 14px 40px rgba(0, 0, 0, .28),
+        inset 0 1px 0 rgba(255, 255, 255, .05);
+      isolation: isolate;
+    }
+
+    .timestamp::after {
+      position: absolute;
+      z-index: -1;
+      right: -30px;
+      bottom: -44px;
+      width: 170px;
+      height: 110px;
+      border: 1px solid rgba(220, 20, 60, .2);
+      border-radius: 50%;
+      content: "";
+      transform: rotate(-18deg);
+    }
+
+    .topline {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 11px;
+      color: var(--muted);
+      font-family: "Space Grotesk", sans-serif;
+      font-size: clamp(10px, .72vw, 13px);
+      font-weight: 600;
+      letter-spacing: .18em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--crimson);
+      white-space: nowrap;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--crimson);
+      box-shadow: 0 0 0 4px rgba(220, 20, 60, .14), 0 0 14px rgba(220, 20, 60, .7);
+    }
+
+    .time {
+      display: block;
+      color: var(--paper);
+      font-family: "IBM Plex Mono", "Courier New", monospace;
+      font-size: clamp(24px, 2.35vw, 43px);
+      font-weight: 500;
+      letter-spacing: -.045em;
+      line-height: 1.05;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums lining-nums;
+    }
+
+    .detail {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 12px;
+      color: var(--muted);
+      font-family: "Space Grotesk", sans-serif;
+      font-size: clamp(11px, .8vw, 14px);
+      font-weight: 500;
+      letter-spacing: .04em;
+    }
+
+    .separator {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--crimson);
+    }
+
+    @media (max-width: 520px) {
+      body { padding: 18px; }
+      .timestamp { min-width: 0; width: 100%; }
+      .time { font-size: clamp(22px, 7vw, 34px); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .status-dot { box-shadow: 0 0 0 4px rgba(220, 20, 60, .14); }
+    }
+  </style>
+</head>
+<body>
+  <section class="timestamp" aria-label="Live timestamp">
+    <div class="topline">
+      <span>Black Market</span>
+      <span class="status"><i class="status-dot" aria-hidden="true"></i>Live</span>
+    </div>
+    <time class="time" id="time" aria-live="polite">--- --, --:--:--</time>
+    <div class="detail">
+      <span id="day">Loading day</span>
+      <span class="separator" aria-hidden="true"></span>
+      <span>Africa / Lagos</span>
+    </div>
+  </section>
+
+  <script>
+    (function () {
+      var timeNode = document.getElementById("time");
+      var dayNode = document.getElementById("day");
+      var timeZone = "Africa/Lagos";
+      var monthFormatter = new Intl.DateTimeFormat("en-US", {
+        month: "short",
+        timeZone: timeZone
+      });
+      var partsFormatter = new Intl.DateTimeFormat("en-US", {
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hourCycle: "h23",
+        timeZone: timeZone
+      });
+      var dayFormatter = new Intl.DateTimeFormat("en-US", {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+        timeZone: timeZone
+      });
+
+      function update() {
+        var now = new Date();
+        var values = {};
+        partsFormatter.formatToParts(now).forEach(function (part) {
+          values[part.type] = part.value;
+        });
+        timeNode.textContent =
+          monthFormatter.format(now) + " " +
+          values.day + ", " +
+          values.hour + ":" + values.minute + ":" + values.second;
+        timeNode.dateTime = now.toISOString();
+        dayNode.textContent = dayFormatter.format(now);
+      }
+
+      update();
+      window.setInterval(update, 250);
+    })();
+  </script>
+</body>
+</html>

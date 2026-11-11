@@ -126,13 +126,17 @@ function draw(){
   // The chest, the head and the arms hang off a group of their own, so the body can rise and lean
   // over the foot that is carrying him while the legs below stay where the floor is. The legs are
   // siblings of it, so a bob never lifts a planted foot off the ground.
+  // Each joint is drawn with the piece above the cut over the piece below it. The pieces overlap a
+  // few px past every cut (see scripts/build-crid-rig.py), so whichever piece is on top is the one
+  // whose band seals the joint — and that has to be the upper one, or a lifted leg would drag its
+  // band off the hip and show the cut edge.
   const rigUpper=el("g",{class:"rig-upper"},
-    piece("torso"),piece("head"),
-    joint("shoulder-l",piece("arm-upper-l"),joint("elbow-l",piece("arm-fore-l"))),
-    joint("shoulder-r",piece("arm-upper-r"),joint("elbow-r",piece("arm-fore-r"))));
+    joint("shoulder-l",joint("elbow-l",piece("arm-fore-l")),piece("arm-upper-l")),
+    joint("shoulder-r",joint("elbow-r",piece("arm-fore-r")),piece("arm-upper-r")),
+    piece("torso"),piece("head"));
   rigG.append(
-    joint("hip-l",piece("thigh-l"),joint("knee-l",piece("shin-l"))),
-    joint("hip-r",piece("thigh-r"),joint("knee-r",piece("shin-r"))),
+    joint("hip-l",joint("knee-l",piece("shin-l")),piece("thigh-l")),
+    joint("hip-r",joint("knee-r",piece("shin-r")),piece("thigh-r")),
     rigUpper);
   rigG.setAttribute("transform",`translate(${FIG_X} ${FIG_Y}) scale(${FIG_W/RIG.source.w})`);
   const figG=el("g",{class:"fig"},avatarBase,rigG,ph),bodyG=el("g",{class:"body"},figG);

@@ -30,7 +30,8 @@ import { createCridAudioSync } from "./crid-audio.js";
      Add a card type: DeskOverlay.register("my-type", (card, opts) => HTMLElement)  */
 import { createSoundOrbSync } from "./sound-orb.js";
 import { requestXFeed } from "./x-feed-client.js";
-import { createCridBot } from "./crid-bot.js";
+import { createCridBot, CUE_NAMES } from "./crid-bot.js";
+import { createCueReader } from "./cue.mjs";
 import { createLogo, LOGO_POSITIONS, LOGO_MARKS } from "./logo.js";
 import { CYBER_CSS } from "./cyber-theme.js";
 import { youtubeEmbedUrl } from "./youtube-embed.js";
@@ -991,6 +992,10 @@ html.swae #desk .letters{background:#0b0d12f5}
     // operator can shrink or grow him from the browser source URL without a code change.
     scale: num("bot.scale", 1, 0.4, 2.5),
   });
+  // The cue channel: one gesture, feeling or line the desk has been told to perform. It is read
+  // off the same poll as everything else and drained once per stamp (see cue.mjs), then handed to
+  // CRID as a cue — queued behind whatever he is already doing, never stacked on it.
+  const cues = createCueReader({ known: (name) => CUE_NAMES.includes(name) });
   const soundOrb = bot ? bot.el : h("div", { id: "sound-orb", "aria-hidden": "true" },
     h("span", { class: "orb-ring" }), h("span", { class: "orb-ring" }), h("span", { class: "orb-core" }));
   if (!bot) root.append(soundOrb);
@@ -1508,6 +1513,11 @@ html.swae #desk .letters{background:#0b0d12f5}
     // CRID derives its own reactions, text tag and dozing from the same state the panels get; it
     // keeps the previous state itself and counts the diff, so it only fires on a real change.
     bot?.observe(s);
+    // A cue is a one-shot: the reader remembers the stamp, so a re-poll of the same state or a
+    // reload mid-gesture cannot replay it, and an unknown name is dropped here rather than thrown.
+    // Nothing below touches the frame — CRID owns his own pose.
+    const cue = cues.read(s.bot);
+    if (cue && bot) bot.cue(cue.name, { text: cue.text });
     if (changed) {
       clearTimeout(telemetryTimer);
       root.classList.remove("telemetry-pulse");

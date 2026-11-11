@@ -17,6 +17,7 @@ export const LIMITS = {
   notes: 2000,
   cridTitle: 120, // a card line a phone viewer has to read in seconds
   cridCredit: 30,
+  cueText: 140, // one line he says on stream: long enough to land, short enough to read
   cridAudioUrl: 2000, // https audio URL the card plays on Swae / stream audio
   place: 80, // a named place: long enough for a street, a district and a city, short enough to read
   lettersUser: 30, // a Twitch display name, which the game shows on the leaderboard
@@ -29,6 +30,18 @@ export const CRID_KINDS = ["topic", "news", "debate", "music", "question"];
 export const VERDICTS = [0, 1]; // 1 = paid, 0 = still owing. Never anything else.
 // CRID can be told to perform on command, on top of the reactions it derives from the desk state.
 export const BOT_REACTS = ["wave", "cheer", "think", "surprise", "wince", "nod", "shrug", "sub", "gift", "bits"];
+// Every one-word thing CRID can be told to perform, as a one-shot cue in state.bot.cue: the
+// sequences and micro-emotions he already renders (public/desk-assets/crid-bot.js, which exports
+// the same list as CUE_NAMES) plus "say" for a line of text. tests/cue-channel.test.mjs keeps the
+// two lists identical, so a name accepted here can never be one his renderer drops.
+export const BOT_CUES = [
+  "blink", "doubleBlink", "glanceL", "glanceR", "lookUp", "sway", "ledBlink", "shrug", "wake",
+  "die", "cheer", "wince", "think", "surprise", "paid", "due", "nod", "wave", "hop", "jump", "sit",
+  "stand", "read", "crawl", "pushup", "climb", "kick", "weighted", "peek", "sideeye", "gift",
+  "bits", "salute", "sub",
+  "curious", "delighted", "smug", "flustered", "sleepy", "startled", "proud", "sulky",
+  "say",
+];
 export const STORE_NAME = "cyber-live-desk";
 
 export const DEFAULT_STATE = {
@@ -61,7 +74,9 @@ export const DEFAULT_STATE = {
   // CRID, the on-screen mascot. null means "on, nothing pending", which is what a desk that has
   // never been told otherwise looks like. The overlay reads on to boot or kill the bot, and react
   // to fire one gesture; n counts up so the same reaction can be asked for twice in a row.
-  bot: null, // { on: boolean, subs?: number, react?: { kind: string, label?: string, n: number } }
+  // cue is the one-shot the brain performs through: { name, at, text? }, where at only ever
+  // counts up, so the desk performs each stamp once and never replays an old one.
+  bot: null, // { on: boolean, subs?: number, react?: { kind, label?, n }, cue?: { name, at, text? } }
   // The desk lockup — the robot, the wordmark and the rule. null means "on, and the operator has
   // changed nothing yet", which is what a desk that has never been told otherwise looks like.
   // layers is a subset of LOGO_LAYERS below; replay counts up so the same intro can be asked for
@@ -1120,7 +1135,9 @@ export async function runAction(store, b, now = Date.now()) {
     }
     case "bot-react": {
       if (!BOT_REACTS.includes(b.kind)) throw new HttpError(422, `kind must be one of ${BOT_REACTS.join(", ")}.`);
-      patch = { bot: { on: state.bot?.on ?? true, react: { kind: b.kind, n: (state.bot?.react?.n ?? 0) + 1 } } };
+      // The rest of the bot is carried across: a reaction must not wipe the sub count, or a cue the
+      // brain has just posted, which is what a bare { on, react } patch did.
+      patch = { bot: { ...(state.bot ?? {}), on: state.bot?.on ?? true, react: { kind: b.kind, n: (state.bot?.react?.n ?? 0) + 1 } } };
       break;
     }
     case "bot-subs": {
@@ -1141,6 +1158,19 @@ export async function runAction(store, b, now = Date.now()) {
       const currentSubs = Number.isFinite(state.bot?.subs) ? Math.max(0, Math.trunc(state.bot.subs)) : 0;
       const label = kind === "sub" ? "+SUB" : kind === "gift" ? `GIFT ×${count}` : `${count.toLocaleString("en-US")} BITS`;
       patch = { bot: { ...(state.bot ?? {}), on: state.bot?.on ?? true, ...(delta ? { subs: currentSubs + delta } : {}), react: { kind, label, n: (state.bot?.react?.n ?? 0) + 1 } } };
+      break;
+    }
+    case "bot-cue": {
+      // The one-shot channel the brain performs through: a gesture, a micro-emotion or a line, in
+      // the field the desk overlay already polls. `at` is a stamp, not a request id — it only ever
+      // counts up, so a page that re-reads the same state cannot replay a cue, and two cues minted
+      // in the same millisecond still order. Nothing else about him is reset: the reaction history,
+      // the sub count and visibility are carried across.
+      const name = text(b.name, 32, "name", { required: true });
+      if (!BOT_CUES.includes(name)) throw new HttpError(422, `name must be one of ${BOT_CUES.join(", ")}.`);
+      const line = name === "say" ? text(b.text, LIMITS.cueText, "text", { required: true }) : "";
+      const at = Math.max(now, (Number(state.bot?.cue?.at) || 0) + 1);
+      patch = { bot: { ...(state.bot ?? {}), on: state.bot?.on ?? true, cue: { name, at, ...(line ? { text: line } : {}) } } };
       break;
     }
     // ---------- the desk lockup ----------

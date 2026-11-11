@@ -9,15 +9,35 @@
    registered to these bodies (a different scale and position, squeezed into a 44x22 box over a face
    that already has eyes) and produced a second ghost face; they are unused until a real registered
    rig is built. Emotion therefore comes from a body swap + a motion beat + a hold — see FEEL.
-   All seven frames share one framing: ink 688px tall, feet on y=760, the body's centre of mass on
-   x=320 — so a body swap is a change of build, never a jump sideways or a change of height.
-   Growth: every sub moves him up a notch. SUB_STEPS is where each body shape takes over, and
-   between shapes he widens a little (STAGE_STRETCH) so every single sub is visible. The size is
-   worked out from the sub total each time, so an overlay reload mid-stream restores it.
+   BODY LADDER: the seven frames are one ladder from lanky to obese, built by
+   scripts/build-body-ladder.py out of the same seven drawings (nothing new is drawn). Each stage is
+   the owner's own Bitmoji resized to its own height and warped wider or narrower through the torso,
+   so the ladder is a real change of build and of size — 175x660 px of ink at the bottom, 469x752 at
+   the top — and not a 2px difference nobody can see. All seven keep one framing: ink bottom on
+   y=757 and the mid-torso on x=320, so a swap is a change of build, never a jump sideways or off
+   the floor. ladder.json next to the frames holds the measured box of each stage.
+   Growth: every sub moves him up a notch. SUB_STEPS is where each stage takes over, and between
+   stages he widens a little (STAGE_STRETCH) so every single sub is visible. The size is worked out
+   from the sub total each time, so an overlay reload mid-stream restores it. The build also drives
+   how he moves — see BODY_LADDER.slow and .heft, used by the walk, the gait and the gesture weight.
    Feed it with observe(state) where state.bot.subs is the sub count this stream, or call setSubs(n). */
 const NS="http://www.w3.org/2000/svg",XLINK="http://www.w3.org/1999/xlink",PAL={onyx:"#1F1736",screen:"#0F0B17",edge:"#3A1D9E",indigo:"#6531F8",indigoDk:"#3A1D9E",mint:"#86F6BC",bone:"#A98BFF",ink:"#F4F0FF",slate:"#2B2738",red:"#FF5B57",dead:"#5E5873"},
 DOZE_AFTER_MS=12e4,BODIES=["000","00",3,0,5,1,2],ROT=7,ASSETS="./desk-assets/crid",AV=b=>`${ASSETS}/body-${b}-r${ROT}.webp`,
-SUB_STEPS=[0,4,8,12,16,20,24],STAGE_STRETCH=.06,
+SUB_STEPS=[0,4,8,12,16,20,24],STAGE_STRETCH=.03,
+// The ladder, in BODIES order: the measured ink box of each frame (w x h) and what that build does
+// to his movement. slow stretches every step he takes, heft is his weight in a gesture — a heavy
+// stage lifts less and lands harder, a lanky one is springy. Both are written by
+// scripts/build-body-ladder.py from the frames it just measured, and a test keeps this table honest
+// against public/desk-assets/crid/ladder.json.
+BODY_LADDER=[
+  {key:"000",w:175,h:660,slow:1,heft:.86},
+  {key:"00",w:208,h:672,slow:1.051,heft:.926},
+  {key:"3",w:241,h:684,slow:1.101,heft:.992},
+  {key:"0",w:279,h:700,slow:1.159,heft:1.069},
+  {key:"5",w:320,h:716,slow:1.222,heft:1.151},
+  {key:"1",w:387,h:734,slow:1.324,heft:1.285},
+  {key:"2",w:469,h:752,slow:1.45,heft:1.45}],
+stageOf=i=>BODY_LADDER[Math.min(BODY_LADDER.length-1,Math.max(0,i|0))],
 // The eight micro-emotions from brain/micro-emotions.mjs. A painted face cannot be swapped, so a
 // feeling is a whole drawing that changes and is moved well: a different body (they carry their own
 // face and stance — 2 is turned away, 1 is the heaviest), one of the gesture sequences, and how long
@@ -120,6 +140,9 @@ html.low-power #crid-bot svg,html.swae #crid-bot svg{filter:none}
 #crid-bot[data-mode="dead"] .avatar-base{opacity:.55}
 #crid-bot[data-mode="doze"] .avatar-base{opacity:.88}
 `;
+// The ladder is exported so a test can hold it to the measurement in ladder.json; nothing in the
+// overlay has to import it to use it.
+export{BODY_LADDER};
 export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="bc",x=null,y=null,step=null,scale=1}={}){
   if(!document.getElementById("crid-bot-css")){const st=document.createElement("style");st.id="crid-bot-css",st.textContent=CSS,document.head.append(st)}
   const STEP=step!=null?step:swae?220:lowPower?260:140,
@@ -154,6 +177,9 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const pendingReact=[]; let lastActive=Date.now(),prev=null,online=null,lastReactN=null,lastSubN=null,bodyI=-1,growth={sx:1,sy:1},fx=1,walk=null,roamN=0,subs=0,home=null;
   const jobs=[]; let running=null; const flights=new WeakMap;
   const setBody=i=>{if(i===bodyI)return; bodyI=clamp(i,0,BODIES.length-1); const src=AV(BODIES[bodyI]); parts.avatarBase.setAttribute("href",src); parts.avatarBase.setAttributeNS(XLINK,"href",src);};
+  // The build he is in right now — the walk, the gait and the gesture weight all read it, so the
+  // body is not just a picture that changes: a heavy Crid plods and slams, a lanky one trots.
+  const build=()=>stageOf(bodyI);
   const subCount=s=>{const b=s&&s.bot||{}; const n=b.subs??b.subCount??b.subN; return Number.isFinite(n)?n:null};
   const applySubs=(n,beat)=>{subs=Math.max(0,n|0); const st=stageFor(subs); setBody(st.i); growth={sx:st.sx,sy:st.sy}; lastDrawn="";
     if(beat&&mode!=="dead"&&!dying){if(mode==="doze"){mode="on";lastActive=Date.now()} play(SEQ.sub,{urgent:!0}); lastActive=Date.now()}};
@@ -229,13 +255,13 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     if(walk.to){ // mid-step: eased travel, then a beat with both feet down before the next one
       const e=EASE.smooth(clamp((now-walk.t0)/walk.dur,0,1));
       walk.x=walk.from.x+(walk.to.x-walk.from.x)*e; walk.y=walk.from.y+(walk.to.y-walk.from.y)*e;
-      if(now-walk.t0>=walk.dur){walk.from={x:walk.x,y:walk.y}; walk.to=null; walk.gap=now+rand(160,430)*(reduced?1.6:1)}
+      if(now-walk.t0>=walk.dur){walk.from={x:walk.x,y:walk.y}; walk.to=null; walk.gap=now+rand(160,430)*build().slow*(reduced?1.6:1)}
     } else if(now>=walk.gap){
       const dx=walk.tx-walk.x,dy=walk.ty-walk.y;
       if(Math.hypot(dx,dy)<1.1){walk.done=now+Math.round(rand(1900,2900)); return}
-      fx=dx<0?-1:1; const k=.42+Math.random()*.26;   // no two steps cover the same ground
+      fx=dx<0?-1:1; const k=(.42+Math.random()*.26)/Math.sqrt(build().slow);   // no two steps cover the same ground
       walk.from={x:walk.x,y:walk.y}; walk.to={x:walk.x+dx*k,y:walk.y+dy*k};
-      walk.t0=now; walk.dur=clamp(340+Math.hypot(dx,dy)*9,340,720);
+      walk.t0=now; walk.dur=clamp(340+Math.hypot(dx,dy)*9,340,720)*build().slow;
     }
     host.style.left=`${walk.x}%`; host.style.top=`${walk.y}%`};
   const goHome=()=>{if(!walk)return; walk=null; fx=1; gestureQ=[]; host.classList.remove("roam"); host.style.left=host.style.top=""; host.classList.add(...homeCls)};
@@ -254,6 +280,10 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // beat around them still plays.
     const plank=Math.abs(Math.sin(p.pr*Math.PI/180)),L=(p.hr*.8+p.pr)*p.fx,k=1-.16*plank,shift=plank*60*p.fx;
     parts.ticketText.textContent=p.tag||""; parts.ticket.setAttribute("opacity",p.tag?1:0);
+    // The tag is the one object he handles himself, and he handles it with the body he has: a heavy
+    // build slaps a heavier sticker down, a lanky one flicks a small one on. Anything else that
+    // sizes an object to him can read stage.w / stage.heft off the API.
+    parts.ticket.setAttribute("transform",`translate(100 4) scale(${(.9+.35*(build().heft-.86)/.59).toFixed(2)}) translate(-100 -4)`);
     const tkc=p.tag==="PAID"||p.tag==="+SUB"?PAL.mint:PAL.red; for(const n of parts.tkFill)n.setAttribute("fill",tkc);
     // The squash pivots on the box bottom (164), which is where his feet now are, so a breath or a
     // landing compresses him downwards instead of lifting him off the floor.
@@ -285,14 +315,22 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       postTo={hr:(Math.random()<.62?-1:1)*rand(1.6,4.4),tr:rand(-3.2,3.2),hy:rand(0,2.2)}}
     const e=EASE.smooth(clamp((now-postAt)/postFor,0,1));
     return{hr:post.hr+(postTo.hr-post.hr)*e,tr:post.tr+(postTo.tr-post.tr)*e,hy:post.hy+(postTo.hy-post.hy)*e}};
-  const baseOf=frame=>({...REST[mode],tag:tagText,fx,sx:growth.sx,sy:growth.sy,...(frame||{})});
+  // A heavy body puts more of itself into every step: it does not lift as far off the ground, it
+  // rocks further side to side, and it comes down harder. A lanky one is the opposite — springy and
+  // light. This is the walk cycle's gait, and it is the build that sets it.
+  const weighGesture=f=>{if(!f)return f;const h=build().heft,q={...f};
+    if(q.by)q.by=q.by<0?q.by/h:q.by*h;
+    if(q.hy)q.hy=q.hy<0?q.hy/h:q.hy*h;
+    if(q.bs&&q.bs<1)q.bs=1-(1-q.bs)*h;
+    return q};
+  const baseOf=frame=>({...REST[mode],tag:tagText,fx,sx:growth.sx,sy:growth.sy,...(weighGesture(frame)||{})});
   const dress=p=>{const now=Date.now(),q={...p};
     if(mode==="on"||mode==="doze"){const br=breath(now); q.bs*=(1+.028*br); q.sy*=(1+.016*br); q.hy-=2.4*br}
     if(!frozen&&mode!=="dead"){const po=postureAt(now); q.hr+=po.hr; q.tr+=po.tr; q.hy+=po.hy}
     if(!gestureOn){if(mode==="doze")q.hr=[3,5,7,5][Math.floor(now/430)%4];
       if(grooving&&mode==="on"){q.hr=Math.floor(now/760)%2?-3:3; q.hy=Math.floor(now/1500)%2?2:0}}
-    if(walk&&walk.to){const u=clamp((now-walk.t0)/walk.dur,0,1),lift=Math.sin(Math.PI*u);
-      q.by-=lift*2.4; q.hr+=lift*2*fx; q.hy+=lift*.7}
+    if(walk&&walk.to){const u=clamp((now-walk.t0)/walk.dur,0,1),lift=Math.sin(Math.PI*u),h=build().heft;
+      q.by-=lift*2.4/h; q.hr+=lift*2*fx*h; q.hy+=lift*.7/h}
     return q};
   // One transition at a time: the pose eases from where it is to the next beat instead of snapping
   // onto it, which is the difference between a gesture and a twitch.
@@ -347,7 +385,12 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   let feelTimer=null;
   const feel=(name,{hold}={})=>{const f=FEEL[name]; if(!f||mode==="dead"||dying)return false;
     if(mode==="doze"){mode="on";lastActive=Date.now()}
-    const i=BODIES.findIndex(b=>String(b)===String(f.body)); if(i>=0)setBody(i);
+    // A feeling is a different drawing for a moment, not a different body: now that the bodies are a
+    // real size ladder, swapping to a fixed shape would balloon a lanky Crid into a fat one for a
+    // beat and back. He borrows a build one step away from his own, so the stance changes and the
+    // size does not.
+    const i=BODIES.findIndex(b=>String(b)===String(f.body));
+    if(i>=0){const here=Math.max(0,bodyI), near=clamp(i,here-1,here+1); setBody(near)}
     if(f.seq&&SEQ[f.seq])play(SEQ[f.seq]);
     lastActive=Date.now(); clearTimeout(feelTimer);
     feelTimer=setTimeout(()=>{if(mode!=="dead")setBody(stageFor(subs).i)},clamp(Number(hold)||f.hold,400,4e3));
@@ -388,5 +431,5 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const replace=()=>{home=null; if(placeFrame)return; placeFrame=(typeof requestAnimationFrame=="function"?requestAnimationFrame:setTimeout)(()=>{placeFrame=0; place()},0)};
   if(typeof addEventListener=="function")addEventListener("resize",replace);
   if(typeof ResizeObserver=="function"){const strip=document.getElementById("auto-headlines"); if(strip){stripWatch=new ResizeObserver(replace); stripWatch.observe(strip)}}
-  return{el:host,summon,dismiss,cancel,react,feel,observe,setMode,setSubs:n=>{lastSubN=n|0;applySubs(n,!1)},setOnline(v){online=!!v;power()},get mode(){return mode},get subs(){return subs},setMood,say,nudge,randomLine,place:replace,freeze(pose={}){frozen=!0;clearTimeout(timer); if(pose.mode)mode=pose.mode; if(pose.tag!==void 0)tagText=pose.tag; if(pose.subs!=null)applySubs(pose.subs,!1); lastDrawn=""; render({...REST[mode],tag:tagText,fx:pose.fx||1,sx:growth.sx,sy:growth.sy,...pose})},destroy(){clearTimeout(timer); clearTimeout(feelTimer); mo==null||mo.disconnect(); stripWatch==null||stripWatch.disconnect(); if(typeof removeEventListener=="function")removeEventListener("resize",replace); cancelJobs(); goHome(); host.remove()}}
+  return{el:host,summon,dismiss,cancel,react,feel,observe,setMode,setSubs:n=>{lastSubN=n|0;applySubs(n,!1)},setOnline(v){online=!!v;power()},get mode(){return mode},get subs(){return subs},get stage(){return build()},setMood,say,nudge,randomLine,place:replace,freeze(pose={}){frozen=!0;clearTimeout(timer); if(pose.mode)mode=pose.mode; if(pose.tag!==void 0)tagText=pose.tag; if(pose.subs!=null)applySubs(pose.subs,!1); lastDrawn=""; render({...REST[mode],tag:tagText,fx:pose.fx||1,sx:growth.sx,sy:growth.sy,...pose})},destroy(){clearTimeout(timer); clearTimeout(feelTimer); mo==null||mo.disconnect(); stripWatch==null||stripWatch.disconnect(); if(typeof removeEventListener=="function")removeEventListener("resize",replace); cancelJobs(); goHome(); host.remove()}}
 }

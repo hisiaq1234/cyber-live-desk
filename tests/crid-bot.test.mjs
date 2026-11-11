@@ -7,7 +7,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readdir, stat } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 
 class FakeEl {
   constructor(tag) {
@@ -127,6 +127,40 @@ test("the sprite payload ships as downscaled webp inside the budget", async () =
     const size = (await stat(new URL(f, dir))).size;
     assert.ok(size < 60 * 1024, `${f} must stay small enough to load on air, got ${(size / 1024).toFixed(1)} KB`);
   }
+});
+
+test("the body ladder is a real ladder, not seven near-identical frames", async () => {
+  // Break caught: three of the seven frames sat within 2px of each other, so a stage change was
+  // invisible at desk size — the whole progression read as one body. The frames are now built by
+  // scripts/build-body-ladder.py, which measures each frame it writes into ladder.json; the
+  // renderer's own table has to be that measurement, not a second opinion.
+  const { BODY_LADDER } = await import("../public/desk-assets/crid-bot.js");
+  const doc = JSON.parse(await readFile(new URL("../public/desk-assets/crid/ladder.json", import.meta.url), "utf8"));
+  assert.equal(BODY_LADDER.length, 7, "one stage per body frame");
+  assert.deepEqual(doc.stages.map((s) => s.key), BODY_LADDER.map((s) => s.key),
+    "the ladder and the frames must be in the same lean -> fat order");
+  assert.deepEqual(doc.stages.map((s) => [s.ink.w, s.ink.h]), BODY_LADDER.map((s) => [s.w, s.h]),
+    "the renderer's table must be the measured ink box of the frames that ship");
+  for (let i = 1; i < BODY_LADDER.length; i++) {
+    assert.ok(BODY_LADDER[i].w > BODY_LADDER[i - 1].w, `stage ${i} must be wider than stage ${i - 1}`);
+    assert.ok(BODY_LADDER[i].h > BODY_LADDER[i - 1].h, `stage ${i} must be taller than stage ${i - 1}`);
+  }
+  // The point of the ladder: a step you can see. 24px of ink width and 8px of height between
+  // consecutive stages; measured minimums are 33px and 12px.
+  for (let i = 1; i < BODY_LADDER.length; i++) {
+    const dw = BODY_LADDER[i].w - BODY_LADDER[i - 1].w, dh = BODY_LADDER[i].h - BODY_LADDER[i - 1].h;
+    assert.ok(dw >= 24, `stages ${i - 1}->${i} differ by only ${dw}px of ink width`);
+    assert.ok(dh >= 8, `stages ${i - 1}->${i} differ by only ${dh}px of ink height`);
+  }
+  // The invariants a body swap must never break: feet on one ground line, body on one axis. The
+  // worst measured offset is ~10px in a 600px frame, i.e. under 4px of the 336px he is drawn at.
+  for (const s of doc.stages) {
+    assert.equal(s.ink.bottom, doc.ground, `stage ${s.key} must keep its feet on y=${doc.ground}`);
+    assert.ok(Math.abs(s.ink.cx - doc.axis) <= 16, `stage ${s.key} sits ${Math.abs(s.ink.cx - doc.axis)}px off the axis`);
+  }
+  // And the build has to move: the heavy stage is slower and lands harder than the lanky one.
+  const first = BODY_LADDER[0], last = BODY_LADDER[BODY_LADDER.length - 1];
+  assert.ok(last.slow > first.slow && last.heft > first.heft, "the huge stage must move heavier than the lanky one");
 });
 
 test("no state can paint an invisible sprite", async () => {

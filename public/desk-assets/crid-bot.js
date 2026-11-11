@@ -541,14 +541,18 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // Idle: no stepping, both feet stay planted. Weight shifts slowly side to side (hips/torso carry
     // it), the upper body eases and settles, and the arms move a little with the shift — a standing
     // person, not a walking cycle. Motions are out of phase so they read as organic, not metronomic.
+    // The amplitudes are set against the walk's own constants above: everything here lives in the
+    // render's 1050px space and reaches the screen at ~0.19x, so a hold any gentler than this reads
+    // as a frozen sprite — the "log of wood" the rig was built to fix.
     const w=Math.sin(2*Math.PI*u), w2=Math.sin(2*Math.PI*u+.9), w3=Math.sin(4*Math.PI*u+.4);
-    const sway=w*2.1, bob=(.5+.5*w2)*3.2, twist=w*1.1;
-    const hipShift=w*.7, load=.5+.5*w; // weight biased to one side, easing back
-    set("hip-l",hipShift,0,0); set("knee-l",0);
-    set("hip-r",hipShift,0,0); set("knee-r",0);
-    set("shoulder-l",-w*1.8,0,-twist); set("elbow-l",-w3*.9);
-    set("shoulder-r",-w*1.2,0,twist); set("elbow-r",w3*.7);
-    parts.rigUpper.setAttribute("transform",`translate(${sway.toFixed(2)} ${(-bob).toFixed(2)}) rotate(${(w*.35).toFixed(2)} ${RIG.pivot["shoulder-l"].x} ${RIG.pivot["shoulder-l"].y})`);
+    const sway=w*9, bob=(.5+.5*w2)*9, twist=w*5;
+    const hipShift=w*2.6, load=.5+.5*w; // weight biased to one side, easing back
+    // The loaded knee softens as the weight arrives — both stay planted, neither lifts.
+    set("hip-l",hipShift,0,0); set("knee-l",-1.5*load);
+    set("hip-r",hipShift,0,0); set("knee-r",-1.5*(1-load));
+    set("shoulder-l",-w*5.5,0,-twist); set("elbow-l",-w3*2.8);
+    set("shoulder-r",-w*3.8,0,twist); set("elbow-r",w3*2.2);
+    parts.rigUpper.setAttribute("transform",`translate(${sway.toFixed(2)} ${(-bob).toFixed(2)}) rotate(${(w*1.2).toFixed(2)} ${RIG.pivot["shoulder-l"].x} ${RIG.pivot["shoulder-l"].y})`);
   };
   // The rig's own clock. Mid-stride it is the step's progress so feet land with the travel;
   // standing still it is a slower cycle for an idle weight shift (not a walk).

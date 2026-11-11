@@ -81,8 +81,18 @@ kick:[{hr:-8,by:2},{hr:14,by:-4,bs:1.04},{hr:-4,by:0,bs:1}],
 weighted:[{by:6,bs:0.9},{by:10,bs:0.88},{by:4,bs:0.94},{by:0,bs:1}],
 peek:[{hy:-3,hr:4},{hy:-2,hr:2},{hy:0,hr:0}],
 sideeye:[{hr:6},{hr:-4},{hr:0}],
+// gift and bits were advertised in BOT_REACTS with no sequence behind them, so a gifted sub or a
+// cheer of bits played nothing at all. Both are built from moves he already has: a gift is offered
+// up in two hands and set down, bits are a quick coin-flick shiver.
+gift:[{eyes:"happy",mouth:"grin",mL:"up",mR:"up",by:-4,hy:-2,hr:0},{by:-10,hy:-4,mL:"up",mR:"up",tr:6},{by:2,bs:.95,hy:2,mL:"up",mR:"up",tr:-6},{by:0,bs:1,hy:0,mL:"down",mR:"down",mouth:"smile",tr:0}],
+bits:[{hr:-4,hy:-2,tr:8,bs:1.03},{hr:5,hy:1,tr:-8,bs:.97},{hr:-2,hy:-1,tr:4},{hr:0,hy:0,tr:0,bs:1}],
 salute:[{hy:-4,mR:"up"},{hy:-2},{hy:0,mR:"down"}]};
 SEQ.sub=[...SEQ.cheer.slice(0,-1).map(f=>({...f,tag:"+SUB"})),...SEQ.pushup];
+// Everything he can be told to do in one word: every sequence, every micro-emotion, and "say" for
+// a line of text. The desk overlay and the server both hold this list (api/_desk-core.mjs BOT_CUES);
+// tests/cue-channel.test.mjs keeps the two identical, so a name can never be accepted by one end
+// and dropped by the other.
+export const CUE_NAMES=[...Object.keys(SEQ),...Object.keys(FEEL),"say"];
 function draw(){
   // Nothing attached to him carries a colour of its own: the ticket outline is the desk's ink, not
   // the theme's lavender, and the fallback figure is neutral slate. He used to sit on a flat indigo
@@ -136,6 +146,18 @@ const CSS=`
    opacity — a tinted shadow was what turned into the purple blob under his feet. */
 #crid-bot svg{width:100%;height:100%;display:block;overflow:visible;filter:drop-shadow(0 calc(var(--bot-w)*.028) calc(var(--bot-w)*.07) rgba(0,0,0,.42))}
 html.low-power #crid-bot svg,html.swae #crid-bot svg{filter:none}
+/* A line he says on air. The brain page carries its own bubble in brain/overlay.css, but the
+   stream page loads only this stylesheet, so without it a say cue was a bare div of text laid
+   out under the sprite. Sized off --bot-w so it reads at broadcast size and shrinks with him; the
+   theme's own variables win wherever the desk defines them. */
+#crid-bot .bot-bubble{position:absolute;bottom:calc(100% + .4em);left:50%;transform:translateX(-50%);
+  min-width:8ch;max-width:min(34ch,84vw);padding:.5em .7em;border-radius:.6em;
+  background:var(--onyx,${PAL.onyx});border:2px solid var(--bone,${PAL.bone});
+  box-shadow:.16em .2em 0 var(--indigo-dk,${PAL.indigoDk});color:var(--ink,${PAL.ink});
+  font:600 clamp(11px,calc(var(--bot-w)*.072),20px)/1.35 ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+  text-align:center;white-space:pre-wrap;opacity:0;transition:opacity .22s ease;pointer-events:none}
+#crid-bot .bot-bubble::after{content:"";position:absolute;top:100%;left:50%;margin-left:-5px;
+  border:5px solid transparent;border-top-color:var(--bone,${PAL.bone})}
 #crid-bot[data-mode="dead"] .ticket-fill{fill:${PAL.dead}}
 #crid-bot[data-mode="dead"] .avatar-base{opacity:.55}
 #crid-bot[data-mode="doze"] .avatar-base{opacity:.88}
@@ -395,6 +417,20 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     lastActive=Date.now(); clearTimeout(feelTimer);
     feelTimer=setTimeout(()=>{if(mode!=="dead")setBody(stageFor(subs).i)},clamp(Number(hold)||f.hold,400,4e3));
     return true};
+  // ---- the cue channel ---------------------------------------------------------------------
+  // One thing at a time, from the desk state. A cue is never stacked on another: if he is already
+  // busy it waits its turn in the same queue the derived reactions use, and if that queue is full it
+  // is dropped. Nothing here remounts him, clears the frame or teleports a walk, and a name he does
+  // not know is ignored, so the desk can pass whatever state carries.
+  const cue=(name,{text=""}={})=>{
+    if(typeof name!=="string"||!name||mode==="dead"||dying)return false;
+    if(name==="say"){const line=String(text||"").trim().slice(0,140); if(!line)return false; say(line,clamp(line.length*65,2e3,6e3)); return true}
+    if(FEEL[name])return feel(name);
+    if(!SEQ[name])return false;
+    if(mode==="doze"){mode="on";lastActive=Date.now()}
+    if(running||jobs.length){if(pendingReact.length<3)pendingReact.push(name); return true}
+    play(SEQ[name]);
+    return true};
   const centre=r=>({x:r.left+r.width/2,y:r.top+r.height/2});
   const setFlight=(node,f)=>{if(!f){for(const k of["transform","opacity","transition","zIndex","willChange","transformOrigin","visibility"])node.style[k]=""; if(flights.has(node)&&flights.get(node).madeRelative)node.style.position=""; flights.delete(node); return} node.style.transform=`translate(${f.tx}px,${f.ty}px) scale(${f.s}) rotate(${f.r}deg)`; node.style.opacity=f.o; node.style.visibility=f.o===0?"hidden":"visible"};
   const prepare=node=>{const info={madeRelative:!1}; node.style.transition="none"; node.style.willChange="transform"; node.style.transformOrigin="50% 50%"; node.style.zIndex="40"; if(getComputedStyle(node).position=="static"){node.style.position="relative"; info.madeRelative=!0} flights.set(node,info)};
@@ -431,5 +467,5 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const replace=()=>{home=null; if(placeFrame)return; placeFrame=(typeof requestAnimationFrame=="function"?requestAnimationFrame:setTimeout)(()=>{placeFrame=0; place()},0)};
   if(typeof addEventListener=="function")addEventListener("resize",replace);
   if(typeof ResizeObserver=="function"){const strip=document.getElementById("auto-headlines"); if(strip){stripWatch=new ResizeObserver(replace); stripWatch.observe(strip)}}
-  return{el:host,summon,dismiss,cancel,react,feel,observe,setMode,setSubs:n=>{lastSubN=n|0;applySubs(n,!1)},setOnline(v){online=!!v;power()},get mode(){return mode},get subs(){return subs},get stage(){return build()},setMood,say,nudge,randomLine,place:replace,freeze(pose={}){frozen=!0;clearTimeout(timer); if(pose.mode)mode=pose.mode; if(pose.tag!==void 0)tagText=pose.tag; if(pose.subs!=null)applySubs(pose.subs,!1); lastDrawn=""; render({...REST[mode],tag:tagText,fx:pose.fx||1,sx:growth.sx,sy:growth.sy,...pose})},destroy(){clearTimeout(timer); clearTimeout(feelTimer); mo==null||mo.disconnect(); stripWatch==null||stripWatch.disconnect(); if(typeof removeEventListener=="function")removeEventListener("resize",replace); cancelJobs(); goHome(); host.remove()}}
+  return{el:host,summon,dismiss,cancel,react,feel,cue,observe,setMode,setSubs:n=>{lastSubN=n|0;applySubs(n,!1)},setOnline(v){online=!!v;power()},get mode(){return mode},get subs(){return subs},get stage(){return build()},setMood,say,nudge,randomLine,place:replace,freeze(pose={}){frozen=!0;clearTimeout(timer); if(pose.mode)mode=pose.mode; if(pose.tag!==void 0)tagText=pose.tag; if(pose.subs!=null)applySubs(pose.subs,!1); lastDrawn=""; render({...REST[mode],tag:tagText,fx:pose.fx||1,sx:growth.sx,sy:growth.sy,...pose})},destroy(){clearTimeout(timer); clearTimeout(feelTimer); mo==null||mo.disconnect(); stripWatch==null||stripWatch.disconnect(); if(typeof removeEventListener=="function")removeEventListener("resize",replace); cancelJobs(); goHome(); host.remove()}}
 }

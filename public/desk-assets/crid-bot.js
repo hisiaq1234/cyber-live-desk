@@ -300,8 +300,10 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       walk.t0=now; walk.dur=clamp(340+Math.hypot(dx,dy)*9,340,720)*build().slow;
     }
     host.style.left=`${walk.x}%`; host.style.top=`${walk.y}%`};
-  // Home is the anchor he was placed at. Coming home ends a lean: he is a guest on a panel, not
-  // furniture himself, so the moment the desk needs him back he lets go of it.
+  // Home is the anchor he was placed at. Coming home is the one thing that ends a lean: he is a
+  // guest on a panel, not furniture himself, so the moment the desk needs him back he lets go of
+  // it. Nothing else may take it away — see setMode(), unlean() and resettle() for the three
+  // things that are allowed to call this while he is leaning.
   const goHome=()=>{const roam=host.classList.contains("roam"); leanAt=null; pendingLean=null; lastDrawn="";
     if(!walk&&!roam)return; walk=null; fx=1; gestureQ=[]; host.classList.remove("roam"); host.style.left=host.style.top=""; host.classList.add(...homeCls)};
   // A short shuffle around wherever he lives (home is re-read after every landing and on resize),
@@ -369,12 +371,27 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     if(Math.abs(rect.left+rect.width/2-sp.centre)>Math.max(16,sp.w*.2)){   // not beside it yet
       pendingLean={name,side:s};
       return walkTo(name,s)};
-    fx=1;                                                  // face forward: a lean has no direction of travel
+    return holdLean(name,sp)};
+  // Putting him on the edge he has already reached: the lean itself, with no walking involved.
+  // lean() and the resize re-solve both end here, so a lean that is re-taken lands in exactly the
+  // same place as one that was asked for.
+  const holdLean=(name,sp)=>{fx=1;                         // face forward: a lean has no direction of travel
     leanAt={angle:sp.tilt,dir:sp.dir,layer:name};
     host.classList.remove(...homeCls); host.classList.add("roam");
     host.style.left=`${sp.centre/innerWidth*100}%`; host.style.top=`${(sp.feetY-sp.h)/innerHeight*100}%`;
     lastDrawn="";
     return !0};
+  // A lean outlives the moment it was asked for. A doze, a quiet stretch or a resize must not
+  // quietly take it back — that is what made him let go and walk home the moment the desk went
+  // still. Letting go is a decision, and this is the verb that makes it.
+  const unlean=()=>{if(!leanAt&&!pendingLean)return !1; goHome(); return !0};
+  // A resize moves the panel, not his decision to lean on it: the edge he is on is re-solved
+  // against the frame as it is now. If the panel has left the frame there is nothing to lean on,
+  // and he lets go rather than hanging in the air beside a rectangle that is no longer drawn.
+  const resettle=()=>{if(!leanAt||walk||mode==="dead")return;
+    const layer=leanAt.layer,side=leanAt.dir>0?"left":"right",box=layerOf(layer),
+      sp=box?standPoint(box,side):null;
+    if(!sp)goHome(); else holdLean(layer,sp)};
   // A held wondering pose: weight on one leg, head tilted, the body given to a question. The
   // drawings carry painted arms, so nothing here can raise a hand — what he has is posture, and
   // posture held still is what reads as thinking. Usable standing and leaning; it composes with
@@ -497,7 +514,11 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       const k=JSON.stringify(g); if(!seen.has(k)){seen.add(k); out.push(g)}}
     return out.length?out:[frames[frames.length-1]||{}]};
   const play=(frames,{urgent=!1}={})=>{if(urgent)gestureQ=[]; gestureQ.push(...(reduced?calm(frames):frames))};
-  function setMode(next){if(next===mode&&!dying)return; const was=mode; idleQ=[]; if(next!=="on")goHome(); if(next==="dead"){if(was==="dead"||dying)return; cancelJobs(); clearTimeout(feelTimer); pendingReact.length=0; dying=!0; play(SEQ.die,{urgent:!0}); if(reduced){mode="dead";dying=!1;host.dataset.mode=mode} return} dying=!1; mode=next; host.dataset.mode=mode; if(was==="dead")play(SEQ.wake,{urgent:!0}); lastActive=Date.now()}
+  // Going quiet is not a reason to leave a panel: a doze is a mode, not a recall, and taking the
+  // lean away here was what sent him home the moment the desk went still. Only a mode that takes
+  // him off the desk (dead) comes home; a lean is released by unlean(), by another lean, or by
+  // dying — never by the clock running out on his attention.
+  function setMode(next){if(next===mode&&!dying)return; const was=mode; idleQ=[]; if(next!=="on"&&next!=="doze")goHome(); if(next==="dead"){if(was==="dead"||dying)return; cancelJobs(); clearTimeout(feelTimer); pendingReact.length=0; dying=!0; play(SEQ.die,{urgent:!0}); if(reduced){mode="dead";dying=!1;host.dataset.mode=mode} return} dying=!1; mode=next; host.dataset.mode=mode; if(was==="dead")play(SEQ.wake,{urgent:!0}); lastActive=Date.now()}
   const react=kind=>{if(mode==="dead"||dying||!SEQ[kind])return; if(mode==="doze"){mode="on";lastActive=Date.now()} if(running||jobs.length){if(pendingReact.length<3)pendingReact.push(kind); return} play(SEQ[kind],{urgent:!0})};
   // A micro-emotion, from FEEL: swap the body, play its beat, hold the body, then let his own weight
   // take it back. The beat is queued, never urgent, so a small feeling can never interrupt the loud
@@ -562,10 +583,10 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // placement honest across resizes and strip content changes.
   applySubs(0,!1); power(); place(); render(advancePose(Date.now())); timer=setTimeout(tick,STEP);
   let placeFrame=0,stripWatch=null;
-  const replace=()=>{home=null; if(placeFrame)return; placeFrame=(typeof requestAnimationFrame=="function"?requestAnimationFrame:setTimeout)(()=>{placeFrame=0; place()},0)};
+  const replace=()=>{home=null; if(placeFrame)return; placeFrame=(typeof requestAnimationFrame=="function"?requestAnimationFrame:setTimeout)(()=>{placeFrame=0; place(); resettle()},0)};
   if(typeof addEventListener=="function")addEventListener("resize",replace);
   if(typeof ResizeObserver=="function"){const strip=document.getElementById("auto-headlines"); if(strip){stripWatch=new ResizeObserver(replace); stripWatch.observe(strip)}}
-  return{el:host,summon,dismiss,cancel,react,feel,cue,observe,setMode,walkTo,lean,ponder,
+  return{el:host,summon,dismiss,cancel,react,feel,cue,observe,setMode,walkTo,lean,unlean,ponder,
     get leaning(){return leanAt?{layer:leanAt.layer,angle:leanAt.angle,dir:leanAt.dir}:null},
     get pondering(){return pondering},
     // The registry can arrive after him (the desk builds its panels as it goes), and a new one

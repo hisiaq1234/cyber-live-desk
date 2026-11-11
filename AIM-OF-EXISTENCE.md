@@ -155,3 +155,7 @@ nothing should be built in a way that makes adding them a rewrite.
 4. **Never fake geography, and never claim something works before it has been tested.**
 5. **No second app, no full re-skin, no speculative refactor.** Small, grounded, verifiable changes to
    this repository.
+6. **Everything supporting Crid is held to Snapchat's standard of finish.** The HUD, the cards, the
+   stickers and chips, the effects, the accessories, the transitions, the way a panel enters and
+   leaves — all of it should feel smooth, modern, expressive and obviously crafted. Nothing ships
+   looking like a placeholder.

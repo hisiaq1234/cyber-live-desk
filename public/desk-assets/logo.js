@@ -444,6 +444,10 @@ export function createLogo({
     }).then((p) => {
       player = p;
       host.classList.add("has-motion");
+      // The sting parks on its rest frame the moment it loads, waiting to be asked. Nothing asked,
+      // so the operator's animation only ever appeared as a still lockup: the goat was on screen
+      // but it never arrived. Play the arrival here, once, as the slot is handed over.
+      p.replay();
     }).catch(() => { /* the vector machine already drew the lockup; leave it standing */ });
   };
 
@@ -499,7 +503,10 @@ export function createLogo({
       // A counter, not a boolean: the same replay can be asked for twice in a row.
       if (next.replay != null && next.replay !== lastReplay) {
         lastReplay = next.replay;
-        if (visible) play(timeline);
+        // Replay means the lockup on screen, and once the sting holds the slot that is the sting —
+        // the vector timeline underneath it is hidden. Asking it to replay the vector played a
+        // gesture nobody could see.
+        if (visible) { if (player) player.replay(); else play(timeline); }
       }
     },
     replay: () => (player ? player.replay() : play(timeline)),

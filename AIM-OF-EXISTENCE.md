@@ -1,8 +1,8 @@
-# The Intention
+# Aim of Existence — the intention
 
-This file is the project's own statement of what it is for. It records the owner's intent in his
-terms, and it is the reference every change is measured against. If code and this document disagree,
-one of them is wrong and the owner decides which.
+This file is the project's own statement of why it exists and what it is for. It records the owner's
+intention in his terms, and it is the reference every change is measured against. If code and this
+document disagree, one of them is wrong and the owner decides which.
 
 ---
 

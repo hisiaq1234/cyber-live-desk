@@ -31,7 +31,7 @@ import {
   commandBody,
   commandText,
   parseDeskCommand,
-} from "../api/_commands.mjs";
+} from "../public/desk-assets/_commands.mjs";
 
 import {
   LOGO_LAYER_IDS,

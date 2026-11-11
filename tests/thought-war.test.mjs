@@ -4,7 +4,7 @@
 // oversized field or a bad type fails here instead of failing on air.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 import {
   DEFAULT_STATE,
@@ -30,7 +30,7 @@ import {
   commandBody,
   commandText,
   parseDeskCommand,
-} from "../api/_commands.mjs";
+} from "../public/desk-assets/_commands.mjs";
 import {
   commandBody as publicCommandBody,
   commandText as publicCommandText,
@@ -258,10 +258,13 @@ test("the deck category is the same string in the deck, the command rules and th
   assert.equal(desk.category, DECK_CATEGORY, "the desk claims the category the deck writes");
 });
 
-test("the served copy of the command rules stays byte-identical to the api copy", () => {
-  const server = readFileSync(new URL("../api/_commands.mjs", import.meta.url), "utf8");
-  const served = readFileSync(new URL("../public/desk-assets/_commands.mjs", import.meta.url), "utf8");
-  assert.equal(served, server, "public/desk-assets/_commands.mjs is a duplicate, not a symlink: sync it");
+test("the command rules have one implementation, and the api imports the served one", () => {
+  assert.equal(existsSync(new URL("../api/_commands.mjs", import.meta.url)), false,
+    "api/_commands.mjs is gone: a second copy is what drifts");
+  for (const rel of ["../api/desk.mjs", "../api/_twitch-core.mjs"]) {
+    assert.match(readFileSync(new URL(rel, import.meta.url), "utf8"), /from "\.\.\/public\/desk-assets\/_commands\.mjs"/,
+      `${rel} parses chat with the one shared module`);
+  }
 });
 
 test("the state after a draw is what the overlay controller reads", async () => {

@@ -19,7 +19,7 @@ import {
   parseAllowIds,
   commandBody,
   commandText,
-} from "./_commands.mjs";
+} from "../public/desk-assets/_commands.mjs";
 
 export { parseDeskCommand };
 

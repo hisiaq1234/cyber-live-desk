@@ -49,7 +49,7 @@ import {
   upsertCard,
 } from "./_desk-core.mjs";
 import { twitchStatus } from "./_twitch-core.mjs";
-import { parseDeskCommand, commandBody, commandText } from "./_commands.mjs";
+import { parseDeskCommand, commandBody, commandText } from "../public/desk-assets/_commands.mjs";
 import { readBrief, runBrief } from "./_brief.mjs";
 import { searchYouTubeTracks, youtubeApiKey } from "./_youtube-search.mjs";
 import { requestUrl } from "./_http.mjs";

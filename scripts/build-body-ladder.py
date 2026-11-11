@@ -8,11 +8,12 @@ parameters and varies only two of them: `body=` (the shape the Bitmoji editor of
 `rotation=` (viewing angle). It asks at scale=3 first, falls back to scale=1, and writes
 views/shape-<body>.png and views/angle-<rotation>.png — 1050x1400 PNGs, rotation 0 for the shapes.
 
-The seven frames in public/desk-assets/crid/ were cut from those renders to 600x800 webp at
-rotation 7 (hence the -r7 in every filename), with the ink ~688px tall, the feet near y=757 and the
-body centre on x=320, then exported as webp to keep the payload small. views/ holds the masters for
-body 0, 1, 2, 3 and 5. body-000 and body-00 have no master in views/: the owner drew those two
-himself and they were committed straight as webp.
+The seven frames in public/desk-assets/crid/ are cut from those renders at rotation 7 (hence the
+-r7 in every filename) at the master's own 1050x1400, with the feet on y=1325 and the torso centre
+on x=560. views/shape-<body>-r7.png is that same request at rotation 7 for the five shapes the
+ladder is cut from, so a frame is the render itself and not a copy of a copy. body-000 and body-00
+have no master in views/: they are two slimmer drawings committed straight as 600x800 webp, so they
+are re-cut by enlarging the frame they already ship — the same drawing, no detail invented.
 
 So there are five distinct masters, not seven, and three of them measure within 2px of each other:
 the art alone cannot carry a body ladder. This script builds one from that art without drawing
@@ -21,13 +22,13 @@ it horizontally with a smooth width profile so the torso carries the weight whil
 its own proportions. Every stage is still the owner's own Bitmoji.
 
 Framing is preserved exactly as the renderer assumes (crid-bot.js: INK_BOTTOM, FIG_X, FIG_W):
-  canvas 600x800, ink bottom on y=757, torso axis on x=320.
+  canvas 1050x1400, ink bottom on y=1325, torso axis on x=560.
 A body swap therefore never moves his feet and never shifts him sideways.
 
 Needs Pillow (not a runtime dependency — this is a one-off asset tool):
   python3 -m pip install pillow
 
-  python3 scripts/build-body-ladder.py            # rebuild the seven frames + ladder.json
+  python3 scripts/build-body-ladder.py            # re-cut the seven frames + ladder.json from the masters
   python3 scripts/build-body-ladder.py --measure  # print the ink box of every shipped frame
   python3 scripts/build-body-ladder.py --sheet OUT.png   # side-by-side sheet at real desk size
 """
@@ -40,12 +41,22 @@ from PIL import Image, ImageChops, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
 CRID = ROOT / "public" / "desk-assets" / "crid"
+VIEWS = ROOT / "views"
 LADDER_JSON = CRID / "ladder.json"
 
-FRAME_W, FRAME_H = 600, 800
-GROUND = 757          # ink bottom, the y crid-bot.js maps onto the floor line
-AXIS = 320            # torso axis, the x crid-bot.js maps onto the sprite centre
+FRAME_W, FRAME_H = 1050, 1400
+GROUND = 1325         # ink bottom, the y crid-bot.js maps onto the floor line
+AXIS = 560            # torso axis, the x crid-bot.js maps onto the sprite centre
 ALPHA_MIN = 8
+
+# The 1050x1400 render each stage is cut from, at rotation 7 — the stance every frame is in. The
+# two frames with no master are enlarged from what already ships (see the docstring).
+MASTERS = {"0": "shape-0-r7.png", "1": "shape-1-r7.png", "2": "shape-2-r7.png",
+           "3": "shape-3-r7.png", "5": "shape-5-r7.png"}
+NO_MASTER = ("000", "00")
+SCALE = FRAME_W / 600      # the master is 1.75x the frame the stage sizes below were designed in
+QUALITY = 82               # webp quality: a 1050x1400 frame still has to be a light file to load on air
+
 
 # key, target ink height, target ink width, torso width bias (+fatter/-leaner), head damping
 STAGES = [
@@ -176,7 +187,7 @@ def measure():
 def sheet(out_path):
     """Side by side at the size he is actually drawn: 17.5vw on a 1080p stream, capped at 340px."""
     desk_w = min(max(150.0, 1920 * 0.175), 340.0)          # --bw on a 1920-wide stream
-    scale = desk_w / 160 * (142 / 800)                      # viewBox px per frame px
+    scale = desk_w / 160 * (142 / FRAME_H)                 # viewBox px per frame px
     stages = []
     for key, *_ in STAGES:
         stages.append((key, Image.open(CRID / f"body-{key}-r7.webp").convert("RGBA")))
@@ -213,28 +224,25 @@ SUB_STEPS = [0, 4, 8, 12, 16, 20, 24]
 
 
 def build_all():
-    # This script warps the seven shipped frames in place, so a second run would warp the warp.
-    # ladder.json records what the frames measured before the last run — if they already match the
-    # built numbers, stop rather than compound the stretch.
-    if LADDER_JSON.exists():
-        prev = json.loads(LADDER_JSON.read_text())
-        first = prev["stages"][0]
-        now = ink(Image.open(CRID / f"body-{first['key']}-r7.webp").convert("RGBA"))
-        if (now["w"], now["h"]) == (first["ink"]["w"], first["ink"]["h"]):
-            sys.exit(f"{CRID.relative_to(ROOT)} already holds built frames ({now['w']}x{now['h']} for "
-                     f"body={first['key']}). Restore the originals first:\n"
-                     f"  git checkout HEAD -- public/desk-assets/crid/body-*.webp")
+    # The sources are the 1050x1400 masters in views/, never the frames this writes, so a second run
+    # re-cuts from the same render instead of warping the warp.
     widths, heights = [], []
     stages = []
     for key, height, width, b, hd in STAGES:
         src_path = CRID / f"body-{key}-r7.webp"
-        src = Image.open(src_path).convert("RGBA")
+        if key in MASTERS:
+            src = Image.open(VIEWS / MASTERS[key]).convert("RGBA")
+            out, k = fit(src, round(height * SCALE), round(width * SCALE), b, hd)
+        else:
+            # No master for this one: enlarge the frame that already ships, so it keeps exactly the
+            # drawing it has and gains nothing but pixels.
+            src = Image.open(src_path).convert("RGBA").resize((FRAME_W, FRAME_H), Image.LANCZOS)
+            out, k = src, 1.0
         before = ink(src)
-        out, k = fit(src, height, width, b, hd)
         after = ink(out)
         if after["x0"] <= 0 or after["x1"] >= FRAME_W or after["y0"] <= 0:
             print(f"WARNING body={key} touches the frame edge: {after}")
-        out.save(src_path, "WEBP", quality=82, method=6)
+        out.save(src_path, "WEBP", quality=QUALITY, method=6)
         widths.append(after["w"])
         heights.append(after["h"])
         stages.append({"key": key, "ink": after, "scale": round(k, 4),

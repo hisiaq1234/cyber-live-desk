@@ -642,7 +642,11 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     if(mode==="on"||mode==="doze"){const br=breath(now); q.bs*=(1+.028*br); q.sy*=(1+.016*br); q.hy-=2.4*br}
     // Against a panel the idle weight shift is cut back: the whole point of a lean is that the
     // contact point holds still, so the drifting posture must not walk him along the edge.
-    if(!frozen&&mode!=="dead"){const po=postureAt(now),k=leanAt?.3:1; q.hr+=po.hr*k; q.tr+=po.tr*k; q.hy+=po.hy*k}
+    // With the rig carrying the idle (base body, feet planted, not stepping) the posture sway is
+    // cut back further: hr rotates the WHOLE figure about a pivot at his feet, which is the
+    // lollipop sway — a rigid board pivoting on a stick. The rig already shifts his weight the
+    // way a body does, so the pose layer only has to breathe and settle.
+    if(!frozen&&mode!=="dead"){const po=postureAt(now),rigIdle=mode!=="dead"&&!dying&&!leanAt&&BODIES[bodyI]==="000"&&!(walk&&walk.to),k=(leanAt?.3:1)*(rigIdle?.22:1); q.hr+=po.hr*k; q.tr+=po.tr*k; q.hy+=po.hy*k}
     // The wondering pose: weight on one leg, head tilted, held. It is a slow sway rather than a
     // still, because a perfectly still body reads as a paused image.
     if(pondering){const w=Math.sin((now-BOOT)/1000*1.35); q.hr+=7.6+w*1.2; q.tr+=3.8+w*1.6; q.hy+=1.5; q.bs*=.994}

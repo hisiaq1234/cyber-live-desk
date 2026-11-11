@@ -251,7 +251,7 @@ export async function createSting({ host, mark = "goat", visible = null } = {}) 
     player = lottie.loadAnimation({
       container: stage,
       renderer: "svg",
-      loop: false,
+      loop: true,
       autoplay: false,
       animationData: withMark(themeMotion(anim, motionPalette(host), motionRuleMap(host)), mark, markColors(host)),
       rendererSettings: { preserveAspectRatio: "xMidYMid meet" },
@@ -263,7 +263,9 @@ export async function createSting({ host, mark = "goat", visible = null } = {}) 
         const svg = stage.querySelector("svg");
         if (svg) svg.setAttribute("viewBox", box.viewBox);
         hideLayers();
-        player.goToAndStop(MOTION_REST, true);
+        // Park on the last frame — the finished lockup — not MOTION_REST: the keyframes run to
+        // ~140, so frame 101 is mid-assembly and a snapshot there is a half-arrived logo.
+        player.goToAndStop(anim.op - 1, true);
         resolve();
       });
     });
@@ -290,15 +292,13 @@ export async function createSting({ host, mark = "goat", visible = null } = {}) 
       mark = next;
       await build();
     },
-    // Play the arrival and settle on the rest frame. The sting fades itself out after MOTION_REST,
-    // so looping it would blink the channel identity off the overlay every five seconds.
+    // The operator's own page plays this animation looped and autoplaying
+    // (docs/reference/lottie-logo.html), so the desk does the same: the sting is the channel
+    // identity on air, not a one-shot intro that parks mid-frame and never moves again.
     replay() {
       if (!player || holding) return;
       player.goToAndStop(0, true);
-      player.addEventListener("complete", () => {
-        player.goToAndStop(MOTION_REST, true);
-      }, { once: true });
-      player.playSegments([0, MOTION_REST], true);
+      player.play();
     },
     setVisible(ids) {
       visible = ids;
@@ -308,7 +308,9 @@ export async function createSting({ host, mark = "goat", visible = null } = {}) 
     },
     hold(on) {
       holding = !!on;
-      if (player) player.goToAndStop(MOTION_REST, true);
+      if (!player) return;
+      if (holding) player.pause();
+      else player.play();
     },
     destroy() {
       if (player) player.destroy();

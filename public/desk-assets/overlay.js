@@ -1020,7 +1020,12 @@ html.swae #desk .letters{background:#0b0d12f5}
     width: num("logo.w", 24, 6, 46),
     x: P.get("logo.x") != null ? num("logo.x", 50, 0, 100) : null,
     y: P.get("logo.y") != null ? num("logo.y", 6, 0, 100) : null,
-    mark: LOGO_MARKS.includes(P.get("logo.mark")) ? P.get("logo.mark") : "bot",
+    // The goat is the operator's own artwork and it is what his animation was made for, so it is
+    // what the desk shows unless he asks for the robot. This defaulted to "bot", which meant his
+    // animation played with the mascot swapped out and the lockup read as a paraphrase of his
+    // design rather than as it; the goat was only reachable by passing ?logo.mark=goat, which
+    // nothing on the stream does.
+    mark: LOGO_MARKS.includes(P.get("logo.mark")) ? P.get("logo.mark") : "goat",
   });
   const renderLogo = (l) => { if (lockup) { lockup.update(l || {}); capBot(); } };
 

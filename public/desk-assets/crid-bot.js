@@ -165,7 +165,7 @@ html.low-power #crid-bot svg,html.swae #crid-bot svg{filter:none}
 // The ladder is exported so a test can hold it to the measurement in ladder.json; nothing in the
 // overlay has to import it to use it.
 export{BODY_LADDER};
-export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="bc",x=null,y=null,step=null,scale=1}={}){
+export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="bc",x=null,y=null,step=null,scale=1,layers=null}={}){
   if(!document.getElementById("crid-bot-css")){const st=document.createElement("style");st.id="crid-bot-css",st.textContent=CSS,document.head.append(st)}
   const STEP=step!=null?step:swae?220:lowPower?260:140,
   // Movement is sampled finer than the sequencing tick, so an eased beat is drawn as a movement
@@ -178,6 +178,13 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   if(Number.isFinite(scale)&&scale>0)host.style.setProperty("--bws",String(clamp(scale,.4,2.5)));
   const homeCls=[...host.classList].filter(c=>c.startsWith("pos-"));
   host.append(svg); root.append(host);
+  // ---- the desk's furniture ---------------------------------------------------------------
+  // The desk hands in its layer registry (layers.mjs) and this is the only way he learns where a
+  // panel is. It is read at the moment he moves, never cached: the registry answers for a panel
+  // that has been moved, hidden or removed, and a name it does not know comes back null — which
+  // every verb below treats as "no such furniture", not as a reason to throw.
+  let getLayer=typeof layers=="function"?layers:layers&&typeof layers.layer=="function"?n=>layers.layer(n):null;
+  const layerOf=name=>{try{return (getLayer&&getLayer(name))||null}catch{return null}};
   // Reduced motion is a request for less movement, never for a dead mascot: he keeps breathing and
   // ticking and only the travelling gestures (hops, walks, flights, slams) are cut back. It is read
   // live rather than once, because a browser source (OBS, Swae) can report the preference and can
@@ -196,7 +203,9 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // desk says he is on". Starting at true made the first observe({bot:{on:true}}) a no-op — it only
   // acts on a flip — so the boot never ran, mode stayed at its "dead" default and the idle loop's
   // `mode!=="dead"` guard skipped every gesture. That was the dead-on-air bug.
-  const pendingReact=[]; let lastActive=Date.now(),prev=null,online=null,lastReactN=null,lastSubN=null,bodyI=-1,growth={sx:1,sy:1},fx=1,walk=null,roamN=0,subs=0,home=null;
+  const pendingReact=[]; let lastActive=Date.now(),prev=null,online=null,lastReactN=null,lastSubN=null,bodyI=-1,growth={sx:1,sy:1},fx=1,walk=null,roamN=0,subs=0,home=null,
+  // Staging: the lean he is holding, the lean he is walking towards, and the held wondering pose.
+  leanAt=null,pendingLean=null,pondering=!1;
   const jobs=[]; let running=null; const flights=new WeakMap;
   const setBody=i=>{if(i===bodyI)return; bodyI=clamp(i,0,BODIES.length-1); const src=AV(BODIES[bodyI]); parts.avatarBase.setAttribute("href",src); parts.avatarBase.setAttributeNS(XLINK,"href",src);};
   // The build he is in right now — the walk, the gait and the gesture weight all read it, so the
@@ -260,43 +269,122 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // ---- locomotion: stepping, not gliding -------------------------------------------------
   // He covers ground in short weighted steps with a pause between them, each one eased in and out,
   // so the travel reads as a person shifting their weight rather than as a sprite sliding along.
-  const startWalk=(tx,ty)=>{if(reduced||mode!=="on"||walk)return;
+  const startWalk=(tx,ty,{loose=!1,eps=1.1,stay=!1}={})=>{if(reduced||mode!=="on"||walk)return !1;
     // He travels the band between the clock and the strip. When the frame is too narrow for one
     // (a 500px Swae box: the two plates overlap in x) there is nowhere to walk that is not on top
     // of something, so he stays where he is and the idle gestures carry the movement instead.
-    const lo=minCenterX(),hi=Math.min(92,maxCenterX()); if(hi<=lo)return;
+    // A walk to a named layer is a directed walk, so it is allowed the whole frame: the panel he
+    // has been sent to is the reason he is crossing it.
+    const lo=loose?1.5:minCenterX(),hi=loose?98.5:Math.min(92,maxCenterX()); if(hi<=lo)return !1;
     const r=pct(host.getBoundingClientRect());
     host.classList.remove(...homeCls); host.classList.add("roam"); host.style.left=`${r.x}%`; host.style.top=`${r.y}%`;
-    // He may shuffle along the centre, never across the frame: at broadcast size a full-width
-    // crawl would walk him over the lower third and the clock.
     const tyMax=floorBottom?(innerHeight-floorBottom-r.h*innerHeight/100)/innerHeight*100:100-r.h-2;
     walk={x:r.x,y:r.y,tx:clamp(tx,lo,hi),ty:clamp(ty,42,tyMax),
-      from:{x:r.x,y:r.y},to:null,t0:0,dur:1,gap:0,done:0}};
+      from:{x:r.x,y:r.y},to:null,t0:0,dur:1,gap:0,done:0,eps,stay};
+    return !0};
   const advanceWalk=()=>{if(!walk)return; const now=Date.now();
-    if(walk.done){if(now>=walk.done)goHome(); return}
+    if(walk.done){if(now<walk.done)return; const stay=walk.stay; walk=null;
+      // A staged walk ends where it was sent: he stays at the panel he came for instead of
+      // drifting home, and the lean he was walking towards is put on him here.
+      if(stay){if(pendingLean){const p=pendingLean; pendingLean=null; lean(p.name,p.side)} return}
+      goHome(); return}
     if(walk.to){ // mid-step: eased travel, then a beat with both feet down before the next one
       const e=EASE.smooth(clamp((now-walk.t0)/walk.dur,0,1));
       walk.x=walk.from.x+(walk.to.x-walk.from.x)*e; walk.y=walk.from.y+(walk.to.y-walk.from.y)*e;
       if(now-walk.t0>=walk.dur){walk.from={x:walk.x,y:walk.y}; walk.to=null; walk.gap=now+rand(160,430)*build().slow*(reduced?1.6:1)}
     } else if(now>=walk.gap){
       const dx=walk.tx-walk.x,dy=walk.ty-walk.y;
-      if(Math.hypot(dx,dy)<1.1){walk.done=now+Math.round(rand(1900,2900)); return}
+      if(Math.hypot(dx,dy)<walk.eps){walk.done=now+Math.round(rand(1900,2900)); return}
       fx=dx<0?-1:1; const k=(.42+Math.random()*.26)/Math.sqrt(build().slow);   // no two steps cover the same ground
       walk.from={x:walk.x,y:walk.y}; walk.to={x:walk.x+dx*k,y:walk.y+dy*k};
       walk.t0=now; walk.dur=clamp(340+Math.hypot(dx,dy)*9,340,720)*build().slow;
     }
     host.style.left=`${walk.x}%`; host.style.top=`${walk.y}%`};
-  const goHome=()=>{if(!walk)return; walk=null; fx=1; gestureQ=[]; host.classList.remove("roam"); host.style.left=host.style.top=""; host.classList.add(...homeCls)};
+  // Home is the anchor he was placed at. Coming home ends a lean: he is a guest on a panel, not
+  // furniture himself, so the moment the desk needs him back he lets go of it.
+  const goHome=()=>{const roam=host.classList.contains("roam"); leanAt=null; pendingLean=null; lastDrawn="";
+    if(!walk&&!roam)return; walk=null; fx=1; gestureQ=[]; host.classList.remove("roam"); host.style.left=host.style.top=""; host.classList.add(...homeCls)};
   // A short shuffle around wherever he lives (home is re-read after every landing and on resize),
   // so the crawl reads as him pottering about rather than as a walk across the whole stream.
   const crawlScreen=()=>{if(!home)home=pct(host.getBoundingClientRect());
     const pts=[[-6,1.5],[1.5,-2],[4.5,1],[-2,-2.5]]; roamN=(roamN+1)%pts.length; const [dx,dy]=pts[roamN];
     startWalk(home.x+dx,home.y+dy)};
+  // ---- the desk as furniture --------------------------------------------------------------
+  // A panel is a place with an edge, not a rectangle on a screen: he walks to its side, and when
+  // he leans his side meets that edge and stays there. The geometry is the sprite's own — the
+  // drawing's ink box is known (BODY_LADDER measured it), so the point where his body crosses the
+  // panel's edge can be put exactly on it instead of being eyeballed.
+  //
+  // The lean is a rotation about his feet, which is what leaning actually is: his feet stay on the
+  // floor line, his body tilts toward the panel, and the contact point — his side at whatever
+  // height the panel's edge reaches him — is solved so it lands on the edge. Because the rotation
+  // pivots on the feet and the contact is on the same rigid body, breathing moves the rest of him
+  // and leaves the lean point where it is.
+  const VBW=160,VB_FEET=164,VB_CX=74,VB_PAD=6,     // the sprite's viewBox: width, foot line, centre, left bleed
+    VB_PER_WEBP=106.5/600,                          // viewBox units per px of the 600x800 master frame
+    SHOULDER=.78,                                   // shoulder height as a fraction of the drawn figure
+    OVERLAP=3,                                      // px his silhouette is allowed inside the panel's edge
+    TILT=[[.6,9],[.35,12],[0,15]];                  // how far he leans, by how high the contact is
+  // Which side of the panel he stands on. Asked for, or the roomier side of the frame.
+  const sideFor=(box,side)=>side==="left"||side==="right"?side:(box.x+box.w/2>innerWidth/2?"left":"right");
+  // Where he has to stand to put his side on that panel's edge, and how far he tilts to get there.
+  // Null when there is nothing to lean on: the panel's edge never crosses his body, so a shoulder
+  // would be leaning on air and he would rather stand beside it than fake it.
+  const standPoint=(box,side)=>{
+    const w=host.offsetWidth||innerWidth*.175,h=host.offsetHeight||w*168/VBW,
+      st=build(),sx=growth.sx||1,sy=growth.sy||1,
+      inkW=st.w*VB_PER_WEBP*sx,inkH=st.h*VB_PER_WEBP*sy,   // his drawn body, in viewBox units
+      u=w/VBW,                                            // px per viewBox unit
+      rect=host.getBoundingClientRect(),feetY=rect.bottom,
+      bodyTop=feetY-inkH*u,shoulderY=feetY-inkH*SHOULDER*u,
+      dir=side==="left"?1:-1,                             // standing on its left puts his right side on it
+      lo=Math.max(box.edge.top,bodyTop),hi=Math.min(box.edge.bottom,feetY);
+    if(!(hi>lo))return null;
+    const contactY=clamp(shoulderY,lo,hi),
+      f=clamp((feetY-contactY)/(inkH*u),0,1),
+      tilt=(TILT.find(([min])=>f>=min)||TILT[TILT.length-1])[1]*dir,
+      th=tilt*Math.PI/180,
+      above=(feetY-contactY)/u,                           // contact height above his feet, viewBox units
+      // The side of him that meets the panel, in viewBox units. He is drawn facing forward to
+      // lean — the mirror is a walking artefact, not a stance — so this is the plain geometry:
+      // the walk flips fx as it steps, and a contact point that moved with it would walk him into
+      // the panel and back out again forever.
+      qx=VB_CX+dir*(inkW/2),
+      // …and where that point ends up once the lean is rotated about his feet.
+      xAt=VB_CX+(qx-VB_CX)*Math.cos(th)+above*Math.sin(th),
+      wallX=dir>0?box.edge.left+OVERLAP:box.edge.right-OVERLAP,
+      left=wallX-(xAt+VB_PAD)*u;
+    return{left,centre:left+w/2,tilt,dir,contactY,w,h,feetY}};
+  // Walk to a named panel and stop at the offset where a lean would start. Not a teleport: the
+  // same stepping walk he uses for everything else, at the gait his body stage gives him.
+  const walkTo=(name,side)=>{
+    const box=layerOf(name); if(!box||mode==="dead"||dying||reduced)return !1;
+    const sp=standPoint(box,sideFor(box,side)); if(!sp)return !1;
+    return startWalk(sp.centre/innerWidth*100,(sp.feetY-sp.h)/innerHeight*100,{loose:!0,eps:.35,stay:!0})};
+  const lean=(name,side)=>{
+    const box=layerOf(name); if(!box||mode==="dead"||dying||reduced)return !1;
+    const s=sideFor(box,side),sp=standPoint(box,s); if(!sp)return !1;
+    if(walk){pendingLean={name,side:s}; return !0}          // he is already on his way somewhere
+    const rect=host.getBoundingClientRect();
+    if(Math.abs(rect.left+rect.width/2-sp.centre)>Math.max(16,sp.w*.2)){   // not beside it yet
+      pendingLean={name,side:s};
+      return walkTo(name,s)};
+    fx=1;                                                  // face forward: a lean has no direction of travel
+    leanAt={angle:sp.tilt,dir:sp.dir,layer:name};
+    host.classList.remove(...homeCls); host.classList.add("roam");
+    host.style.left=`${sp.centre/innerWidth*100}%`; host.style.top=`${(sp.feetY-sp.h)/innerHeight*100}%`;
+    lastDrawn="";
+    return !0};
+  // A held wondering pose: weight on one leg, head tilted, the body given to a question. The
+  // drawings carry painted arms, so nothing here can raise a hand — what he has is posture, and
+  // posture held still is what reads as thinking. Usable standing and leaning; it composes with
+  // the lean rather than replacing it.
+  const ponder=(on=!0)=>{if(mode==="dead"||dying)return !1; pondering=!!on; lastDrawn=""; return !0};
   const render=p=>{
     // Stamped before the unchanged-pose early return: the mode is the attribute the overlay, the
     // theme's idle animation and any on-air check read, and it must never lag a mode change.
     host.dataset.mode=mode;
-    const sig=JSON.stringify(p)+bodyI; if(sig===lastDrawn)return; lastDrawn=sig;
+    const sig=JSON.stringify(p)+bodyI+(leanAt?leanAt.angle:0)+(pondering?1:0); if(sig===lastDrawn)return; lastDrawn=sig;
     // A pose may still name eyes:/mouth: (every sequence does). There is no face layer to write to
     // any more — the drawing's own face is the face — so those keys are carried and ignored, and the
     // beat around them still plays.
@@ -312,7 +400,10 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     parts.bodyG.setAttribute("transform",`translate(0 ${p.by}) translate(70 164) scale(${(1+(1-p.bs)*.6).toFixed(3)} ${p.bs}) translate(-70 -164)`);
     // gx used to be scaled by .4 — a 3px glance at the old 104px size, i.e. nothing. A glance now
     // reads as a look: the sprite is the only face he has, so its travel is the expression.
-    parts.figG.setAttribute("transform",`translate(${(shift+p.gx*1.15).toFixed(2)} ${(p.hy*.85-plank*14).toFixed(2)}) translate(70 158) rotate(${L.toFixed(2)}) scale(${(p.fx*p.sx*k).toFixed(3)} ${(p.sy*k).toFixed(3)}) translate(-70 -158)`);
+    // The lean is the outermost transform: the whole figure, already posed, tips about his feet.
+    // Everything inside it — the breath, the squash, the idle weight shift — still moves, which is
+    // the point: he breathes against the panel instead of being pinned to it.
+    parts.figG.setAttribute("transform",`${leanAt?`rotate(${leanAt.angle.toFixed(2)} ${VB_CX} ${VB_FEET}) `:""}translate(${(shift+p.gx*1.15).toFixed(2)} ${(p.hy*.85-plank*14).toFixed(2)}) translate(70 158) rotate(${L.toFixed(2)}) scale(${(p.fx*p.sx*k).toFixed(3)} ${(p.sy*k).toFixed(3)}) translate(-70 -158)`);
   };
   // ---- human timing ----------------------------------------------------------------------
   // The sprite is a still drawing, so the only life it has is what the engine moves. Two layers:
@@ -348,7 +439,12 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const baseOf=frame=>({...REST[mode],tag:tagText,fx,sx:growth.sx,sy:growth.sy,...(weighGesture(frame)||{})});
   const dress=p=>{const now=Date.now(),q={...p};
     if(mode==="on"||mode==="doze"){const br=breath(now); q.bs*=(1+.028*br); q.sy*=(1+.016*br); q.hy-=2.4*br}
-    if(!frozen&&mode!=="dead"){const po=postureAt(now); q.hr+=po.hr; q.tr+=po.tr; q.hy+=po.hy}
+    // Against a panel the idle weight shift is cut back: the whole point of a lean is that the
+    // contact point holds still, so the drifting posture must not walk him along the edge.
+    if(!frozen&&mode!=="dead"){const po=postureAt(now),k=leanAt?.3:1; q.hr+=po.hr*k; q.tr+=po.tr*k; q.hy+=po.hy*k}
+    // The wondering pose: weight on one leg, head tilted, held. It is a slow sway rather than a
+    // still, because a perfectly still body reads as a paused image.
+    if(pondering){const w=Math.sin((now-BOOT)/1000*1.35); q.hr+=7.6+w*1.2; q.tr+=3.8+w*1.6; q.hy+=1.5; q.bs*=.994}
     if(!gestureOn){if(mode==="doze")q.hr=[3,5,7,5][Math.floor(now/430)%4];
       if(grooving&&mode==="on"){q.hr=Math.floor(now/760)%2?-3:3; q.hy=Math.floor(now/1500)%2?2:0}}
     if(walk&&walk.to){const u=clamp((now-walk.t0)/walk.dur,0,1),lift=Math.sin(Math.PI*u),h=build().heft;
@@ -381,7 +477,9 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     if(now>=trAt+trFor){ // the previous beat has finished travelling: choose the next one
       let frame=null; if(walk&&!walk.done&&!gestureQ.length)gestureQ.push(...SEQ.crawl);
       if(gestureQ.length)frame=gestureQ.shift(); else if(mode!=="dead"){
-        if(!idleQ.length&&!walk&&now>=waitUntil){const q=pickIdle();
+        // Against a panel, or inside a thought, he is not pottering about: the staged hold is the
+        // performance, so nothing picks a wander for him until he lets go.
+        if(!idleQ.length&&!walk&&!leanAt&&!pondering&&now>=waitUntil){const q=pickIdle();
           if(q===SEQ.crawl){crawlScreen();idleQ=[]}else idleQ=[...q]; waitUntil=now+nextWait()}
         frame=idleQ.shift()||null; if(mode==="on"&&now-lastActive>DOZE_AFTER_MS)setMode("doze")}
       stepTo(frame,now);
@@ -467,5 +565,11 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const replace=()=>{home=null; if(placeFrame)return; placeFrame=(typeof requestAnimationFrame=="function"?requestAnimationFrame:setTimeout)(()=>{placeFrame=0; place()},0)};
   if(typeof addEventListener=="function")addEventListener("resize",replace);
   if(typeof ResizeObserver=="function"){const strip=document.getElementById("auto-headlines"); if(strip){stripWatch=new ResizeObserver(replace); stripWatch.observe(strip)}}
-  return{el:host,summon,dismiss,cancel,react,feel,cue,observe,setMode,setSubs:n=>{lastSubN=n|0;applySubs(n,!1)},setOnline(v){online=!!v;power()},get mode(){return mode},get subs(){return subs},get stage(){return build()},setMood,say,nudge,randomLine,place:replace,freeze(pose={}){frozen=!0;clearTimeout(timer); if(pose.mode)mode=pose.mode; if(pose.tag!==void 0)tagText=pose.tag; if(pose.subs!=null)applySubs(pose.subs,!1); lastDrawn=""; render({...REST[mode],tag:tagText,fx:pose.fx||1,sx:growth.sx,sy:growth.sy,...pose})},destroy(){clearTimeout(timer); clearTimeout(feelTimer); mo==null||mo.disconnect(); stripWatch==null||stripWatch.disconnect(); if(typeof removeEventListener=="function")removeEventListener("resize",replace); cancelJobs(); goHome(); host.remove()}}
+  return{el:host,summon,dismiss,cancel,react,feel,cue,observe,setMode,walkTo,lean,ponder,
+    get leaning(){return leanAt?{layer:leanAt.layer,angle:leanAt.angle,dir:leanAt.dir}:null},
+    get pondering(){return pondering},
+    // The registry can arrive after him (the desk builds its panels as it goes), and a new one
+    // replaces the old without remounting him.
+    setLayers(v){getLayer=typeof v=="function"?v:v&&typeof v.layer=="function"?n=>v.layer(n):null; return !0},
+    setSubs:n=>{lastSubN=n|0;applySubs(n,!1)},setOnline(v){online=!!v;power()},get mode(){return mode},get subs(){return subs},get stage(){return build()},setMood,say,nudge,randomLine,place:replace,freeze(pose={}){frozen=!0;clearTimeout(timer); if(pose.mode)mode=pose.mode; if(pose.tag!==void 0)tagText=pose.tag; if(pose.subs!=null)applySubs(pose.subs,!1); lastDrawn=""; render({...REST[mode],tag:tagText,fx:pose.fx||1,sx:growth.sx,sy:growth.sy,...pose})},destroy(){clearTimeout(timer); clearTimeout(feelTimer); mo==null||mo.disconnect(); stripWatch==null||stripWatch.disconnect(); if(typeof removeEventListener=="function")removeEventListener("resize",replace); cancelJobs(); goHome(); host.remove()}}
 }

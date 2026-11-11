@@ -32,6 +32,7 @@ import { createSoundOrbSync } from "./sound-orb.js";
 import { requestXFeed } from "./x-feed-client.js";
 import { createCridBot, CUE_NAMES } from "./crid-bot.js";
 import { createCueReader } from "./cue.mjs";
+import { createLayerRegistry } from "./layers.mjs";
 import { createLogo, LOGO_POSITIONS, LOGO_MARKS } from "./logo.js";
 import { CYBER_CSS } from "./cyber-theme.js";
 import { youtubeEmbedUrl } from "./youtube-embed.js";
@@ -979,10 +980,15 @@ html.swae #desk .letters{background:#0b0d12f5}
   // he never reaches), and ?bot.x= / ?bot.y= place it by percent. The two are independent — giving
   // one anchors that axis and leaves the other on its default — so a corner can be nudged without
   // restating both.
+  // Where the desk's panels actually are, in one place, for the renderer and for anything else
+  // on the page that has to know what he can stand on (see layers.mjs). Read by name —
+  // layers.layer("clock") — and re-measured only when something that can move a panel happens.
+  const layers = createLayerRegistry({ doc: document, win: window });
   const BOT_ARG = P.get("bot");
   const botPlaced = P.get("bot.x") != null || P.get("bot.y") != null;
   const bot = BOT_ARG === "0" ? null : createCridBot({
     root,
+    layers,
     swae: SWAE,
     lowPower: document.documentElement.classList.contains("low-power"),
     position: ["bl", "bc", "br"].includes(BOT_ARG) ? BOT_ARG : "bc",
@@ -1721,7 +1727,10 @@ html.swae #desk .letters{background:#0b0d12f5}
     });
   }
 
-  window.DeskOverlay = { register, logo: lockup };
+  // The frame's own surfaces, published: layers.layer("clock") answers where the clock is right
+  // now, layers.snapshot() is the whole frame as plain JSON, and the three staging verbs are on
+  // crid for the operator console — walkTo(name, side), lean(name, side), ponder(on).
+  window.DeskOverlay = { register, logo: lockup, layers, crid: bot };
   // One location, both consumers: the readout and the clock's topline are drawn once here, after
   // both plates exist, and again only when the location itself changes.
   renderLocation();
@@ -1731,5 +1740,17 @@ html.swae #desk .letters{background:#0b0d12f5}
   // every plate is in the document, measure again: this is what puts him on top of the bottom band
   // on a narrow frame and on the floor of a broadcast one.
   if (bot) { bot.place(); capBot(); }
+  // ?staging=1 runs the sequence the thoughts need, so it can be watched rather than described:
+  // walk to the card, lean his back on its edge, hold a wondering pose, then cross to the clock
+  // and lean there. A panel that is not on screen is simply not there — each verb returns false
+  // and he stays where he is, rather than leaning on a rectangle that was never drawn.
+  // The map plate and the clock are the two panels that reach him at broadcast size: his shoulder
+  // is ~24% up the frame, the card ends well above his head and the ticker sits below his waist,
+  // so leaning on those is not possible and lean() says so instead of floating him against them.
+  if (P.get("staging") === "1" && bot) {
+    setTimeout(() => bot.lean("map", "left"), 1200);
+    setTimeout(() => bot.ponder(true), 8000);
+    setTimeout(() => bot.lean("clock", "right"), 12000);
+  }
   tick();
 })();

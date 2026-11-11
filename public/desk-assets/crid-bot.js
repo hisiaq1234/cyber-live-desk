@@ -23,6 +23,7 @@
    from the sub total each time, so an overlay reload mid-stream restores it. The build also drives
    how he moves — see BODY_LADDER.slow and .heft, used by the walk, the gait and the gesture weight.
    Feed it with observe(state) where state.bot.subs is the sub count this stream, or call setSubs(n). */
+import{RIG}from"./crid/rig.mjs";
 const NS="http://www.w3.org/2000/svg",XLINK="http://www.w3.org/1999/xlink",PAL={onyx:"#1F1736",screen:"#0F0B17",edge:"#3A1D9E",indigo:"#6531F8",indigoDk:"#3A1D9E",mint:"#86F6BC",bone:"#A98BFF",ink:"#F4F0FF",slate:"#2B2738",red:"#FF5B57",dead:"#5E5873"},
 DOZE_AFTER_MS=12e4,BODIES=["000","00",3,0,5,1,2],ROT=7,ASSETS="./desk-assets/crid",AV=b=>`${ASSETS}/body-${b}-r${ROT}.webp`,
 SUB_STEPS=[0,4,8,12,16,20,24],STAGE_STRETCH=.03,
@@ -108,14 +109,44 @@ function draw(){
     el("path",{d:"M44 152C44 110 56 92 70 92C84 92 96 110 96 152Z",fill:PAL.slate,stroke:PAL.ink,"stroke-width":5,"stroke-linejoin":"round"}),
     el("circle",{cx:70,cy:56,r:21,fill:PAL.slate,stroke:PAL.ink,"stroke-width":5}),
     el("circle",{cx:63,cy:54,r:2.8,fill:PAL.mint}),el("circle",{cx:77,cy:54,r:2.8,fill:PAL.mint}));
-  const figG=el("g",{class:"fig"},avatarBase,ph),bodyG=el("g",{class:"body"},figG);
+  // ---- the cut-out rig -------------------------------------------------------------------
+  // body-000-r7.webp is one flat drawing, so a walk could only slide it across the desk — his
+  // legs never stepped and his arms never swung. scripts/build-crid-rig.py cuts that same render
+  // into ten pieces (head, torso, upper arm / forearm+hand and thigh / shin+foot per side) and
+  // measures the shoulder, elbow, hip and knee of each. Nothing is redrawn: every piece is a crop
+  // of the shipped drawing, and the script proves they reassemble into it pixel for pixel.
+  // Each joint is a group that turns about its own pivot, nested so a forearm carries the
+  // shoulder it hangs from and a shin carries its thigh. The group is placed in the render's own
+  // 1050x1400 space and scaled into the box the flat drawing used, so a rigged frame lands
+  // exactly where the flat one did.
+  const rigJ={},rigG=el("g",{class:"rig",display:"none"}),
+    piece=n=>{const b=RIG.pieces[n],im=el("image",{class:`rig-${n}`,x:b.x,y:b.y,width:b.w,height:b.h,preserveAspectRatio:"none"});
+      im.setAttribute("href",b.src); im.setAttributeNS(XLINK,"href",b.src); return im},
+    joint=(n,...k)=>{const g=el("g",{class:`joint-${n}`});for(const c of k)g.append(c); rigJ[n]=g; return g};
+  // The chest, the head and the arms hang off a group of their own, so the body can rise and lean
+  // over the foot that is carrying him while the legs below stay where the floor is. The legs are
+  // siblings of it, so a bob never lifts a planted foot off the ground.
+  // Each joint is drawn with the piece above the cut over the piece below it. The pieces overlap a
+  // few px past every cut (see scripts/build-crid-rig.py), so whichever piece is on top is the one
+  // whose band seals the joint — and that has to be the upper one, or a lifted leg would drag its
+  // band off the hip and show the cut edge.
+  const rigUpper=el("g",{class:"rig-upper"},
+    joint("shoulder-l",joint("elbow-l",piece("arm-fore-l")),piece("arm-upper-l")),
+    joint("shoulder-r",joint("elbow-r",piece("arm-fore-r")),piece("arm-upper-r")),
+    piece("torso"),piece("head"));
+  rigG.append(
+    joint("hip-l",joint("knee-l",piece("shin-l")),piece("thigh-l")),
+    joint("hip-r",joint("knee-r",piece("shin-r")),piece("thigh-r")),
+    rigUpper);
+  rigG.setAttribute("transform",`translate(${FIG_X} ${FIG_Y}) scale(${FIG_W/RIG.source.w})`);
+  const figG=el("g",{class:"fig"},avatarBase,rigG,ph),bodyG=el("g",{class:"body"},figG);
   const ticket=el("g",{class:"ticket",opacity:0});
   const tkFill=[el("path",{d:"M100 4H138V22H100Z",fill:PAL.red,class:"ticket-fill"}),el("path",{d:"M108 22L106 31L118 22Z",fill:PAL.red,class:"ticket-fill"})];
   const ticketText=el("text",{x:119,y:17.2,"text-anchor":"middle","font-size":10.5,"font-weight":800,"letter-spacing":.6,fill:PAL.onyx,"font-family":"ui-monospace,'SF Mono','JetBrains Mono',Menlo,Consolas,monospace"});
   ticketText.textContent="";
   ticket.append(el("path",{d:"M100 4H138V22H100ZM108 22L106 31L118 22Z",...sticker,"stroke-width":6}),...tkFill,ticketText);
   svg.append(bodyG,ticket);
-  return{svg,parts:{ticket,ticketText,tkFill,bodyG,figG,avatarBase,ph}};
+  return{svg,parts:{ticket,ticketText,tkFill,bodyG,figG,avatarBase,rigG,rigJ,rigUpper,ph}};
 }
 const CSS=`
 /* He is drawn at broadcast size: ~17.5vw is a full torso-and-head read on a 1080p stream, and the
@@ -454,6 +485,52 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // posture held still is what reads as thinking. Usable standing and leaning; it composes with
   // the lean rather than replacing it.
   const ponder=(on=!0)=>{if(mode==="dead"||dying)return !1; pondering=!!on; lastDrawn=""; return !0};
+  // ---- the stride -------------------------------------------------------------------------
+  // A walk is not two legs turning opposite ways. That is a wide-legged stance: both feet stay on
+  // the floor and both legs leave the vertical at once, so he reads as standing spread rather than
+  // walking. A walk is one foot planted and one in the air. Each leg owns half the cycle — planted
+  // for its first half, lifted, folded and put down on its second — and the leg that is planted is
+  // left exactly vertical, so the two legs are never both tilted away from each other.
+  // The chest rides the step: it rises over the foot carrying him at mid-step and leans towards
+  // it, and the shoulder line tips against the hip line. The arms swing with the step, both turning
+  // the same way so one comes across the body while the other goes out — never both out at once.
+  // Every curve below is zero at both ends of a step, so the pose at the start and at the end of a
+  // walk is the flat drawing itself and the hand-over to it cannot jump. Every angle turns about
+  // the pivot the slicer measured on the render.
+  // build().slow is already inside walk.dur, so a heavy stage still takes the step it took before.
+  const RIG_LIFT=80,      // px the lifted leg rises, in the render's own 1400-tall space
+    RIG_HIP=5,            // degrees the swinging thigh leans — small, so a leg stays near vertical
+    RIG_KNEE=8,           // degrees the swinging knee folds, which the thigh's lean cancels sideways
+    RIG_ARM=6,            // degrees an arm swings, against the leg on the same side
+    RIG_BOB=12,           // px the chest rises at mid-step
+    RIG_SWAY=3,           // px the chest leans over the planted foot
+    RIG_TWIST=2.2;        // px the shoulder line tips against the hip line
+  // One leg's own step: flat while it is planted, then a smooth rise to the top of the step and back
+  // down to the floor.
+  const swingOf=t=>{if(t<.5)return 0; const x=(t-.5)*2; return .5-.5*Math.cos(2*Math.PI*x)};
+  let rigOn=!1;
+  const showRig=(on,u)=>{
+    // The flat drawing is the same figure, so it has to go while the rig is on: left underneath, it
+    // is a second pair of legs that stay planted and a second pair of arms that do not swing, and
+    // the whole gait reads as a body walking out of its own skin.
+    if(on!==rigOn){rigOn=on; parts.rigG.setAttribute("display",on?"":"none"); parts.avatarBase.setAttribute("display",on?"none":"")}
+    if(!on)return;
+    const tL=(u*2)%1,tR=(u*2+.5)%1,          // the left leg steps first, the right on the second half
+      wL=swingOf(tL),wR=swingOf(tR),         // 0 with the foot down, 1 at the top of the step
+      kickL=wL>0?Math.sin(Math.PI*(tL-.5)*2):0, kickR=wR>0?Math.sin(Math.PI*(tR-.5)*2):0,
+      arm=Math.sin(2*Math.PI*tL)*RIG_ARM,    // both shoulders turn the same way: one out, one across
+      bob=Math.max(wL,wR)*RIG_BOB,
+      sway=-Math.sin(2*Math.PI*tL)*RIG_SWAY, // towards whichever foot is planted
+      twist=Math.sin(2*Math.PI*tL)*RIG_TWIST,
+      set=(j,deg,dx=0,dy=0)=>{const q=RIG.pivot[j]; parts.rigJ[j].setAttribute("transform",
+        `translate(${dx.toFixed(2)} ${dy.toFixed(2)}) rotate(${deg.toFixed(2)} ${q.x} ${q.y})`)};
+    // The planted leg is untouched: no lift, no lean, so its foot stays exactly on the floor line.
+    set("hip-l",RIG_HIP*kickL,0,-RIG_LIFT*wL); set("knee-l",-RIG_KNEE*wL);
+    set("hip-r",-RIG_HIP*kickR,0,-RIG_LIFT*wR); set("knee-r",RIG_KNEE*wR);
+    set("shoulder-l",arm,0,-twist); set("elbow-l",-arm*.5);
+    set("shoulder-r",arm,0,twist); set("elbow-r",-arm*.5);
+    parts.rigUpper.setAttribute("transform",`translate(${sway.toFixed(2)} ${(-bob).toFixed(2)})`);
+  };
   const render=p=>{
     // Stamped before the unchanged-pose early return: the mode is the attribute the overlay, the
     // theme's idle animation and any on-air check read, and it must never lag a mode change.
@@ -465,7 +542,13 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // second pivot rule.
     const plank=Math.abs(Math.sin(p.pr*Math.PI/180)),L=(p.hr*.8+p.pr)*p.fx,k=1-.16*plank,shift=plank*60*p.fx;
     const baked=leanAt&&p.fx===1&&plank===0?bakeLean(leanAt.angle):null;
-    const sig=JSON.stringify(p)+bodyI+(leanAt?leanAt.angle:0)+(pondering?1:0)+(baked?"b":""); if(sig===lastDrawn)return; lastDrawn=sig;
+    // The rig is only cut for the base stage so far, and it is only drawn while he is actually
+    // stepping: between steps, at rest and in every other body the flat drawing is what shows,
+    // which is also the only path that carries a baked lean.
+    const rigStep=!!(walk&&walk.to&&!leanAt&&BODIES[bodyI]==="000"),
+      rigU=rigStep?clamp((Date.now()-walk.t0)/walk.dur,0,1):0,
+      sig=JSON.stringify(p)+bodyI+(leanAt?leanAt.angle:0)+(pondering?1:0)+(baked?"b":"")+(rigStep?":"+Math.round(rigU*100):"");
+    if(sig===lastDrawn)return; lastDrawn=sig;
     // A pose may still name eyes:/mouth: (every sequence does). There is no face layer to write to
     // any more — the drawing's own face is the face — so those keys are carried and ignored, and the
     // beat around them still plays.
@@ -486,7 +569,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // into the bitmap there is nothing to rotate here: the bitmap is already tipped about the same
     // feet, so the pose goes on unchanged and the drawing stays sharp.
     parts.figG.setAttribute("transform",`${leanAt&&!baked?`rotate(${leanAt.angle.toFixed(2)} ${VB_CX} ${VB_FEET}) `:""}translate(${(shift+p.gx*1.15).toFixed(2)} ${(p.hy*.85-plank*14).toFixed(2)}) translate(70 158) rotate(${L.toFixed(2)}) scale(${(p.fx*p.sx*k).toFixed(3)} ${(p.sy*k).toFixed(3)}) translate(-70 -158)`);
-    showSprite(baked);
+    showSprite(baked); showRig(rigStep,rigU);
   };
   // ---- human timing ----------------------------------------------------------------------
   // The sprite is a still drawing, so the only life it has is what the engine moves. Two layers:

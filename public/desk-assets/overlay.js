@@ -1112,7 +1112,9 @@ html.swae #desk .letters{background:#0b0d12f5}
         }, "geo")),
         () => {},
         { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 });
-    } catch { }
+    } catch (err) {
+      if (CFG.debug) console.debug("[desk] geolocation request failed:", err);
+    }
   };
 
   const dockRight = h("div", { id: "dock-right" });

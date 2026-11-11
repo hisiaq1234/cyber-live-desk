@@ -1,10 +1,11 @@
-// CYBER LIVE DESK — Vercel scheduled auto-research.
+// CYBER LIVE DESK — scheduled auto-research.
 // Runs every 15 minutes. Only fires when "Auto research" is on in the controller.
 // Calls the same runResearch as the manual button, so approval mode is honoured.
 // Never touches the on-air card or live state.
 //
-// Vercel cron docs: https://vercel.com/docs/cron-jobs
-// The schedule is also declared in vercel.json under "crons".
+// The free Vercel plan only accepts daily crons, so the schedule lives in
+// .github/workflows/auto-research.yml, which calls this endpoint with CRON_SECRET —
+// the same arrangement brain-tick.yml uses for Crid's brain tick.
 
 import { getStore } from "./_store.mjs";
 import { readState, runResearch } from "./_desk-core.mjs";

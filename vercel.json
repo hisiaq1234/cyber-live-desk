@@ -12,6 +12,9 @@
     { "source": "/api/spotify/top", "destination": "/api/spotify-top" },
     { "source": "/(.*)", "destination": "/public/$1" }
   ],
+  "crons": [
+    { "path": "/api/brain-tick", "schedule": "0 0 * * *" }
+  ],
   "redirects": [
     {
       "source": "/",

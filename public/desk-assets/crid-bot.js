@@ -193,7 +193,9 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const mq=typeof matchMedia=="function"?matchMedia("(prefers-reduced-motion: reduce)"):null;
   const readMotion=()=>{reduced=!!(mq&&mq.matches)};
   readMotion(); if(mq){const onmq=()=>{readMotion();lastDrawn=""}; mq.addEventListener?mq.addEventListener("change",onmq):mq.addListener&&mq.addListener(onmq)}
-  for(const b of BODIES){const im=new Image();im.src=AV(b)}
+  // Kept, not just warmed: a lean bakes the drawing into a bitmap (see bakeLean), and that needs the
+  // decoded master, not a second request for it.
+  const bodyImg=new Map(); for(const b of BODIES){const im=new Image();im.src=AV(b);bodyImg.set(String(b),im)}
   // A sprite that will not load falls back to the drawn placeholder figure rather than leaving an
   // invisible image painting over the frame.
   parts.avatarBase.addEventListener("error",()=>{parts.avatarBase.setAttribute("display","none");parts.ph.removeAttribute("display")});
@@ -207,7 +209,8 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // Staging: the lean he is holding, the lean he is walking towards, and the held wondering pose.
   leanAt=null,pendingLean=null,pondering=!1;
   const jobs=[]; let running=null; const flights=new WeakMap;
-  const setBody=i=>{if(i===bodyI)return; bodyI=clamp(i,0,BODIES.length-1); const src=AV(BODIES[bodyI]); parts.avatarBase.setAttribute("href",src); parts.avatarBase.setAttributeNS(XLINK,"href",src);};
+  const paintBody=()=>{const src=AV(BODIES[bodyI]); parts.avatarBase.setAttribute("href",src); parts.avatarBase.setAttributeNS(XLINK,"href",src)};
+  const setBody=i=>{if(i===bodyI)return; bodyI=clamp(i,0,BODIES.length-1); paintBody()};
   // The build he is in right now — the walk, the gait and the gesture weight all read it, so the
   // body is not just a picture that changes: a heavy Crid plods and slams, a lanky one trots.
   const build=()=>stageOf(bodyI);
@@ -334,6 +337,49 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     SHOULDER=.78,                                   // shoulder height as a fraction of the drawn figure
     OVERLAP=3,                                      // px his silhouette is allowed inside the panel's edge
     TILT=[[.6,9],[.35,12],[0,15]];                  // how far he leans, by how high the contact is
+  // ---- the lean, baked ---------------------------------------------------------------------
+  // A lean is a rotation of a 600x800 drawing, and rotating it inside the viewBox resamples the
+  // raster into the tilted grid at the size it is displayed — about a pixel of detail, which on a
+  // face this small is the softness you can see against a panel. His pose is already solved this
+  // way: every body frame is drawn pre-turned 7° (-r7.webp), so the picture never has to be rotated
+  // on screen. So the lean is baked the same way: the body is turned once, at the master's own
+  // resolution, into a bitmap the SVG then only scales down. LEAN_BOX is everything a bake has to
+  // cover — the viewBox plus the 8 units his feet hang below it — and LEAN_S is bitmap pixels per
+  // viewBox unit (4 puts the drawing back at ~426px, close to the master's own 600).
+  const LEAN_BOX={x:-6,y:-4,w:160,h:176},LEAN_S=4,
+    canBake=typeof document.createElement==="function"&&(()=>{try{return typeof document.createElement("canvas").getContext==="function"}catch{return !1}})();
+  let bakedKey="",bakedHref=null;
+  const bakeLean=angle=>{
+    if(!canBake)return null;
+    const key=`${BODIES[bodyI]}:${angle}`; if(key===bakedKey)return bakedHref;
+    const im=bodyImg.get(String(BODIES[bodyI])); if(!im||!im.complete||!im.naturalWidth)return null;
+    const c=document.createElement("canvas"); c.width=LEAN_BOX.w*LEAN_S; c.height=LEAN_BOX.h*LEAN_S;
+    const g=c.getContext("2d"); if(!g)return null;
+    g.setTransform(LEAN_S,0,0,LEAN_S,-LEAN_BOX.x*LEAN_S,-LEAN_BOX.y*LEAN_S);
+    g.translate(VB_CX,VB_FEET); g.rotate(angle*Math.PI/180); g.translate(-VB_CX,-VB_FEET);
+    g.drawImage(im,FIG_X,FIG_Y,FIG_W,FIG_H);
+    bakedKey=key; bakedHref=c.toDataURL("image/webp",.92);
+    return bakedHref;
+  };
+  // The baked bitmap covers LEAN_BOX rather than the sprite's own box, and the pose transform that
+  // follows it carries the matching rotate(-angle): rotate(a) pose rotate(-a) over a bitmap already
+  // turned by a is exactly the old rotate(a) pose over the unrotated drawing, so the contact point
+  // and everything the pose does to him are unchanged. No bake (an unloaded drawing, no canvas, a
+  // mirrored walk) leaves the old rotate-in-the-viewBox path in place.
+  const showSprite=baked=>{
+    const A=parts.avatarBase;
+    if(baked){if(A.getAttribute("href")!==baked){
+        A.setAttribute("href",baked); A.setAttributeNS(XLINK,"href",baked);
+        A.setAttribute("x",LEAN_BOX.x); A.setAttribute("y",LEAN_BOX.y);
+        A.setAttribute("width",LEAN_BOX.w); A.setAttribute("height",LEAN_BOX.h);
+        A.setAttribute("preserveAspectRatio","none")}
+      return}
+    if(A.getAttribute("x")!==null&&+A.getAttribute("x")!==FIG_X){   // he was baked: put the drawing back
+      A.setAttribute("x",FIG_X); A.setAttribute("y",FIG_Y);
+      A.setAttribute("width",FIG_W); A.setAttribute("height",FIG_H);
+      A.setAttribute("preserveAspectRatio","xMidYMax meet");
+      paintBody()}
+  };
   // Which side of the panel he stands on. Asked for, or the roomier side of the frame.
   const sideFor=(box,side)=>side==="left"||side==="right"?side:(box.x+box.w/2>innerWidth/2?"left":"right");
   // Where he has to stand to put his side on that panel's edge, and how far he tilts to get there.
@@ -409,7 +455,11 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // Stamped before the unchanged-pose early return: the mode is the attribute the overlay, the
     // theme's idle animation and any on-air check read, and it must never lag a mode change.
     host.dataset.mode=mode;
-    const sig=JSON.stringify(p)+bodyI+(leanAt?leanAt.angle:0)+(pondering?1:0); if(sig===lastDrawn)return; lastDrawn=sig;
+    // The lean is drawn from a bitmap that already carries the tilt, so the pose below has nothing
+    // left to rotate at display size. Resolved before the signature so a bake that only becomes
+    // possible once the drawing has decoded still gets drawn.
+    const baked=leanAt&&p.fx===1?bakeLean(leanAt.angle):null;
+    const sig=JSON.stringify(p)+bodyI+(leanAt?leanAt.angle:0)+(pondering?1:0)+(baked?"b":""); if(sig===lastDrawn)return; lastDrawn=sig;
     // A pose may still name eyes:/mouth: (every sequence does). There is no face layer to write to
     // any more — the drawing's own face is the face — so those keys are carried and ignored, and the
     // beat around them still plays.
@@ -428,7 +478,8 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // The lean is the outermost transform: the whole figure, already posed, tips about his feet.
     // Everything inside it — the breath, the squash, the idle weight shift — still moves, which is
     // the point: he breathes against the panel instead of being pinned to it.
-    parts.figG.setAttribute("transform",`${leanAt?`rotate(${leanAt.angle.toFixed(2)} ${VB_CX} ${VB_FEET}) `:""}translate(${(shift+p.gx*1.15).toFixed(2)} ${(p.hy*.85-plank*14).toFixed(2)}) translate(70 158) rotate(${L.toFixed(2)}) scale(${(p.fx*p.sx*k).toFixed(3)} ${(p.sy*k).toFixed(3)}) translate(-70 -158)`);
+    parts.figG.setAttribute("transform",`${leanAt?`rotate(${leanAt.angle.toFixed(2)} ${VB_CX} ${VB_FEET}) `:""}translate(${(shift+p.gx*1.15).toFixed(2)} ${(p.hy*.85-plank*14).toFixed(2)}) translate(70 158) rotate(${L.toFixed(2)}) scale(${(p.fx*p.sx*k).toFixed(3)} ${(p.sy*k).toFixed(3)}) translate(-70 -158)${baked?` rotate(${(-leanAt.angle).toFixed(2)} ${VB_CX} ${VB_FEET})`:""}`);
+    showSprite(baked);
   };
   // ---- human timing ----------------------------------------------------------------------
   // The sprite is a still drawing, so the only life it has is what the engine moves. Two layers:

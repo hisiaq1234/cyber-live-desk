@@ -13,7 +13,7 @@
     { "source": "/(.*)", "destination": "/public/$1" }
   ],
   "crons": [
-    { "path": "/api/brain-tick", "schedule": "* * * * *" }
+    { "path": "/api/brain-tick", "schedule": "0 0 * * *" }
   ],
   "redirects": [
     {

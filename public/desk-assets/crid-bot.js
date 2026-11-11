@@ -286,7 +286,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     if(walk.done){if(now<walk.done)return; const stay=walk.stay; walk=null;
       // A staged walk ends where it was sent: he stays at the panel he came for instead of
       // drifting home, and the lean he was walking towards is put on him here.
-      if(stay){if(pendingLean){const p=pendingLean; pendingLean=null; lean(p.name,p.side)} return}
+      if(stay||pendingLean){if(pendingLean){const p=pendingLean; pendingLean=null; lean(p.name,p.side)} return}
       goHome(); return}
     if(walk.to){ // mid-step: eased travel, then a beat with both feet down before the next one
       const e=EASE.smooth(clamp((now-walk.t0)/walk.dur,0,1));
@@ -306,6 +306,13 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // things that are allowed to call this while he is leaning.
   const goHome=()=>{const roam=host.classList.contains("roam"); leanAt=null; pendingLean=null; lastDrawn="";
     if(!walk&&!roam)return; walk=null; fx=1; gestureQ=[]; host.classList.remove("roam"); host.style.left=host.style.top=""; host.classList.add(...homeCls)};
+  // Stopping a walk is not letting go of a panel. A job arriving mid-stride, or a wander coming to
+  // its end, used to go through goHome() — the one thing that clears the lean — so a lean he had
+  // already taken (or was walking towards) was thrown away and he walked home instead. A walk ends
+  // where he stands; the lean it was carrying is put on him there, and only unlean(), death or a
+  // panel that left the frame release one.
+  const stopWalk=()=>{if(!walk)return; walk=null; fx=1; gestureQ=[];
+    if(pendingLean){const p=pendingLean; pendingLean=null; lean(p.name,p.side)}};
   // A short shuffle around wherever he lives (home is re-read after every landing and on resize),
   // so the crawl reads as him pottering about rather than as a walk across the whole stream.
   const crawlScreen=()=>{if(!home)home=pct(host.getBoundingClientRect());
@@ -366,6 +373,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const lean=(name,side)=>{
     const box=layerOf(name); if(!box||mode==="dead"||dying||reduced)return !1;
     const s=sideFor(box,side),sp=standPoint(box,s); if(!sp)return !1;
+    if(walk&&!walk.stay)stopWalk();   // a wander is not a reason to refuse the panel he was sent to
     if(walk){pendingLean={name,side:s}; return !0}          // he is already on his way somewhere
     const rect=host.getBoundingClientRect();
     if(Math.abs(rect.left+rect.width/2-sp.centre)>Math.max(16,sp.w*.2)){   // not beside it yet
@@ -490,7 +498,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // Stillness is part of him, but a painted body with a 28s gap reads as a statue.
     const sec=mode==="doze"?(r<.4?rand(12,20):rand(7,12)):(r<.2?rand(8,12):r<.55?rand(5,8):rand(2.8,5));
     return sec*1000*(reduced?1.35:1)};
-  const tick=()=>{if(frozen)return; const now=Date.now(); tickN++; if(walk&&(jobs.length||running))goHome(); advanceJob(); advanceWalk();
+  const tick=()=>{if(frozen)return; const now=Date.now(); tickN++; if(walk&&(jobs.length||running))stopWalk(); advanceJob(); advanceWalk();
     if(now>=trAt+trFor){ // the previous beat has finished travelling: choose the next one
       let frame=null; if(walk&&!walk.done&&!gestureQ.length)gestureQ.push(...SEQ.crawl);
       if(gestureQ.length)frame=gestureQ.shift(); else if(mode!=="dead"){

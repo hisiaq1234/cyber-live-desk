@@ -73,7 +73,7 @@ const PAGE = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
   "&family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700" +
   "&family=Anton&family=Instrument+Serif:ital@0;1&display=swap\">" +
   "<style>html,body{margin:0;background:transparent}</style></head>" +
-  "<body><script type=\"module\" src=\"/desk-assets/overlay.js\"></script></body></html>";
+  "<body><script type=\"module\" src=\"__OVERLAY_JS__\"></script></body></html>";
 
 const store = () => getStore();
 
@@ -111,7 +111,11 @@ const handler = async (req) => {
   const route = url.pathname.replace(/\/+$/, "") || "/";
   try {
     if ((req.method === "GET" || req.method === "HEAD") && (route === "/desk" || route === "/api/desk")) {
-      return new Response(req.method === "HEAD" ? null : PAGE, {
+      const variant = (url.searchParams.get("overlay") || url.searchParams.get("variant") || "").toLowerCase();
+      const useBrand = variant === "brand" || url.searchParams.get("brand") === "1";
+      const overlaySrc = useBrand ? "/desk-assets/overlay-brand.js" : "/desk-assets/overlay.js";
+      const page = PAGE.replace("__OVERLAY_JS__", overlaySrc);
+      return new Response(req.method === "HEAD" ? null : page, {
         headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=300" },
       });
     }

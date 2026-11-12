@@ -36,6 +36,7 @@ import {
   untouchedAuto,
   upsertCard,
   wl,
+  writeBeing,
   createTwitchClip,
 } from "../api/_desk-core.mjs";
 
@@ -1466,4 +1467,94 @@ test("the frame layout is server state, so it survives a reload and answers to o
 
   const seen = await publicState(store, null, NOW);
   assert.deepEqual(seen.body.scene, { mode: "pip", w: PIP_SIZE.max, h: 22 }, "the overlay can read it");
+});
+
+// ---------- CRID's persistence write-back (state.bot.being) ----------
+
+const beingSnap = (over = {}) => ({
+  v: 1,
+  savedAt: NOW,
+  floorX: 0.5,
+  drives: { energy: 55, boredom: 40, attention: 30 },
+  bag: { worn: true },
+  ...over,
+});
+
+test("bot.being is stored sanitized and survives every other bot write", async () => {
+  const store = makeStore();
+  await runAction(store, { action: "bot-subs", count: 7 }, NOW);
+  await runAction(store, { action: "bot-react", kind: "wave" }, NOW);
+  const before = (await readState(store)).version;
+
+  const res = await writeBeing(store, beingSnap(), NOW + 1000);
+  assert.equal(res.ok, true);
+  const s = await readState(store);
+  assert.ok(s.version > before, "the write bumps the version so the poll delivers it");
+  assert.equal(s.bot.subs, 7, "the sub count is carried across, not wiped");
+  assert.deepEqual(s.bot.react, { kind: "wave", n: 1 }, "the pending gesture is carried across");
+  assert.equal(s.bot.on, true, "a desk that never hid him stays on");
+  assert.deepEqual(s.bot.being, {
+    v: 1, savedAt: NOW, floorX: 0.5,
+    drives: { energy: 55, boredom: 40, attention: 30 },
+    bag: { worn: true },
+  });
+
+  // Everything is clamped and unknown keys dropped: the stored snapshot is exactly the shape.
+  await writeBeing(store, {
+    ...beingSnap({ savedAt: NOW + 5000, junk: "x" }),
+    drives: { energy: 140, boredom: -5, attention: 33.3 },
+    floorX: 2,
+    bag: { worn: false, x: -1, y: 5, extra: 1 },
+  }, NOW + 6000);
+  const s2 = await readState(store);
+  assert.deepEqual(s2.bot.being, {
+    v: 1, savedAt: NOW + 5000, floorX: 1,
+    drives: { energy: 100, boredom: 0, attention: 33.3 },
+    bag: { worn: false, x: 0, y: 1 },
+  });
+  assert.equal(s2.bot.subs, 7, "the second write still preserves the other bot fields");
+});
+
+test("writeBeing refuses anything that is not a clean v:1 snapshot", async () => {
+  const store = makeStore();
+  const bad = [
+    [{ ...beingSnap(), v: 2 }, /being\.v must be 1/],
+    [{ savedAt: NOW }, /being\.v must be 1/],
+    [beingSnap({ savedAt: "soon" }), /savedAt must be a timestamp/],
+    [beingSnap({ savedAt: NOW + 3 * 60 * 1000 }), /in the future/],
+    [beingSnap({ drives: null }), /drives is required/],
+    [beingSnap({ drives: { energy: 1, boredom: 2 } }), /attention must be a number/],
+    [beingSnap({ drives: { energy: "x", boredom: 2, attention: 3 } }), /energy must be a number/],
+    [beingSnap({ floorX: "middle" }), /floorX must be a number/],
+    [beingSnap({ bag: { worn: "yes" } }), /bag\.worn must be true or false/],
+    [beingSnap({ bag: { worn: false, x: 0.5 } }), /bag\.y must be a number/],
+  ];
+  for (const [snap, re] of bad) {
+    await assert.rejects(() => writeBeing(store, snap, NOW), re);
+  }
+  assert.equal((await readState(store)).bot, null, "a refused write stores nothing");
+});
+
+test("writeBeing is monotonic and lightly rate-limited", async () => {
+  const store = makeStore();
+  await writeBeing(store, beingSnap({ savedAt: NOW }), NOW);
+
+  // An older stamp must never roll his state backwards — two tabs cannot undo each other.
+  await assert.rejects(
+    () => writeBeing(store, beingSnap({ savedAt: NOW - 1, drives: { energy: 1, boredom: 1, attention: 1 } }), NOW),
+    (e) => e.status === 409,
+  );
+
+  // A save inside the 2 s window answers ok without committing: the page's unload flush never
+  // errors, and the previous write is at most two seconds stale.
+  const before = (await readState(store)).version;
+  const throttled = await writeBeing(store, beingSnap({ savedAt: NOW + 1000, drives: { energy: 1, boredom: 1, attention: 1 } }), NOW + 1000);
+  assert.equal(throttled.throttled, true);
+  assert.equal((await readState(store)).version, before, "a throttled write does not commit");
+
+  // Past the window the newer snapshot lands.
+  await writeBeing(store, beingSnap({ savedAt: NOW + 3000 }), NOW + 3000);
+  const s = await readState(store);
+  assert.equal(s.bot.being.savedAt, NOW + 3000);
+  assert.equal(s.bot.being.drives.energy, 55, "the throttled write's numbers were not stored");
 });

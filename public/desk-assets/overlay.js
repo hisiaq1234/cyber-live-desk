@@ -34,6 +34,7 @@ import { createSoundOrbSync } from "./sound-orb.js";
 import { requestXFeed } from "./x-feed-client.js";
 import { createCridBot, CUE_NAMES } from "./crid-bot.js";
 import { createCueReader, createCueReporter } from "./cue.mjs";
+import { createBeingSync } from "./being-sync.mjs";
 import { createLayerRegistry } from "./layers.mjs";
 import { createLogo, LOGO_POSITIONS, LOGO_MARKS } from "./logo.js";
 import { CYBER_CSS } from "./cyber-theme.js";
@@ -1018,6 +1019,17 @@ html.swae #desk .letters{background:#0b0d12f5}
   // reporter is off and the brain falls back to its own timer, exactly as it did before this existed.
   const cueReport = window.__DESK_CUE_REPORT__ || {};
   const cueReports = createCueReporter({ token: cueReport.token || "", url: cueReport.url || "/api/desk/cue-report" });
+  // His save file: the same embedded token buys exactly one more write — his drives, floor spot
+  // and dropped bag — so the next load continues this Crid rather than rolling a fresh one
+  // (being-sync.mjs). ?bot=0 means there is no him to save, so the sync stays off.
+  const beingSync = createBeingSync({
+    token: cueReport.token || "",
+    get: () => (bot && typeof bot.getBeing === "function" ? bot.getBeing() : null),
+  });
+  // The way out is the moment the freshest snapshot matters most: a hidden tab or a closing
+  // page will not get another poll, so both events flush inside the throttle window.
+  window.addEventListener("pagehide", () => beingSync.flush());
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") beingSync.flush(); });
   const soundOrb = bot ? bot.el : h("div", { id: "sound-orb", "aria-hidden": "true" },
     h("span", { class: "orb-ring" }), h("span", { class: "orb-ring" }), h("span", { class: "orb-core" }));
   if (!bot) root.append(soundOrb);
@@ -1542,6 +1554,9 @@ html.swae #desk .letters{background:#0b0d12f5}
     // CRID derives its own reactions, text tag and dozing from the same state the panels get; it
     // keeps the previous state itself and counts the diff, so it only fires on a real change.
     bot?.observe(s);
+    // Keep his save file current: throttled to one write per few polls inside being-sync, and
+    // never allowed to delay or break the poll it rides on.
+    beingSync.poll();
     // A cue is a one-shot: the reader remembers the stamp, so a re-poll of the same state or a
     // reload mid-gesture cannot replay it, and an unknown name is dropped here rather than thrown.
     // Nothing below touches the frame — CRID owns his own pose.

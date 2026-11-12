@@ -350,3 +350,59 @@ test("being does nothing while he is off the desk", async () => {
   assert.equal(bot.leaning, null, "and must not be holding a lean either");
   bot.destroy();
 });
+
+test("a saved being snapshot seeds his drives once, with the offline decay applied", async () => {
+  // Phase D2: state.bot.being is the snapshot his page wrote back. The first observe carrying
+  // one rebuilds his inner life with the spec's offline decay — energy recovers toward full
+  // (he slept), boredom and attention relax toward an empty room — and no later poll can
+  // re-roll a life already under way.
+  const root = installDom();
+  const { seeded } = await import("../public/desk-assets/being.mjs");
+  const bot = createCridBot({ root, step: 12, position: "bc",
+    beingOpts: { rng: seeded(11), settleMs: 0, cooldownMs: 0 } });
+  const savedAt = Date.now() - 30 * 60 * 1000; // half an hour offline
+  bot.observe({ bot: { on: true, being: { v: 1, savedAt,
+    drives: { energy: 40, boredom: 80, attention: 50 },
+    floorX: 0.5, bag: { worn: true } } } });
+  const d = bot.getBeing().drives;
+  assert.ok(Math.abs(d.energy - 42.5) < 0.3, `energy recovered while he slept, got ${d.energy}`);
+  assert.ok(d.boredom < 80 && d.boredom > 60, `boredom relaxed toward 60, got ${d.boredom}`);
+  assert.ok(d.attention < 50 && d.attention > 5, `attention decayed toward 5, got ${d.attention}`);
+
+  // A second observe carrying a different snapshot must not re-seed: the life is already his.
+  bot.observe({ bot: { on: true, being: { v: 1, savedAt,
+    drives: { energy: 99, boredom: 99, attention: 99 }, floorX: 0, bag: { worn: true } } } });
+  const d2 = bot.getBeing().drives;
+  assert.ok(d2.energy < 90, "the snapshot seeds once, not on every poll");
+  bot.destroy();
+});
+
+test("a foreign, stale or future-dated being snapshot is ignored", async () => {
+  const root = installDom();
+  const bot = createCridBot({ root, step: 12, position: "bc" });
+  const now = Date.now();
+  bot.observe({ bot: { on: true, being: { v: 2, savedAt: now,
+    drives: { energy: 1, boredom: 1, attention: 1 }, floorX: 0, bag: { worn: true } } } });
+  bot.observe({ bot: { on: true, being: { v: 1, savedAt: now - 9 * 3600e3,
+    drives: { energy: 1, boredom: 1, attention: 1 }, floorX: 0, bag: { worn: true } } } });
+  bot.observe({ bot: { on: true, being: { v: 1, savedAt: now + 3600e3,
+    drives: { energy: 1, boredom: 1, attention: 1 }, floorX: 0, bag: { worn: true } } } });
+  const d = bot.getBeing().drives;
+  assert.ok(Math.abs(d.energy - 62) < 1 && Math.abs(d.boredom - 70) < 1 && Math.abs(d.attention - 35) < 1,
+    `none of the bad snapshots may seed him; got ${JSON.stringify(d)}`);
+  bot.destroy();
+});
+
+test("a dropped bag is restored where it fell, and getBeing reports it back", async () => {
+  const root = installDom();
+  const bot = createCridBot({ root, step: 12, position: "bc" });
+  const savedAt = Date.now();
+  bot.observe({ bot: { on: true, being: { v: 1, savedAt,
+    drives: { energy: 50, boredom: 50, attention: 50 },
+    floorX: 0.5, bag: { worn: false, x: 0.5, y: 0.6 } } } });
+  const snap = bot.getBeing();
+  assert.equal(snap.bag.worn, false, "the dropped bag stays down after a reload");
+  assert.ok(Math.abs(snap.bag.x - 0.5) < 0.01, `the bag kept its x, got ${snap.bag.x}`);
+  assert.ok(snap.bag.y >= 0 && snap.bag.y <= 1, `the bag y stays normalized, got ${snap.bag.y}`);
+  bot.destroy();
+});

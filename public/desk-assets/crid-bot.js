@@ -329,8 +329,9 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // His inner life (being.mjs is pure — drives in, an intent out; beingTick below is the body
   // half). The registry is read live on every decision, so a panel that moves or leaves simply
   // stops being offered. beingOpts is the test seam: rng/drives/cooldown can be pinned without
-  // touching the module under test.
-  const being=createBeing({now:Date.now(),targets:deskTargets,...beingOpts});;
+  // touching the module under test. `let`, not `const`: the first observe that carries a saved
+  // snapshot rebuilds it once with those drives restored (see the persistence block below).
+  let being=createBeing({now:Date.now(),targets:deskTargets,...beingOpts});
   // Reduced motion is a request for less movement, never for a dead mascot: he keeps breathing and
   // ticking and only the travelling gestures (hops, walks, flights, slams) are cut back. It is read
   // live rather than once, because a browser source (OBS, Swae) can report the preference and can
@@ -987,6 +988,43 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // plan.fidgetEvery is deliberately unused: nextWait() is the idle-gesture gap, not a fidget
     // timer, and there is no burst channel on this page to scale — skipped rather than faked.
   };
+  // ---- his persistence (docs/specs/behaviour-drives.md §10) --------------------------------
+  // The desk state carries the last snapshot this page wrote back (state.bot.being, through
+  // POST /api/desk/being — see being-sync.mjs). The first observe that carries one re-seeds his
+  // drives exactly once, so a later poll can never re-roll a life already under way. The gap
+  // since savedAt gets the spec's offline decay: energy recovers toward full — he slept —
+  // while boredom and attention relax back toward an empty room's resting values (60 and 5,
+  // exponential with a one-hour constant). Anything stale, future-dated or not v:1 is ignored
+  // and he keeps the drives he booted with.
+  const BEING_MAX_GAP_MS=8*3600e3;
+  const beingOffline=(d,dtMs)=>{
+    const dt=Math.min(Math.max(dtMs,0),BEING_MAX_GAP_MS),h=dt/3600e3,k=Math.exp(-dt/3600000);
+    return{energy:clamp(d.energy+0.05*h*100,0,100),   // 0.05 of the scale per hour, capped at 8 h
+      boredom:clamp(60-(60-d.boredom)*k,0,100),
+      attention:clamp(5-(5-d.attention)*k,0,100)}};
+  let beingSeeded=!1;
+  const seedBeing=(snap,dtMs)=>{
+    const d=snap.drives;
+    if(!d)return;
+    being=createBeing({now:Date.now(),targets:deskTargets,...beingOpts,
+      drives:beingOffline({energy:+d.energy,boredom:+d.boredom,attention:+d.attention},dtMs)});
+    // The dropped bag is the one physical trace worth resurrecting: it lies exactly where it
+    // fell, on the same floor line, until he decides to pick it up again. Restoring it is a
+    // plain physics body at rest — placeBag() puts the element on it from the next tick.
+    const b=snap.bag;
+    if(b&&b.worn===!1&&Number.isFinite(b.x)&&Number.isFinite(b.y)&&!bag.body){
+      bag.worn=!1;
+      bag.body=world.add({x:clamp(b.x,0,1)*innerWidth,y:clamp(b.y,0,1)*innerHeight,vx:0,vy:0,
+        mass:1,drag:.4,restitution:reduced?0:.26,floor:floorY(),halfH:bagWH().h/2});
+      bagEl.style.display=""; placeBag()}
+  };
+  const maybeSeedBeing=s=>{
+    if(beingSeeded)return; beingSeeded=!0;
+    const snap=s.bot?s.bot.being:null;
+    if(!snap||snap.v!==1)return;
+    const dt=Date.now()-Number(snap.savedAt);
+    if(!(dt>=0)||dt>BEING_MAX_GAP_MS)return;   // future-dated or too old to mean anything
+    seedBeing(snap,dt)};
   const cue=(name,{text="",onEnd}={})=>{
     if(typeof name!=="string"||!name||mode==="dead"||dying)return false;
     const end=cueEndFor(onEnd);
@@ -1021,7 +1059,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // null online means "not told yet", and the desk's own default is on, so an unknown state boots
   // him rather than freezing him. Only an explicit bot.on:false kills him.
   const power=()=>setMode(online===!1?"dead":"on");
-  const observe=s=>{var _a,_b,_c; if(!s)return; const on=s.bot?s.bot.on!==!1:!0; if(on!==online){online=on;power()} if(online===!1){prev=s; return}
+  const observe=s=>{var _a,_b,_c; if(!s)return; maybeSeedBeing(s); const on=s.bot?s.bot.on!==!1:!0; if(on!==online){online=on;power()} if(online===!1){prev=s; return}
     const reactN=(_c=(_b=(_a=s.bot)==null?void 0:_a.react)==null?void 0:_b.n)!=null?_c:0; if(lastReactN===null)lastReactN=reactN; else if(reactN!==lastReactN){lastReactN=reactN;react(s.bot.react.kind)}
     const sn=subCount(s); if(sn!=null){if(lastSubN===null){lastSubN=sn;applySubs(sn,!1)}else if(sn!==lastSubN){const up=sn>lastSubN;lastSubN=sn;applySubs(sn,up)}}
     if(talking&&mode==="on"&&tickN%9===0)play(SEQ.read);
@@ -1043,5 +1081,15 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // The registry can arrive after him (the desk builds its panels as it goes), and a new one
     // replaces the old without remounting him.
     setLayers(v){getLayer=typeof v=="function"?v:v&&typeof v.layer=="function"?n=>v.layer(n):null; return !0},
-    setSubs:n=>{lastSubN=n|0;applySubs(n,!1)},setOnline(v){online=!!v;power()},get mode(){return mode},get subs(){return subs},get stage(){return build()},setMood,say,nudge,randomLine,place:replace,freeze(pose={}){frozen=!0;clearTimeout(timer); if(pose.mode)mode=pose.mode; if(pose.tag!==void 0)tagText=pose.tag; if(pose.subs!=null)applySubs(pose.subs,!1); lastDrawn=""; render({...REST[mode],tag:tagText,fx:pose.fx||1,sx:growth.sx,sy:growth.sy,...pose})},destroy(){clearTimeout(timer); clearTimeout(feelTimer); mo==null||mo.disconnect(); stripWatch==null||stripWatch.disconnect(); if(typeof removeEventListener=="function")removeEventListener("resize",replace); cancelJobs(); goHome(); crid3d&&crid3d.dispose(); host.remove()}}
+    setSubs:n=>{lastSubN=n|0;applySubs(n,!1)},setOnline(v){online=!!v;power()},get mode(){return mode},get subs(){return subs},get stage(){return build()},setMood,say,nudge,randomLine,place:replace,
+    // What being-sync.mjs posts back to the desk: the drives as they stand, where he is on the
+    // floor band (0..1 between the clock and the strip, the same band wander walks), and the
+    // bag — worn, or dropped at its normalized viewport spot. Tiny on purpose: it rides the
+    // public state document, so it stays a handful of numbers (docs/specs/behaviour-drives.md §10).
+    getBeing(){const r=host.getBoundingClientRect(),cx=(r.left+r.width/2)/innerWidth*100,
+      lo=minCenterX(),hi=Math.min(92,maxCenterX());
+      return{v:1,savedAt:Date.now(),drives:being.peek().drives,
+        floorX:hi>lo?clamp((cx-lo)/(hi-lo),0,1):.5,
+        bag:{worn:bag.worn,...(bag.worn?{}:{x:clamp((bag.body?bag.body.x:r.left+r.width/2)/innerWidth,0,1),
+          y:clamp((bag.body?bag.body.y:r.top+r.height*.22)/innerHeight,0,1)})}}},freeze(pose={}){frozen=!0;clearTimeout(timer); if(pose.mode)mode=pose.mode; if(pose.tag!==void 0)tagText=pose.tag; if(pose.subs!=null)applySubs(pose.subs,!1); lastDrawn=""; render({...REST[mode],tag:tagText,fx:pose.fx||1,sx:growth.sx,sy:growth.sy,...pose})},destroy(){clearTimeout(timer); clearTimeout(feelTimer); mo==null||mo.disconnect(); stripWatch==null||stripWatch.disconnect(); if(typeof removeEventListener=="function")removeEventListener("resize",replace); cancelJobs(); goHome(); crid3d&&crid3d.dispose(); host.remove()}}
 }

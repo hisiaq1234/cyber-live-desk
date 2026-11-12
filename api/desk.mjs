@@ -48,6 +48,7 @@ import {
   runAction,
   runResearch,
   upsertCard,
+  writeBeing,
 } from "./_desk-core.mjs";
 import { twitchStatus } from "./_twitch-core.mjs";
 import { parseDeskCommand, commandBody, commandText } from "../public/desk-assets/_commands.mjs";
@@ -232,6 +233,12 @@ const handler = async (req) => {
     // the report was accepted, ignored (a repeated stamp) or refused (a stamp never issued here).
     if (req.method === "POST" && route === CUE_REPORT_PATH) {
       return json({ ...(await reportCue(s, await readBody(req))), serverNow: Date.now() });
+    }
+    // The page's other write with the same embedded token: Crid's drives and where he was
+    // standing, so a reload continues him instead of re-rolling his inner life. It writes one
+    // sanitized field into state.bot and answers { ok } — no action runs, nothing else moves.
+    if (req.method === "POST" && route === "/api/desk/being") {
+      return json({ ...(await writeBeing(s, await readBody(req))), serverNow: Date.now() });
     }
     if (req.method === "POST" && route === "/api/desk/research") return json(await runResearch(s, await readBody(req)));
     throw new HttpError(404, "Not found.");

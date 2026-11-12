@@ -235,7 +235,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const hideFigure=()=>{parts.avatarBase.setAttribute("display","none");parts.rigG.setAttribute("display","none");parts.ph.setAttribute("display","none")};
   initCrid3D(host,()=>({p:lastPose,mode,dying,walking:!!(walk&&walk.to),
     walkDir:walk&&walk.to?(walk.tx-walk.x<0?-1:1):0,fx,lean:leanAt,reduced,
-    talking:host.classList.contains("is-active"),grooving:host.classList.contains("music-playing"),mood}),hideFigure)
+    stage:bodyI,talking:host.classList.contains("is-active"),grooving:host.classList.contains("music-playing"),mood}),hideFigure)
     .then(h=>{crid3d=h}).catch(err=>{try{console.warn("[crid-3d] not started:",err&&err.message||err)}catch{}});
   // ---- the desk's furniture ---------------------------------------------------------------
   // The desk hands in its layer registry (layers.mjs) and this is the only way he learns where a

@@ -18,11 +18,13 @@ channel rather than guessed:
 
   * the neck is the narrowest single run of ink between the head and the shoulders;
   * each arm is the outermost run of each row below the shoulder, clipped to the arm's own
-    measured width — the left arm is fused to the hanging vest flap for a few rows, and taking
-    the outer band keeps the vest with the torso where it belongs;
+    measured width — the arm is fused to the torso for a few rows near the shoulder, and taking
+    the outer band keeps the body with the torso where it belongs;
   * the crotch is the first row where the body splits into two runs, and the hip pivot sits
     just above it on each leg's own axis;
-  * the knee is a little under half way from the crotch to the top of the shoe;
+  * the ankle is the narrowest row of each leg near the bottom, and the knee sits a little
+    under half way from the crotch to it (no shoe, no denim edge: the landmark is the
+    silhouette, because he renders in his bare base body);
   * the elbow is half way from the shoulder to the wrist.
 
 No two pieces meet on a line. Every cut is a few pixels of overlap: the piece above a cut
@@ -69,7 +71,7 @@ W, H = 1050, 1400
 INK_BOTTOM = 1325
 
 # --- tunables, all in render pixels ---------------------------------------------------------
-# The arm's painted width. The left arm touches the hanging vest flap for a few rows near the
+# The arm's painted width. The left arm touches the torso for a few rows near the
 # shoulder, so each row's arm is the outer ARM_W pixels of its outermost run rather than the
 # whole run. The hand is wider and its fingers stand apart, so below the wrist the band is wider
 # still — a narrower one would leave the separated fingers behind in the torso.
@@ -94,7 +96,7 @@ RIG_ANGLES = {"hip-l": 5, "hip-r": 5, "knee-l": 8, "knee-r": 8,
               "shoulder-l": 6, "shoulder-r": 6, "elbow-l": 3, "elbow-r": 3}
 # Where the head is cut off the neck, as a fraction of the way down the narrowest neck row.
 NECK_DROP = 17
-# The knee, as a fraction of the way from the crotch to the top of the shoe.
+# The knee, as a fraction of the way from the crotch down to the ankle.
 KNEE_FRAC = 0.48
 
 
@@ -178,7 +180,7 @@ def measure(img):
         return left, right
 
     # The hand ends where the outer band stops reaching out past the torso's own edge. The band
-    # has to stay narrow as well: below him the shoe also reaches past x=460, and a shoe is not a
+    # has to stay narrow as well: below him the foot also reaches past x=460, and a foot is not a
     # hand.
     hand_bottom = shoulder_y
     for y in range(shoulder_y, int(H * .75)):
@@ -215,21 +217,24 @@ def measure(img):
             break
     if crotch_y is None:
         raise SystemExit("could not find the crotch: the legs never separate")
-    # The top of the shoe: the first white row below the knee band, i.e. where the denim ends.
-    shoe_top = None
-    for y in range(crotch_y + 60, H):
-        r = [q for q in runs(a, y, x0=460, x1=670) if q[1] - q[0] >= 20]
-        if r and all(sum(img.getpixel(((q[0] + q[1]) // 2, y))[:3]) / 3 > 150 for q in r):
-            shoe_top = y
-            break
-    if shoe_top is None:
-        raise SystemExit("could not find the shoes: no white band under the denim")
+    # The ankle: the narrowest row of each leg in the bottom of the figure, where the calf tapers
+    # into the bare foot. With no cloth on him there is no shoe and no denim edge to read, so the
+    # landmark is the silhouette's own waist instead of a colour change.
+    ankle_y, ankle_w = None, 10 ** 9
+    for y in range(crotch_y + round((INK_BOTTOM - crotch_y) * .55), INK_BOTTOM):
+        r = [q for q in runs(a, y, x0=460, x1=670) if q[1] - q[0] >= 6]
+        if len(r) == 2:
+            w = max(q[1] - q[0] + 1 for q in r)
+            if w < ankle_w:
+                ankle_y, ankle_w = y, w
+    if ankle_y is None:
+        raise SystemExit("could not find the ankles: the legs never narrow into the feet")
 
     hip, knee = {}, {}
     for side, i in (("l", 0), ("r", 1)):
         q = legs[i]
         hip[side] = (round((q[0] + q[1]) / 2, 1), crotch_y - 6)
-        ky = crotch_y + round((shoe_top - crotch_y) * KNEE_FRAC)
+        ky = crotch_y + round((ankle_y - crotch_y) * KNEE_FRAC)
         r = [t for t in runs(a, ky, x0=460, x1=670) if t[1] - t[0] >= 20]
         k = r[i] if len(r) > i else q
         knee[side] = (round((k[0] + k[1]) / 2, 1), ky)
@@ -239,7 +244,7 @@ def measure(img):
         "neck": {"y": head_cut, "narrowest": neck_y},
         "shoulder": shoulder, "elbow": elbow, "wristY": wrist_y, "handBottom": hand_bottom,
         "shoulderY": shoulder_y, "hip": hip, "knee": knee,
-        "crotchY": crotch_y, "shoeTop": shoe_top, "armW": ARM_W,
+        "crotchY": crotch_y, "ankleY": ankle_y, "ankleW": ankle_w, "armW": ARM_W,
     }
 
 

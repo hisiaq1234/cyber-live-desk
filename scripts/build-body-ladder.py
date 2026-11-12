@@ -14,8 +14,8 @@ genuinely different builds, so the ladder is now three real builds, not seven wa
     body=0  lean      body=1  average      body=2  heavy (belly, thicker limbs, same head)
 
 Everything about the pose is identical across the three because it is one render: the head top, the
-feet, the stance and the outfit are the same pixels. Only the build changes. Anything the desk wants
-between them is the renderer's own sub-step stretch, never a new drawing.
+feet, the stance and the base body are the same pixels. Only the build changes. Anything the desk
+wants between them is the renderer's own sub-step stretch, never a new drawing.
 
 WHERE THE FRAMES COME FROM
 --------------------------
@@ -23,8 +23,10 @@ WHERE THE FRAMES COME FROM
 1 and 2, and writes the masters to views/body-<n>-r0.png (1050x1400 PNG, the API's own size). The face
 is the one the desk already ships — the parameters in fetch-crid-views.mjs, with the two gold hoops —
 because crid-ladder-spec.md's recipe renders a different man: no earrings, a solid handlebar moustache
-instead of the split one, a rounder hair line and heavy blush. The outfit is the spec's 990491 (white
-tee, dark shorts): one outfit, and no backpack straps reading as a second body at small sizes.
+instead of the split one, a rounder hair line and heavy blush. There is no `outfit` parameter at all:
+the owner's rule is *no cloth*, so he renders as Snap's base body — no camo cargos, no backpack
+straps and no shoes, only the renderer's own plain base layer over bare feet. `outfit=-1` is
+rejected with HTTP 400, so the parameter is simply omitted.
 
 FRAMING (what crid-bot.js assumes: INK_BOTTOM, FIG_X, FIG_Y)
 -----------------------------------------------------------
@@ -65,11 +67,13 @@ BODIES = [0, 1, 2]    # lean, average, heavy
 SUB_STEPS = [0, 8, 16]
 BODY_NAMES = {0: "lean", 1: "average", 2: "heavy"}
 
-# The Snap recipe. The face is the one the desk ships (fetch-crid-views.mjs); the outfit is the
-# spec's 990491. Hex tones are converted to decimal — the endpoint answers 400 to 0x… values.
+# The Snap recipe. The face is the one the desk ships (fetch-crid-views.mjs). No `outfit` — the
+# owner's rule is no cloth, and `outfit=-1` answers 400; the clothing qualifiers that go with an
+# outfit (clothing_type / is_tucked / ua / breast) are gone with it. Tones are decimal integers:
+# the endpoint also answers 400 to 0x… values.
 API = "https://preview.bitmoji.com/avatar-builder-v3/preview/body"
 RECIPE = (
-    "scale=3 gender=1 style=5 rotation=0 outfit=990491 clothing_type=1 is_tucked=0 ua=2 breast=0 "
+    "scale=3 gender=1 style=5 rotation=0 "
     "beard=8696 brow=1538 cheek_details=-1 ear=1424 eye=1626 eyelash=-1 eye_details=-1 "
     "face_lines=-1 glasses=-1 hair=1657 hat=-1 jaw=1396 mouth=2338 nose=1449 "
     "earringL_lobe1=5 earringL_lobe1_tone1=16763909 earringL_lobe1_tone2=16763909 "

@@ -34,9 +34,9 @@ SUB_STEPS=[0,8,16],STAGE_STRETCH=.03,
 // scripts/build-body-ladder.py from the frames it just measured, and a test keeps this table honest
 // against public/desk-assets/crid/ladder.json.
 BODY_LADDER=[
-  {key:"0",w:477,h:1191,slow:1,heft:.86},
-  {key:"1",w:480,h:1191,slow:1.012,heft:.875},
-  {key:"2",w:592,h:1191,slow:1.45,heft:1.45}],
+  {key:"0",w:483,h:1190,slow:1,heft:.86},
+  {key:"1",w:485,h:1190,slow:1.008,heft:.871},
+  {key:"2",w:592,h:1190,slow:1.45,heft:1.45}],
 stageOf=i=>BODY_LADDER[Math.min(BODY_LADDER.length-1,Math.max(0,i|0))],
 // The eight micro-emotions from brain/micro-emotions.mjs. A painted face cannot be swapped, so a
 // feeling is a whole drawing that changes and is moved well: a different body, one of the gesture

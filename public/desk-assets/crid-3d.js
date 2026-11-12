@@ -22,7 +22,7 @@ const M={jaw:"ai_jawOpen",eyeShutL:"ai_eyeUpperClose_L",eyeShutR:"ai_eyeUpperClo
 const clamp=(n,a,b)=>Math.min(b,Math.max(a,n)),TAU=Math.PI*2,rand=(a,b)=>a+Math.random()*(b-a);
 const swingOf=t=>{if(t<.5)return 0;const x=(t-.5)*2;return .5-.5*Math.cos(2*Math.PI*x)};
 
-export async function initCrid3D(host,getState,onReady){
+export async function initCrid3D(host,getState,onReady,onFail){
   try{
     const q=typeof location=="object"?new URLSearchParams(location.search):null;
     if(q&&(q.get("crid3d")==="off"||q.get("bot3d")==="off"))return null;
@@ -72,11 +72,14 @@ export async function initCrid3D(host,getState,onReady){
     root.traverse(o=>{if(o.material){const ms=Array.isArray(o.material)?o.material:[o.material];
       for(const m of ms)if("envMapIntensity" in m)m.envMapIntensity=.7}});
 
-    // Fit: normalise height to ~1.5 world units, feet on y=0.
+    // Fit: bounds come from the SKELETON joints, not the skinned-mesh bbox — morph targets and
+    // bind-pose geometry can report a degenerate box that flings the model off-camera.
     model.updateMatrixWorld(!0);
-    const box=new THREE.Box3().setFromObject(model),h=box.max.y-box.min.y;
-    const s=h>1e-3?1.5/h:1;model.scale.setScalar(s);
-    const feetY=box.min.y*s;
+    const vp=new THREE.Vector3();let y0=1e9,y1=-1e9;
+    for(const n in bones){bones[n].getWorldPosition(vp);if(vp.y<y0)y0=vp.y;if(vp.y>y1)y1=vp.y}
+    const h=(y1-y0)>1e-3?y1-y0:1.7,s=1.5/h;
+    model.scale.setScalar(s);
+    const feetY=y0*s;
     model.position.y=-feetY;
     const dist=1.5/(2*Math.tan(cam.fov*Math.PI/360))*1.3;
     cam.position.set(0,.8,-dist);cam.lookAt(0,.7,0);
@@ -97,7 +100,7 @@ export async function initCrid3D(host,getState,onReady){
       if(name in MORPH_CACHE)return MORPH_CACHE[name];
       const want=M[name];if(!want)return MORPH_CACHE[name]=[];
       return MORPH_CACHE[name]=morphs.filter(x=>x.k===want||x.k.endsWith("."+want))};
-    const setMorph=(name,v)=>{for(const x of morph(name))x.m.morphTargetInfluences[x.i]=v};
+    const setMorph=(name,v)=>{for(const x of morph(name))if(x.m.morphTargetInfluences)x.m.morphTargetInfluences[x.i]=v};
     const setMorphs=pairs=>{for(const[k,v]of pairs)setMorph(k,v)};
 
     // Delta rotation on top of each bone's rest pose (userData.q0).
@@ -201,8 +204,12 @@ export async function initCrid3D(host,getState,onReady){
       if(t>=blinkAt){blinkUntil=t+.13;blinkAt=t+rand(2.6,6.2)*(reducedNow()?1.5:1)}
       const st=getState?getState():{};
       if(!ready){ready=!0;onReady&&onReady()}
-      drive(t,dt,st);
-      renderer.render(scene,cam)};
+      try{drive(t,dt,st);renderer.render(scene,cam)}
+      catch(err){
+        // One bad frame must not leave a transparent canvas where Crid should be: hand the
+        // page back to the 2D rig and stop the loop.
+        try{console.warn("[crid-3d] render failed, restoring 2D:",err&&err.message||err)}catch{}
+        disposed=!0;onFail&&onFail();return}};
     raf=requestAnimationFrame(frame);
 
     return{get active(){return ready},dispose(){disposed=!0;cancelAnimationFrame(raf);ro&&ro.disconnect();

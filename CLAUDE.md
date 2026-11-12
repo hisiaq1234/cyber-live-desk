@@ -46,15 +46,17 @@ his weight changes is **width and mass only**:
   height and head top (`ladder.json`), so none of them is short.
 - Never scale the whole sprite down to fit a layout. Fix the layout.
 
-### No cloth
+### Bare chest, his own kit
 
-**Crid wears no clothes.** The owner's direction, in as many words. He renders as the **base body**:
-no camo cargos, no tee, no backpack straps, no shoes. Omit the `outfit` parameter when rendering him.
+**Crid's torso is bare and he wears his own trousers, socks and shoes** — the owner's avatar
+recipe verbatim (`bm-preview/v3/avatar/body`, the URL in `fetch-crid-views.mjs`), with the
+backpack removed (`bag=-1`) because the bag is a prop he carries, not clothing. Bare chest means
+bare chest: no shirt, no straps, no second outline over his body.
 
-This is not a style choice to revisit — it is what makes his body readable. The old outfit (baggy
-camo cargos plus yellow backpack straps over a bare chest) read as *a second body* at small sizes,
-which is exactly the confusion the ladder is trying to remove. A prop he carries — the backpack —
-is a prop, drawn separately in his palette; it is not clothing and it is not part of his render.
+Snap's renderer has **no nude render** — its floor is a white undershirt and briefs, which is
+what the old `avatar-builder-v3` ladder shipped and why he read as "a white top." That endpoint
+is wrong for him; `bm-preview` with his real outfit params is the identity of record. Do not
+revert to it.
 
 ### One pose, always
 

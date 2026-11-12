@@ -33,19 +33,21 @@ to fetch; growth *between* stages is the renderer's own sub-step stretch (`SUB_S
 - **Weight = width and mass.** The six lighter builds differ mostly in *area*, not silhouette
   width — only the heaviest is measurably wider — so stage order and `slow`/`heft` are proven on
   ink area, not width.
-- **No cloth = wearing nothing.** The owner's words. He renders as Snap's base body — no camo
-  cargos, no straps, no shoes. `outfit` is omitted entirely (`outfit=-1` is HTTP 400). The
-  backpack is a separate prop the overlay draws; it is never part of the render.
+- **Bare chest, his own kit.** The frames come from `bm-preview/v3/avatar/body` — the owner's
+  own avatar URL — with `bag=-1`: bare chest, camo trousers, socks, shoes, no backpack straps.
+  Snap has no nude render (its floor is a white undershirt + briefs, which the wrong
+  `avatar-builder-v3` endpoint ships — do not use it for him). The backpack is a separate prop
+  the overlay draws; it is never part of the render.
 
 ## The recipe
 
 The authoritative parameters are the `RECIPE` constant in `scripts/build-body-ladder.py`
-(the face parameters now live verbatim in the `RECIPE` constant — `beard=8696`, `brow=1538`,
-`eye=1626`, `mouth=2338`, `jaw=1396`, `nose=1449`, `hair=1657`, `face_proportion=10`,
-`skin_tone=8080170`, plus the two gold hoops), mirrored in `docs/crid-avatar-params.json`. Fetch with
+(the owner's full avatar URL — face, hair, trousers `bottom=10001984`, footwear `866`, socks
+`295`, `clothing_type=1` for the bare chest — with `bag=-1`), mirrored in
+`docs/crid-avatar-params.json`. Fetch with
 `python3 scripts/build-body-ladder.py --fetch`, rebuild frames + `ladder.json` with a plain run.
-Render at `scale=3` (1050x1400); framing is a shared translation putting ink bottom on y=1325 and
-the mid-torso axis on x=560.
+Render at `scale=2` (2100x2800 master, downscaled to 1050x1400); framing is a shared translation
+putting ink bottom on y=1325 and the mid-torso axis on x=560.
 
 `rotation=7` or any non-zero rotation must never enter the ladder.
 

@@ -35,13 +35,13 @@ SUB_STEPS=[0,4,8,12,16,20,24],STAGE_STRETCH=.03,
 // scripts/build-body-ladder.py from the frames it just measured, and a test keeps this table honest
 // against public/desk-assets/crid/ladder.json.
 BODY_LADDER=[
-  {key:"3",w:480,h:1190,slow:1,heft:.86},
-  {key:"0",w:483,h:1190,slow:1.123,heft:1.021},
-  {key:"4",w:483,h:1190,slow:1.154,heft:1.062},
-  {key:"5",w:486,h:1190,slow:1.173,heft:1.087},
-  {key:"1",w:485,h:1190,slow:1.221,heft:1.15},
-  {key:"11",w:487,h:1190,slow:1.327,heft:1.289},
-  {key:"2",w:592,h:1190,slow:1.45,heft:1.45}],
+  {key:"3",w:477,h:1190,slow:1,heft:.86},
+  {key:"0",w:479,h:1190,slow:1.123,heft:1.022},
+  {key:"4",w:479,h:1190,slow:1.156,heft:1.064},
+  {key:"5",w:482,h:1190,slow:1.176,heft:1.091},
+  {key:"1",w:481,h:1190,slow:1.224,heft:1.154},
+  {key:"11",w:483,h:1190,slow:1.339,heft:1.304},
+  {key:"2",w:593,h:1190,slow:1.45,heft:1.45}],
 stageOf=i=>BODY_LADDER[Math.min(BODY_LADDER.length-1,Math.max(0,i|0))],
 // The eight micro-emotions from brain/micro-emotions.mjs. A painted face cannot be swapped, so a
 // feeling is a whole drawing that changes and is moved well: a different body, one of the gesture
@@ -116,11 +116,11 @@ function draw(){
     el("circle",{cx:70,cy:56,r:21,fill:PAL.slate,stroke:PAL.ink,"stroke-width":5}),
     el("circle",{cx:63,cy:54,r:2.8,fill:PAL.mint}),el("circle",{cx:77,cy:54,r:2.8,fill:PAL.mint}));
   // ---- the cut-out rig -------------------------------------------------------------------
-  // body-0-r0.webp is one flat drawing, so a walk could only slide it across the desk — his
-  // legs never stepped and his arms never swung. scripts/build-crid-rig.py cuts that same render
-  // into ten pieces (head, torso, upper arm / forearm+hand and thigh / shin+foot per side) and
-  // measures the shoulder, elbow, hip and knee of each. Nothing is redrawn: every piece is a crop
-  // of the shipped drawing, and the script proves they reassemble into it pixel for pixel.
+  // Each body-*-r0.webp is one flat drawing, so a walk could only slide it across the desk — his
+  // legs never stepped and his arms never swung. scripts/build-crid-rig.py cuts every stage's own
+  // render into ten pieces (head, torso, upper arm / forearm+hand and thigh / shin+foot per side)
+  // and measures the shoulder, elbow, hip and knee of each. Nothing is redrawn: every piece is a
+  // crop of the shipped drawing, and the script proves they reassemble into it pixel for pixel.
   // Each joint is a group that turns about its own pivot, nested so a forearm carries the
   // shoulder it hangs from and a shin carries its thigh. The group is placed in the render's own
   // 1050x1400 space and scaled into the box the flat drawing used, so a rigged frame lands

@@ -12,7 +12,7 @@ for this project; this file is only the short version of the rules that are not 
 2. **Never short.** His height and head size are fixed on every stage of the body ladder; weight
    changes width and mass only. Snap's renderer gives exactly seven distinct front-facing builds
    (`body=3,0,4,5,1,11,2`); all are measured to the same height — see `docs/specs/body-ladder.md`.
-3. **No cloth.** He renders as the base body — no camo cargos, no tee, no straps, no shoes. Omit the `outfit` parameter. The backpack is a prop drawn separately, not clothing.
+3. **Bare chest, his own kit.** He renders from the owner's `bm-preview` avatar recipe: bare chest, camo trousers, socks, shoes — `bag=-1` always, the backpack is a separate prop. Never the `avatar-builder-v3` endpoint (its floor is a white undershirt + briefs — that is not him).
 4. **One pose.** Every ladder stage is the same front-facing render at `rotation=0`. Never mix
    three-quarter renders into the ladder.
 5. **One CRID per page.** A theme is a skin over the same character, never a second copy.

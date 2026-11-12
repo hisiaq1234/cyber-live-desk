@@ -82,6 +82,8 @@ export async function initCrid3D(host,getState,onReady,onFail){
     // Snap's skinned meshes ship degenerate bind-pose bounds — three.js frustum-culls
     // them every frame and he never draws. Skeleton joints are the truth; disable culling.
     root.traverse(o=>{if(o.isMesh||o.isSkinnedMesh)o.frustumCulled=false});
+    // The ladder fronts have no pack, so the bag mesh stays off.
+    root.traverse(o=>{if(/bag/i.test(o.name||""))o.visible=false});
 
     // Fit: bounds come from the SKELETON joints, not the skinned-mesh bbox — morph targets and
     // bind-pose geometry can report a degenerate box that flings the model off-camera.

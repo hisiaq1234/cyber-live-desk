@@ -60,7 +60,7 @@ the render wins. Do not invent a second factor for depth.
 ## What is wrong with the folders now
 
 - `angle-4` (and parts of 3 and 5) has a hole where the upper back was.
-  The pack was the only pixels there. Do not paint a back.
+  The pack was the only pixels there. Nano Banana fills that from his own sides.
 - A strap stub can remain on the shoulder in the side views.
 - `body-*` is a horizontal stretch of `base/` from the chin down.
   The neck steps, and the arms thicken by the same `k`. That is the
@@ -84,42 +84,32 @@ in the zip. It does not invent a new person.
 
 ## Who makes the pictures
 
-Nano Banana makes the pictures. A projection script does not. One was run
-against this GLB and the color missed the surface, so it was thrown out.
-Do not write another.
-
-For each stage, give Nano Banana the real front (`body-<key>-r0`) and the
-matching angle from `base/`. It edits. It does not redraw him.
+Nano Banana is allowed to make the pictures and to fill the holes.
+Give it the real front (`body-<key>-r0`) and the matching angle from `base/`.
 
 - Remove the pack and the straps.
-- Fill the back only from the sides of this same man. No new body.
+- Fill the back from the sides of this same man.
 - The head stays the same head. The height stays the same height.
-- Width and depth both take that stage's `k`, and nothing else changes.
+- Width and depth both take that stage's `k`.
 
-The finished `angle-1` … `angle-8` are the color. Bake those onto the unwrap
-already in `crid.glb`. Black pixels are not skin.
+The finished `angle-1` … `angle-8` are the color. Bake them onto the unwrap
+already in `crid.glb`. That bake is allowed. Black pixels are not skin.
 
 ## What the 2D is for
 
 The perfected pictures are the color on the mesh. They are not a UV layout.
 
-`crid.glb` already has the unwrap. Do not replace it, and do not draw a new
-face or a new circuit. Project these views onto that unwrap and bake:
+`crid.glb` already has the unwrap. Keep it. Project the finished views onto it and bake:
 
 - angle-8 paints the front
 - angle-4 paints the back
 - angle-2 and angle-6 paint the sides
 - angle-1, 3, 5 and 7 only fill what the four views missed
 
-The black background is not part of the body. It must not land on a pixel.
-One bake per stage. The mesh being painted has to be that stage's build,
-or the picture slides off the surface.
-
-Do not bake the folders as they stand. A hole in angle-4 bakes as a hole.
-A stretched neck bakes as a stretched neck.
+The black background is not part of the body. One bake per stage. The mesh
+being painted has to be that stage's build, or the picture slides off the surface.
 
 ## What not to do
 
-- Do not generate a texture. The only new color is a bake of these views onto the unwrap that is already in `crid.glb`.
 - Do not scale bones to fake a stage. That bend already shipped once and was removed.
 - Do not put the pack back. The ladder fronts have no pack. The rig hides `bag` for the same reason.

@@ -290,3 +290,63 @@ test("on the 2D fallback the emotional body borrow still works and restores", as
   assert.equal(bot.stage.key, home, "the hold releases back to his subscription build");
   bot.destroy();
 });
+
+test("a bored being eventually moves him: roam walk or a held lean on a fake layer", async () => {
+  // Phase D1: being.mjs is the decision half; crid-bot.js is the body half. With the settle and
+  // cooldown squeezed down and boredom pinned high, the first decision lands in the first quiet
+  // window — no cue is ever sent. The fake registry offers one lean-able panel (its edge crosses
+  // the fake 100px body box, and its top is inside his reach for sit/climb only if low enough —
+  // this one sits high, so lean-watch is the panel activity on the table alongside wander).
+  const root = installDom();
+  const panel = { x: 200, y: 60, w: 500, h: 240, edge: { left: 200, right: 700, top: 60, bottom: 300 }, z: 5 };
+  const layers = {
+    names: ["panel", "crid"],
+    layer: (n) => n === "crid"
+      ? { x: 0, y: 0, w: 10, h: 10, edge: { left: 0, right: 10, top: 0, bottom: 10 }, z: 27 }
+      : n === "panel" ? panel : null,
+  };
+  const { seeded } = await import("../public/desk-assets/being.mjs");
+  const bot = createCridBot({ root, step: 12, position: "bc", layers,
+    beingOpts: { rng: seeded(7), settleMs: 0, cooldownMs: 200, drives: { boredom: 99 } } });
+  bot.observe({ bot: { on: true } });
+  let moved = false;
+  for (let i = 0; i < 80 && !moved; i++) {
+    await sleep(50);
+    moved = bot.el.classList.contains("roam") || !!bot.leaning;
+  }
+  assert.ok(moved, "within a few seconds of waking, his own boredom should start him moving");
+  bot.destroy();
+});
+
+test("being yields to the cue channel: no roam while cues own the frame", async () => {
+  // The desk's asks outrank his restlessness: while gestures/cues are playing he does not start
+  // a being activity — he waits for quiet rather than being interrupted for it.
+  const root = installDom();
+  const { seeded } = await import("../public/desk-assets/being.mjs");
+  const bot = createCridBot({ root, step: 12, position: "bc", layers: { layer: () => null },
+    beingOpts: { rng: seeded(3), settleMs: 0, cooldownMs: 0, drives: { boredom: 99 } } });
+  bot.observe({ bot: { on: true } });
+  // Five cues stack into gestureQ before the first tick: the channel stays busy for ~a second.
+  for (let i = 0; i < 5; i++) bot.cue("wave");
+  let roamed = false;
+  for (let i = 0; i < 14; i++) { await sleep(50); if (bot.el.classList.contains("roam")) { roamed = true; break; } }
+  assert.ok(!roamed, "he must not start a being activity while cues are playing");
+  // Once the channel is quiet his own restlessness takes over — the brain is alive, only yielding.
+  for (let i = 0; i < 80 && !roamed; i++) { await sleep(50); roamed = bot.el.classList.contains("roam"); }
+  assert.ok(roamed, "once the cues drain he should start moving on his own");
+  bot.destroy();
+});
+
+test("being does nothing while he is off the desk", async () => {
+  // The drives still step (they are cheap and pure), but no intent may fire while mode isn't on.
+  const root = installDom();
+  const { seeded } = await import("../public/desk-assets/being.mjs");
+  const bot = createCridBot({ root, step: 12, position: "bc",
+    beingOpts: { rng: seeded(5), settleMs: 0, cooldownMs: 0, drives: { boredom: 99, energy: 90 } } });
+  bot.observe({ bot: { on: false } });
+  await sleep(500);
+  assert.equal(bot.mode, "dead");
+  assert.ok(!bot.el.classList.contains("roam"), "a dead Crid must not wander");
+  assert.equal(bot.leaning, null, "and must not be holding a lean either");
+  bot.destroy();
+});

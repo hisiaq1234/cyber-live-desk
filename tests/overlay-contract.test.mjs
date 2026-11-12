@@ -25,3 +25,23 @@ test("music playback uses the validated YouTube embed helper and refreshes on tr
   assert.ok(overlay.includes("youtubeEmbedUrl(cur.videoId, { autoplay: music.playing === true })"));
   assert.ok(overlay.includes("videoId: s.music.current.videoId, playing: Boolean(s.music.playing)"));
 });
+
+test("the location dock reads the delayed public fix defensively and keeps panic off the map", () => {
+  // state.location is the delayed public view; .public is tolerated, hidden blanks the dock.
+  assert.ok(overlay.includes("s.location?.public ?? s.location"));
+  assert.ok(overlay.includes('locFeed.hidden === true'));
+  assert.ok(overlay.includes('id: "loc-map"'));
+  assert.ok(overlay.includes('id: "loc-dock"'));
+  assert.ok(overlay.includes('id: "music-plate"'));
+  // The old fixed plate is gone: one map instance lives in the dock, never a second load.
+  assert.ok(!overlay.includes('id: "map-plate"'));
+});
+
+test("peek, full view and GTA mode are wired to state and URL params", () => {
+  assert.ok(overlay.includes('num("locpeek"'));
+  assert.ok(overlay.includes('P.get("locview") === "full"'));
+  assert.ok(overlay.includes('s.gta === true'));
+  assert.ok(overlay.includes('classList.toggle("gta"'));
+  // SWAE kills CSS transitions: dock motion must be stepped in JS, never transitioned.
+  assert.ok(overlay.includes("animateRect"));
+});

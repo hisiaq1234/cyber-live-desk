@@ -891,7 +891,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // take it back. The beat is queued, never urgent, so a small feeling can never interrupt the loud
   // layer — the same promise the brain's bus makes (interrupt "none", lowest priority).
   let feelTimer=null,faceNow=null,faceSeq=0;
-  const feel=(name,{hold,onEnd}={})=>{const f=FEEL[name]; if(!f||mode==="dead"||dying)return false;
+  const feel=(name,{hold,onEnd,faceOnly}={})=>{const f=FEEL[name]; if(!f||mode==="dead"||dying)return false;
     if(mode==="doze"){mode="on";lastActive=Date.now()}
     // The 3D face gets the same feeling the body borrows: facial.mjs runs the
     // emotion envelope (onset/hold/release) over the GLB's morph targets while
@@ -907,7 +907,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     const borrow=!(crid3d&&crid3d.active);
     if(borrow){const i=BODIES.findIndex(b=>String(b)===String(f.body));
       if(i>=0){const here=Math.max(0,bodyI), near=clamp(i,here-1,here+1); setBody(near)}}
-    if(f.seq&&SEQ[f.seq])play(SEQ[f.seq]);
+    if(!faceOnly&&f.seq&&SEQ[f.seq])play(SEQ[f.seq]);
     lastActive=Date.now(); clearTimeout(feelTimer);
     feelTimer=setTimeout(()=>{if(borrow&&mode!=="dead")setBody(stageFor(subs).i); if(typeof onEnd==="function")onEnd()},clamp(Number(hold)||f.hold,400,4e3));
     return true};
@@ -953,6 +953,9 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // abandoning the activity and paying the cooldown for a cue that was never a threat. When the
   // activity ends or turns over, whatever it was holding is let go first.
   let beingPrev=null,beingLean=null,beingFired=!1;
+  // Phase C: the activity carries its feeling on the face only — faceOnly skips
+  // the gesture sequence so it never fights the verb's own SEQ beat (climb,
+  // hop). rest gets none: doze already holds the lids and suppresses emotion.
   const beingTick=now=>{
     const plan=being.step(now),it=plan.intent,key=it.key;
     if(key!==beingPrev){                              // the activity ended or turned over: let go of what it held
@@ -968,22 +971,22 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       beingFired=!0;
       const r=pct(host.getBoundingClientRect()),
         ok=startWalk(minCenterX()+(Math.max(0,maxCenterX()-minCenterX()))*clamp(it.x,0,1),r.y);
-      if(!ok)being.interrupt("no-floor")}
+      if(!ok)being.interrupt("no-floor");else feel("curious",{faceOnly:!0})}
     else if(key==="lean-watch"||key==="sit-on"){
       // /desk has no sittable top: sit-on degrades to the same panel lean — walkTo + the held
       // lean, with lean()'s own side-pick and resettle doing the rest. Documented choice.
       if(reduced){beingFired=!0;being.interrupt("reduced-motion");return}
       beingFired=!0;
       if(!it.layer||!lean(it.layer))being.interrupt("no-panel");
-      else beingLean=it.layer}
+      else{beingLean=it.layer;feel(key==="sit-on"?"smug":"curious",{faceOnly:!0})}}
     else if(key==="climb"){
       // No climbable geometry on /desk yet (that is the staging page's job): he walks the
       // panel's edge and does the climb beat — the closest honest verb he has.
       if(reduced){beingFired=!0;being.interrupt("reduced-motion");return}
       beingFired=!0;
       if(!it.layer||!walkTo(it.layer))being.interrupt("no-panel");
-      else play(SEQ.climb)}
-    else if(key==="stretch"){beingFired=!0;play(SEQ.hop)}   // the nearest "up and shake it out" beat he has
+      else{play(SEQ.climb);feel("flustered",{faceOnly:!0})}}
+    else if(key==="stretch"){beingFired=!0;play(SEQ.hop);feel("delighted",{faceOnly:!0})}   // the nearest "up and shake it out" beat he has
     else if(key==="rest"){beingFired=!0;setMode("doze")}     // tired is doze: the mode he already has for it
     // plan.fidgetEvery is deliberately unused: nextWait() is the idle-gesture gap, not a fidget
     // timer, and there is no burst channel on this page to scale — skipped rather than faked.

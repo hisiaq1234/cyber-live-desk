@@ -23,3 +23,6 @@ Each 360 folder holds `angle-1.png` … `angle-8.png`.
 | angle-2, angle-6 | side |
 | angle-3, angle-5 | rear three-quarter |
 | angle-4 | back |
+
+Keyed sprites (black background flood-filled to alpha, same 1050×1400 frame):
+`public/desk-assets/crid/turn/<stage>/angle-<n>.webp`. Preview all 64 at `/crid-turn.html`.

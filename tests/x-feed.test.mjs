@@ -75,7 +75,8 @@ test("the following timeline asks for the path X actually serves", async () => {
   const names = ["X_BEARER_TOKEN", "X_CONSUMER_KEY", "X_CONSUMER_SECRET", "X_ACCESS_TOKEN", "X_ACCESS_TOKEN_SECRET"];
   const saved = Object.fromEntries(names.map((name) => [name, process.env[name]]));
   for (const name of names) delete process.env[name];
-  for (const [name, value] of Object.entries(OAUTH_ENV)) process.env[name] = value;
+  // The v2 user-timeline path is only reachable with a bearer token; OAuth 1.0a is refused there.
+  process.env.X_BEARER_TOKEN = "app-only-token";
   const savedFetch = globalThis.fetch;
   let requestedUrl = "";
   globalThis.fetch = async (url) => {
@@ -91,6 +92,60 @@ test("the following timeline asks for the path X actually serves", async () => {
     assert.equal(res.status, 200);
     // It was spelled reverse-chronological, which X answers with a bare 404.
     assert.match(new URL(requestedUrl).pathname, /^\/2\/users\/2244994945\/timelines\/reverse_chronological$/);
+  } finally {
+    globalThis.fetch = savedFetch;
+    for (const name of names) {
+      if (saved[name] === undefined) delete process.env[name];
+      else process.env[name] = saved[name];
+    }
+  }
+});
+
+test("following and for-you fall back to the v1.1 home timeline under OAuth 1.0a", async () => {
+  const names = ["X_BEARER_TOKEN", "X_CONSUMER_KEY", "X_CONSUMER_SECRET", "X_ACCESS_TOKEN", "X_ACCESS_TOKEN_SECRET"];
+  const saved = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+  for (const name of names) delete process.env[name];
+  for (const [name, value] of Object.entries(OAUTH_ENV)) process.env[name] = value;
+  const savedFetch = globalThis.fetch;
+  const seen = [];
+  globalThis.fetch = async (url, init) => {
+    seen.push({ url, init });
+    return new Response(JSON.stringify([{
+      id_str: "42",
+      full_text: "clutch play",
+      created_at: "Mon Nov 09 13:00:00 +0000 2026",
+      retweet_count: 3,
+      favorite_count: 11,
+      user: { name: "A Viewer", screen_name: "aviewer", profile_image_url: "http://pbs.twimg.com/a_normal.jpg" },
+    }]), { status: 200 });
+  };
+  try {
+    // No userId needed: the home timeline belongs to the account that signed the request.
+    for (const mode of ["following", "for-you"]) {
+      const res = await xFeed.fetch({
+        url: `/api/x/feed?mode=${mode}`,
+        method: "GET",
+        headers: new Headers({ host: "cyber-live-desk.vercel.app" }),
+      });
+      assert.equal(res.status, 200, mode);
+      const body = await res.json();
+      assert.equal(body.mode, mode);
+      assert.equal(body.tweets.length, 1);
+      assert.equal(body.tweets[0].handle, "aviewer");
+      assert.equal(body.tweets[0].text, "clutch play");
+      assert.equal(body.tweets[0].metrics.like, 11);
+      assert.equal(body.tweets[0].metrics.repost, 3);
+      // v1.1 avatars come back http; the desk page is https.
+      assert.equal(body.tweets[0].avatar, "https://pbs.twimg.com/a_normal.jpg");
+    }
+    assert.equal(seen.length, 2);
+    for (const { url, init } of seen) {
+      const u = new URL(url);
+      assert.equal(u.pathname, "/1.1/statuses/home_timeline.json");
+      assert.equal(u.searchParams.get("tweet_mode"), "extended");
+      assert.match(init.headers.Authorization, /^OAuth /);
+      assert.ok(!init.headers.Authorization.includes("Bearer"));
+    }
   } finally {
     globalThis.fetch = savedFetch;
     for (const name of names) {

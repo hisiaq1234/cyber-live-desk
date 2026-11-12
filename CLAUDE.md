@@ -127,8 +127,13 @@ The owner's current arc, in order. Do not skip ahead; each step is the foundatio
    on a phone.
 
 Open, older items (do not silently "fix" these — they need the owner's go-ahead):
-the X feed returns `502` on air (a fix sits on a branch); auto-research can never fire (no `crons`
-in `vercel.json`, no `CRON_SECRET`); `/api/spotify/top` is unconfigured and nothing calls it.
+the X feed can still answer `502` on air when the configured credentials are rejected upstream —
+the OAuth 1.0a signing fix is merged, so what is left is credential validity: the Vercel project
+needs `X_BEARER_TOKEN`, or all four of `X_CONSUMER_KEY`, `X_CONSUMER_SECRET`, `X_ACCESS_TOKEN`,
+`X_ACCESS_TOKEN_SECRET` (see the env table in `AUDIT_FEASIBILITY.md`). Auto-research is driven by
+`.github/workflows/auto-research.yml` (Vercel's free plan has no usable cron frequency), which
+needs the `DESK_URL` repo variable and the `CRON_SECRET` secret set — verify they are, because a
+missing secret makes every run answer 401. `/api/spotify/top` is unconfigured and nothing calls it.
 
 ---
 

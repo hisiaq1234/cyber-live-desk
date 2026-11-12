@@ -14,6 +14,7 @@
    Failure is silent by design: any error resolves to null and the caller keeps the 2D rig.
    ?crid3d=off forces the 2D path for A/B checks. */
 import{createFacial}from"./facial.mjs";
+import{TwoBoneIK}from"./ik.mjs";
 const GLB="/desk-assets/crid3d/crid.glb";
 const M={jaw:"ai_jawOpen",eyeShutL:"ai_eyeUpperClose_L",eyeShutR:"ai_eyeUpperClose_R",
   eyeShutLL:"ai_eyeLowerClose_L",eyeShutLR:"ai_eyeLowerClose_R",
@@ -180,13 +181,18 @@ export async function initCrid3D(host,getState,onReady,onFail){
       neck1:"C_neck0001_bind_JNT",neck2:"C_neck0002_bind_JNT",head:"C_head_bind_JNT",
       thighL:"L_legUpper0001_bind_JNT",shinL:"L_legLower0001_bind_JNT",footL:"L_foot0001_bind_JNT",
       thighR:"R_legUpper0001_bind_JNT",shinR:"R_legLower0001_bind_JNT",footR:"R_foot0001_bind_JNT",
-      armL:"L_armUpper0001_bind_JNT",foreL:"L_armLower0001_bind_JNT",
-      armR:"R_armUpper0001_bind_JNT",foreR:"R_armLower0001_bind_JNT"};
+      armL:"L_armUpper0001_bind_JNT",foreL:"L_armLower0001_bind_JNT",handL:"L_hand0001_bind_JNT",
+      armR:"R_armUpper0001_bind_JNT",foreR:"R_armLower0001_bind_JNT",handR:"R_hand0001_bind_JNT"};
     const has=k=>!!B(J[k]);
     // The bind pose holds his arms wide (A-pose); the relaxed hang is the baseline of every pose.
     const RELAX={armL:{z:1.12},armR:{z:-1.12},foreL:{x:.3},foreR:{x:-.3}};
 
-    let disposed=!1,raf=0,ready=!1,phase=0,heading=0,bagShown=true;
+    let disposed=!1,raf=0,ready=!1,phase=0,heading=0,bagShown=true,ikW=0;
+    const ikSolver=new TwoBoneIK();let ikLast=null,ikDbg="";
+    const _iv=new THREE.Vector3(),_id=new THREE.Vector3(),_it=new THREE.Vector3(),
+      _ic=new THREE.Vector3(),_ip=new THREE.Vector3(),_io=new THREE.Vector3(),
+      _idv=new THREE.Vector3(),_iq=new THREE.Quaternion(),_ih=new THREE.Vector3();
+    try{window.__cridIk={w:()=>ikW,last:()=>ikLast,dbg:()=>ikDbg}}catch{}
     const face=createFacial();let lastFaceKey=null;
     // Read-only handle for visual QA: the shot harness polls channels() to catch
     // a blink at its peak, and morph() proves the weight actually reached the GLB.
@@ -278,6 +284,47 @@ export async function initCrid3D(host,getState,onReady,onFail){
       // wears it — a dropped bag leaves the floor prop as the only bag in the room.
       const showBag=st.bag!==false;
       if(showBag!==bagShown){bagShown=showBag;for(const m of bagMeshes)m.visible=showBag}
+
+      // Hand plant (Phase C groundwork): while he leans on a panel, the touching
+      // arm solves onto the contact point crid-bot measured in screen px. The
+      // solve target lerps from the hand's own position by ikW, so weight 0 is
+      // a no-op and the reach eases in with the lean — no quaternion blending.
+      // bs widens past 1 only in SEQ frames; past ~15% the solver's quaternion
+      // decompose degrades, so extreme poses keep the procedural arm.
+      const leanOn=!!(st.lean&&alive),uniform=Math.abs(bs-1)<.15;
+      ikW+=((leanOn&&uniform?1:0)-ikW)*Math.min(1,dt*4);
+      ikDbg=`w=${ikW.toFixed(2)} lean=${!!st.lean} alive=${alive} uni=${uniform} bs=${bs} c=${!!(st.lean&&st.lean.contact)}`;
+      if(ikW>.02&&leanOn&&uniform){
+        const sd=st.lean.dir>0?"R":"L";
+        const sh=B(J["arm"+sd]),fo=B(J["fore"+sd]),ha=B(J["hand"+sd]),c=st.lean.contact;
+        if(sh&&fo&&ha&&c){
+          model.updateMatrixWorld(!0);cam.updateMatrixWorld(!0);
+          const r=host.getBoundingClientRect();
+          // Screen-space reach: the hand's own projected px plus ikW of the pixel
+          // distance to the contact point. The desired px is unprojected back
+          // through the camera at the hand's view depth — the solve only ever
+          // asks for a lateral reach the arm can actually make, and it converges
+          // on the panel as ikW→1 (solver clamps if the panel is truly out of reach).
+          ha.getWorldPosition(_ih);_io.copy(_ih).project(cam);   // _io = hand NDC
+          const hx0=r.left+(_io.x+1)/2*r.width,hy0=r.top+(1-_io.y)/2*r.height;
+          const px=hx0+(c.x-hx0)*ikW,py=hy0+(c.y-hy0)*ikW;
+          const ndx=((px-r.left)/r.width)*2-1,ndy=-(((py-r.top)/r.height)*2-1);
+          _iv.set(ndx,ndy,0).unproject(cam);_id.copy(_iv).sub(cam.position).normalize();
+          _ic.copy(_ih).applyMatrix4(cam.matrixWorldInverse);   // hand view pos (z<0)
+          _idv.copy(_id).applyQuaternion(_iq.copy(cam.quaternion).invert());
+          const tt=_ic.z/_idv.z;
+          if(tt>0){
+            _it.copy(cam.position).addScaledVector(_id,tt);
+            _ic.copy(_ih).lerp(_it,ikW);
+            sh.getWorldPosition(_ip);_ip.add(_io.set(st.lean.dir*.12,-.5,.3));
+            ikLast=ikSolver.solve({rootBone:sh,middleBone:fo,endBone:ha,target:_ic,poleTarget:_ip,preserveEndRotation:!0});
+            ikLast.tgt=_ic.toArray().map(v=>+v.toFixed(3));ikLast.h0=_ih.toArray().map(v=>+v.toFixed(3));ikLast.pl=_ip.toArray().map(v=>+v.toFixed(3));
+            ikLast.px=[hx0|0,hy0|0,c.x|0,c.y|0,px|0,py|0];
+            ha.getWorldPosition(_ip).project(cam);   // QA: where the hand actually landed, host px
+            ikLast.hx=((_ip.x+1)/2*r.width+r.left).toFixed(1);ikLast.hy=((1-_ip.y)/2*r.height+r.top).toFixed(1);
+          }
+        }
+      }
     };
 
     let now=performance.now()/1000;

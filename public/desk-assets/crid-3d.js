@@ -80,15 +80,15 @@ export async function initCrid3D(host,getState,onReady,onFail){
       else o.material=dress(o.material);
     });
 
-    // The GLB is a heavier build than the leanest Bitmoji (ladder stage "3").
-    // Measured against that drawing: its chest is 0.70 of the head, this mesh is 0.97.
-    // Girth only — local X on these bones is length, and the spec says he is never shortened.
-    // The head shares the spine's axes, so it is scaled back. Arms inherit the spine's
-    // width as length (they point sideways), so that length is restored on the upper arm.
+    // Proportions from the lean front render (body-3, the left end of the seven-body
+    // sheet). That drawing is 4.0 heads tall and the chest is 0.69 of the head width.
+    // This GLB is 3.0 heads tall and the chest is 0.96 of the head. Length of the
+    // body stays; the head's up-axis comes down, and girth comes in. The head's width
+    // and depth are put back so the shrink is height only.
     const girth=(name,x=1,y=1,z=1)=>{const b=bones[name];if(!b)return;b.scale.x*=x;b.scale.y*=y;b.scale.z*=z};
-    const W=.76,D=.88;
+    const W=.72,D=.88,HEAD=0.75;
     girth("C_spine0001_bind_JNT",1,W,D);
-    girth("C_head_bind_JNT",1,1/W,1/D);
+    girth("C_head_bind_JNT",HEAD,1/W,1/D);
     girth("L_armUpper0001_bind_JNT",1/W,.8,.8);
     girth("R_armUpper0001_bind_JNT",1/W,.8,.8);
     girth("C_pelvis0001_bind_JNT",1,W,D);

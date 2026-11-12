@@ -122,44 +122,49 @@ test("the sprite payload ships as downscaled webp inside the budget", async () =
   const dir = new URL("../public/desk-assets/crid/", import.meta.url);
   const files = await readdir(dir);
   assert.deepEqual(files.filter((f) => f.endsWith(".png")), [], "the oversized png masters must not ship");
-  // Seven body shapes, one drawing each — the shapes he grows through as subs land.
+  // Three body shapes, one drawing each — the builds he grows through as subs land.
   const bodies = files.filter((f) => /^body-.*\.webp$/.test(f));
-  assert.equal(bodies.length, 7, "one sprite per body shape");
+  assert.equal(bodies.length, 3, "one sprite per body shape");
   for (const f of bodies) {
     const size = (await stat(new URL(f, dir))).size;
     assert.ok(size < 160 * 1024, `${f} must stay small enough to load on air, got ${(size / 1024).toFixed(1)} KB`);
   }
 });
 
-test("the body ladder is a real ladder, not seven near-identical frames", async () => {
-  // Break caught: three of the seven frames sat within 2px of each other, so a stage change was
-  // invisible at desk size — the whole progression read as one body. The frames are now built by
-  // scripts/build-body-ladder.py, which measures each frame it writes into ladder.json; the
-  // renderer's own table has to be that measurement, not a second opinion.
+test("the body ladder is three builds of one render, not three different drawings", async () => {
+  // Break caught twice over. First: the seven frames were seven different Snap renders at rotation
+  // 7, so a weight change swapped the pose, the head size and the silhouette — a different person,
+  // not the same man heavier. Then: three of those seven sat within 2px of each other, so a stage
+  // change was invisible. The frames are now Snap's own body=0/1/2 at rotation 0, one render in one
+  // pose, framed by scripts/build-body-ladder.py, which measures each frame it writes into
+  // ladder.json; the renderer's own table has to be that measurement, not a second opinion.
   const { BODY_LADDER } = await import("../public/desk-assets/crid-bot.js");
   const doc = JSON.parse(await readFile(new URL("../public/desk-assets/crid/ladder.json", import.meta.url), "utf8"));
-  assert.equal(BODY_LADDER.length, 7, "one stage per body frame");
+  assert.equal(BODY_LADDER.length, 3, "one stage per body frame");
   assert.deepEqual(doc.stages.map((s) => s.key), BODY_LADDER.map((s) => s.key),
-    "the ladder and the frames must be in the same lean -> fat order");
+    "the ladder and the frames must be in the same lean -> heavy order");
   assert.deepEqual(doc.stages.map((s) => [s.ink.w, s.ink.h]), BODY_LADDER.map((s) => [s.w, s.h]),
     "the renderer's table must be the measured ink box of the frames that ship");
   for (let i = 1; i < BODY_LADDER.length; i++) {
     assert.ok(BODY_LADDER[i].w > BODY_LADDER[i - 1].w, `stage ${i} must be wider than stage ${i - 1}`);
-    assert.ok(BODY_LADDER[i].h > BODY_LADDER[i - 1].h, `stage ${i} must be taller than stage ${i - 1}`);
   }
-  // The point of the ladder: a step you can see. 42px of ink width and 14px of height between
-  // consecutive stages in the 1050x1400 frame (a visible 4% of his body, as before, at 1.75x the
-  // resolution); measured minimums are 54px and 20px.
-  for (let i = 1; i < BODY_LADDER.length; i++) {
-    const dw = BODY_LADDER[i].w - BODY_LADDER[i - 1].w, dh = BODY_LADDER[i].h - BODY_LADDER[i - 1].h;
-    assert.ok(dw >= 42, `stages ${i - 1}->${i} differ by only ${dw}px of ink width`);
-    assert.ok(dh >= 14, `stages ${i - 1}->${i} differ by only ${dh}px of ink height`);
-  }
+  // The point of the rebuild: the SAME man in the SAME pose at every weight. One render means one
+  // head top and one height — only the build may change — and the heavy stage has to be a step you
+  // can see (Snap gives 112px of extra ink width; its average build sits within 3px of the lean one).
+  const heads = new Set(doc.stages.map((s) => s.ink.y0));
+  assert.equal(heads.size, 1, "every stage must keep the same head top: one render, one pose");
+  assert.equal(new Set(doc.stages.map((s) => s.ink.h)).size, 1,
+    "every stage must be the same height: a weight change must not change his size");
+  const heaviest = BODY_LADDER[BODY_LADDER.length - 1].w - BODY_LADDER[0].w;
+  assert.ok(heaviest >= 90, `the heavy build is only ${heaviest}px wider than the lean one`);
   // The invariants a body swap must never break: feet on one ground line, body on one axis. The
   // worst measured offset is ~19px in a 1050px frame, i.e. under 4px of the 336px he is drawn at.
   for (const s of doc.stages) {
     assert.equal(s.ink.bottom, doc.ground, `stage ${s.key} must keep its feet on y=${doc.ground}`);
-    assert.ok(Math.abs(s.ink.cx - doc.axis) <= 28, `stage ${s.key} sits ${Math.abs(s.ink.cx - doc.axis)}px off the axis`);
+    // The ink box centre is a crude proxy for the axis — the heavy build's arms flare further on
+    // one side than the other, which moves the box 29px without moving him: the mid-torso he stands
+    // on is measured onto x=560 by the build script and stays there.
+    assert.ok(Math.abs(s.ink.cx - doc.axis) <= 32, `stage ${s.key} sits ${Math.abs(s.ink.cx - doc.axis)}px off the axis`);
   }
   // And the build has to move: the heavy stage is slower and lands harder than the lanky one.
   const first = BODY_LADDER[0], last = BODY_LADDER[BODY_LADDER.length - 1];
@@ -188,7 +193,7 @@ test("sprite and rig assets are present, readable, and not placeholders", async 
   // Expected files the bot/rig load must exist and be readable (not just present in name).
   const expected = [
     "ladder.json", "rig.json", "rig.mjs", "spritesheet.webp",
-    ...["000", "00", "0", "1", "2", "3", "5"].map((b) => `body-${b}-r7.webp`),
+    ...["0", "1", "2"].map((b) => `body-${b}-r0.webp`),
     ...["arm-fore-l.png", "arm-fore-r.png", "arm-upper-l.png", "arm-upper-r.png", "head.png", "shin-l.png", "shin-r.png", "thigh-l.png", "thigh-r.png", "torso.png"].map((f) => `rig/${f}`),
   ];
   const missing = [];

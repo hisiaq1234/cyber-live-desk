@@ -3,7 +3,7 @@
 
 WHAT THIS DOES
 --------------
-public/desk-assets/crid/body-000-r7.webp is one flat drawing: head, torso, two arms and two
+public/desk-assets/crid/body-0-r0.webp is one flat drawing: head, torso, two arms and two
 legs painted into a single 1050x1400 picture. A walk can only translate that picture, so his
 legs never step and his arms never swing. This script slices the same pixels into ten pieces —
 head, torso, upper arm / forearm+hand per side, thigh / shin+foot per side — and writes the
@@ -61,7 +61,7 @@ from PIL import Image, ImageChops
 
 ROOT = Path(__file__).resolve().parent.parent
 CRID = ROOT / "public" / "desk-assets" / "crid"
-SOURCE = CRID / "body-000-r7.webp"
+SOURCE = CRID / "body-0-r0.webp"
 OUT = CRID / "rig"
 
 # --- the render's own framing (crid-bot.js: INK_BOTTOM / FIG_X / FIG_W / FIG_Y) --------------
@@ -127,7 +127,7 @@ def measure(img):
     a = alpha(img)
     box = bbox(img)
     if box is None:
-        raise SystemExit("body-000-r7.webp has no opaque pixels: nothing to cut")
+        raise SystemExit(f"{SOURCE.name} has no opaque pixels: nothing to cut")
     # The render must actually have a transparent ground, or a cut-out rig is meaningless.
     px = [a[0, y] for y in range(0, H, 7)] + [a[W - 1, y] for y in range(0, H, 7)] + \
          [a[x, 0] for x in range(0, W, 7)] + [a[x, H - 1] for x in range(0, W, 7)]
@@ -388,40 +388,47 @@ def overlap(img, masks, m):
     for up, down, y, _ in joints(m):
         # The piece above the cut reaches down past it, the piece below reaches up past it. Each
         # band is filled from the row of its own piece that touches the cut.
-        for name, other, rows, edge, step in (
-                (up, down, range(y, y + OVERLAP), y - 1, -1),
-                (down, up, range(y - OVERLAP, y), y, +1)):
+        for name, other, rows, edge, step, whole_seam in (
+                (up, down, range(y, y + OVERLAP), y - 1, -1, True),
+                (down, up, range(y - OVERLAP, y), y, +1, False)):
             for x in range(W):
-                if not core[name][x, edge]:
+                # Only onto the other piece's own solid ink: no new silhouette, no fringe.
+                seam = [yy for yy in rows if 0 <= yy < H and core[other][x, yy] and a[x, yy] == 255]
+                if not seam:
+                    continue
+                # The piece above the cut has to hold the WHOLE seam, not just the columns it has
+                # ink in itself: where the limb below bulges out past the row the cut was taken on
+                # — the top of an arm that hangs clear of the torso, 3px wider there than the fused
+                # shoulder row above it — turning the limb uncovers a sliver of him that neither
+                # piece covers, and the joint opens. So its band goes on every solid pixel of the
+                # piece below in those rows. The piece below still reaches up only over the columns
+                # above it, where it has its own edge to carry.
+                if not core[name][x, edge] and not whole_seam:
                     continue
                 # The colour to carry: the nearest solid pixel of this piece, looked for in its
                 # own cut row first — that row is the piece's edge at the joint, so its colour is
                 # the limb continuing. A column on the silhouette rim never reaches full alpha,
                 # and reading sideways along the row keeps the band filled right out to the edge.
                 colour = None
-                for k in range(W):
-                    for xx in (x - k, x + k) if k else (x,):
-                        if 0 <= xx < W and core[name][xx, edge] and a[xx, edge] == 255:
-                            colour = src[xx, edge]
+                if core[name][x, edge]:
+                    for k in range(W):
+                        for xx in (x - k, x + k) if k else (x,):
+                            if 0 <= xx < W and core[name][xx, edge] and a[xx, edge] == 255:
+                                colour = src[xx, edge]
+                                break
+                        if colour is not None:
                             break
-                    if colour is not None:
-                        break
-                if colour is None:          # nothing solid in that row at all: try the column
+                if colour is None:          # nothing solid in that row: try the column
                     for k in range(OVERLAP + 1):
                         yy = edge + step * k
                         if 0 <= yy < H and a[x, yy] == 255:
                             colour = src[x, yy]
                             break
-                if colour is None:
-                    continue
-                for yy in rows:
-                    if not (0 <= yy < H):
-                        continue
-                    # Only onto the other piece's own solid ink: no new silhouette, no fringe.
-                    if not (core[other][x, yy] and a[x, yy] == 255):
-                        continue
+                for yy in seam:
                     under = src[x, yy]
-                    if max(abs(colour[i] - under[i]) for i in range(3)) > BAND_TOL:
+                    # With no edge colour of its own the band takes the drawing's own pixel, so the
+                    # rest pose stays the render exactly.
+                    if colour is None or max(abs(colour[i] - under[i]) for i in range(3)) > BAND_TOL:
                         colour_here = under          # the edge colour would stripe the rest pose
                     else:
                         colour_here = colour
@@ -468,7 +475,7 @@ def write(img, m, pieces, table):
     (CRID / "rig.mjs").write_text(
         "// GENERATED by scripts/build-crid-rig.py — do not edit by hand.\n"
         "// Crid's base render cut into limbs: where each piece sits in the 1050x1400 frame and the\n"
-        "// joint it turns about. body-000-r7.webp is the only stage with a rig; every other body\n"
+        "// joint it turns about. body-0-r0.webp is the only stage with a rig; every other body\n"
         "// in the ladder is still the flat drawing.\n"
         f"export const RIG={json.dumps(table, separators=(',', ':'))};\n")
 
@@ -558,7 +565,7 @@ def check(img, pieces, band, m, table):
                         raise SystemExit(
                             f"{joint} opens a hole at {x},{yy} when it turns {sign * deg:+.0f} degrees")
 
-    print(f"ok: {len(PIECES)} pieces cover every pixel of body-000-r7.webp, rebuild him at rest "
+    print(f"ok: {len(PIECES)} pieces cover every pixel of {SOURCE.name}, rebuild him at rest "
           f"to within {worst}/255, and no joint opens when turned")
 
 

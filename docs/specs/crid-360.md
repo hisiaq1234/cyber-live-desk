@@ -1,31 +1,25 @@
 # Crid 360
 
-Do not read the rest of the repo. Do not open CLAUDE.md. Do not open body-ladder.md.
-The zip is `docs/reference/crid-360.zip`. The fronts are `body-<key>-r0`.
+360 images: `docs/reference/crid-360.zip`
+2D reference: `public/desk-assets/crid/body-<key>-r0.webp`
 
-One pass, then stop. If a picture is wrong, stop. Do not retry.
-
-Nano Banana, once per file in the zip. Edit the file. Do not redraw him.
-Pack and straps off. Fill the back hole from his own sides.
-Same head. Same height. Width and depth both take `k` from the table below.
-
-Then bake those views once onto the unwrap in `public/desk-assets/crid3d/crid.glb`.
-angle-8 front, angle-4 back, angle-2 and angle-6 sides. The other four fill gaps.
-Black is not skin. Then stop.
-
-Do not copy angles into `public/desk-assets/crid/`.
-Do not scale bones. Do not put the pack back.
-
-| Folder | k | View file |
+| 360 folder | k | 2D file |
 |---|---|---|
-| base | 1 | the turn, pack removed |
-| body-3 | 0.82 | leanest |
-| body-0 | 0.95 | |
-| body-4 | 0.95 | |
-| body-1 | 1.03 | |
-| body-5 | 1.10 | |
-| body-11 | 1.13 | |
-| body-2 | 1.28 | heaviest |
+| base | 1 | the turn itself, pack removed |
+| body-3 | 0.82 | public/desk-assets/crid/body-3-r0.webp |
+| body-0 | 0.95 | public/desk-assets/crid/body-0-r0.webp |
+| body-4 | 0.95 | public/desk-assets/crid/body-4-r0.webp |
+| body-1 | 1.03 | public/desk-assets/crid/body-1-r0.webp |
+| body-5 | 1.10 | public/desk-assets/crid/body-5-r0.webp |
+| body-11 | 1.13 | public/desk-assets/crid/body-11-r0.webp |
+| body-2 | 1.28 | public/desk-assets/crid/body-2-r0.webp |
 
-angle-8 front. angle-1 and angle-7 three-quarter. angle-2 and angle-6 side.
-angle-3 and angle-5 rear three-quarter. angle-4 back.
+Each 360 folder holds `angle-1.png` … `angle-8.png`.
+
+| File | View |
+|---|---|
+| angle-8 | front, matches that row's 2D file |
+| angle-1, angle-7 | three-quarter |
+| angle-2, angle-6 | side |
+| angle-3, angle-5 | rear three-quarter |
+| angle-4 | back |

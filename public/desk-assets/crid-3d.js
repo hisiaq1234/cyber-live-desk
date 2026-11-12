@@ -50,10 +50,12 @@ export async function initCrid3D(host,getState,onReady,onFail){
     const pmrem=new THREE.PMREMGenerator(renderer);
     scene.environment=pmrem.fromScene(new RoomEnvironment(),.04).texture;
     pmrem.dispose();
-    scene.add(new THREE.HemisphereLight(0xd8e2ff,0x241a33,.6));
-    const key=new THREE.DirectionalLight(0xfff0d8,2.6);key.position.set(1.2,2.3,-1.7);scene.add(key);
-    const fill=new THREE.DirectionalLight(0x9db4ff,.9);fill.position.set(-1.7,1.1,-1.1);scene.add(fill);
-    const rim=new THREE.DirectionalLight(0xc4b0ff,1.8);rim.position.set(-1.1,1.9,1.9);scene.add(rim);
+    scene.add(new THREE.HemisphereLight(0xd8e2ff,0x241a33,.45));
+    // Snap's look is a warm frontal key with a hard rim and almost no fill — that is what gives
+    // the Bitmoji its cel-read. Fill is dropped to a whisper; the rim does the edge work.
+    const key=new THREE.DirectionalLight(0xffe8c8,2.8);key.position.set(.9,2.1,-2.3);scene.add(key);
+    const fill=new THREE.DirectionalLight(0x9db4ff,.22);fill.position.set(-1.7,1.1,-1.1);scene.add(fill);
+    const rim=new THREE.DirectionalLight(0xd6c2ff,3.2);rim.position.set(-.4,2.4,2.5);scene.add(rim);
     const cam=new THREE.PerspectiveCamera(32,1,.1,50);
 
     // Camera sits at -Z: the GLB's bind pose faces -Z (verified from L/R eye joint positions),
@@ -70,7 +72,7 @@ export async function initCrid3D(host,getState,onReady,onFail){
     });
     model.add(root);
     root.traverse(o=>{if(o.material){const ms=Array.isArray(o.material)?o.material:[o.material];
-      for(const m of ms)if("envMapIntensity" in m)m.envMapIntensity=.7}});
+      for(const m of ms)if("envMapIntensity" in m)m.envMapIntensity=.5}});
 
     // Fit: bounds come from the SKELETON joints, not the skinned-mesh bbox — morph targets and
     // bind-pose geometry can report a degenerate box that flings the model off-camera.

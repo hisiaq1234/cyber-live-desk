@@ -16,9 +16,11 @@
  * stream arc (§5), layer awareness and the registry (§9), the P0–P4 arbitration and the
  * interruption contract (§6, §7), persistence (§10). Those are later slices of the same spec.
  *
- * The activity set is the part of §8 that has a body on the rig page — wander, stretch, rest. An
- * activity that needs a panel (read-card, lean-watch, climb, show-story) is deliberately not
- * offered: scoring for something he cannot do is worse than offering less.
+ * The activity set is the part of §8 that has a body on the rig page — wander, stretch, rest, and,
+ * when the page can say which panels are reachable, the three that use one: `lean-watch`, `sit-on`
+ * and `climb`. `targets` is injected (the page reads it off the layer registry), so with no panels
+ * the three are disqualified rather than scored: offering something he cannot do is worse than
+ * offering less.
  */
 
 const ENERGY_DECAY = 0.006;      // /s at load 1.0 — 100 → 0 in ~4.6 h
@@ -37,6 +39,11 @@ const ACTIVITIES = {
   wander: { energyNeed: 0.55, novelty: 0.6, social: 0.2, load: 2.2, bore: 0.0, dur: [12, 20] },
   stretch: { energyNeed: 0.40, novelty: 0.4, social: 0.1, load: 0.9, bore: 0.2, dur: [6, 9] },
   rest: { energyNeed: 0.15, novelty: 0.2, social: 0.0, load: 0, bore: 0.2, dur: [24, 40], recover: 0.012 },
+  // §8's panel activities, in the spec's weights. `place` is the kind of panel they need; without
+  // one on the desk they are disqualified (§4 cost) rather than scored.
+  "lean-watch": { energyNeed: 0.35, novelty: 0.4, social: 0.5, load: 0, bore: 0.0, dur: [10, 26], place: "lean" },
+  "sit-on": { energyNeed: 0.30, novelty: 0.7, social: 0.4, load: 0, bore: 0.0, dur: [15, 45], place: "sit" },
+  climb: { energyNeed: 0.70, novelty: 0.9, social: 0.3, load: 3.2, bore: 0.0, dur: [10, 30], place: "climb" },
 };
 export const ACTIVITY_KEYS = Object.keys(ACTIVITIES);
 
@@ -57,7 +64,7 @@ export function seeded(seed = 1) {
   };
 }
 
-export function createBeing({ rng = Math.random, now = 0, drives: seedDrives = {}, cooldownMs = COOLDOWN_MS, settleMs = 2500 } = {}) {
+export function createBeing({ rng = Math.random, now = 0, drives: seedDrives = {}, cooldownMs = COOLDOWN_MS, settleMs = 2500, targets = null } = {}) {
   const drives = {
     energy: Number.isFinite(seedDrives.energy) ? seedDrives.energy : 62,
     boredom: Number.isFinite(seedDrives.boredom) ? seedDrives.boredom : 70,
@@ -72,9 +79,21 @@ export function createBeing({ rng = Math.random, now = 0, drives: seedDrives = {
 
   const pick = (a, b) => a + rng() * (b - a);
 
+  /* The panels he can actually reach, as the page sees them right now. Injected, so the brain stays
+   * free of the DOM, and absent when the page has no desk to stand on. */
+  function places(kind) {
+    if (!targets) return [];            // no desk to stand on: every panel activity is disqualified
+    const all = targets();
+    const list = all && all[kind];
+    return Array.isArray(list) ? list : [];
+  }
+
   function eligible(key) {
     // §3.1: spent means only rest is on the table.
     if (drives.energy < 20) return key === "rest";
+    // §4 cost: an activity whose panel is not on the desk is disqualified, not scored.
+    const place = ACTIVITIES[key].place;
+    if (place && !places(place).length) return false;
     return true;
   }
 
@@ -113,22 +132,27 @@ export function createBeing({ rng = Math.random, now = 0, drives: seedDrives = {
   function start(key, t) {
     const a = ACTIVITIES[key];
     const ms = pick(a.dur[0], a.dur[1]) * 1000;
+    const list = a.place ? places(a.place) : null;
     activity = {
       key,
       startedAt: t,
       endsAt: t + ms,
       target: key === "wander" ? pickTarget() : null,
+      // the panel this one is about: the lowest reachable one first for a climb (a step up he can
+      // actually make), anything reachable otherwise. The body chooses the side it stands on.
+      layer: list && list.length ? (key === "climb" ? list[0] : list[(rng() * list.length) | 0]) : null,
     };
     drives.boredom = clamp(drives.boredom - BORE_RELIEF, 0, 100);
   }
 
-  function close(t, outcome) {
+  function close(t, outcome, reason) {
     if (!activity) return;
     traces.unshift({
       key: activity.key,
       startedAt: activity.startedAt,
       endedAt: t,
       outcome,
+      ...(reason ? { reason } : {}),
     });
     traces.length = Math.min(traces.length, TRACE_KEEP);
     if (activity.key === "wander" && activity.target != null) lastX = activity.target;
@@ -169,8 +193,8 @@ export function createBeing({ rng = Math.random, now = 0, drives: seedDrives = {
         attention: Math.round(drives.attention * 10) / 10,
       },
       intent: activity
-        ? { key: activity.key, phase: ph, x: target }
-        : { key: null, phase: null, x: lastX },
+        ? { key: activity.key, phase: ph, x: target, layer: activity.layer || null }
+        : { key: null, phase: null, x: lastX, layer: null },
       // §3.2: boredom is what makes him fidget faster. The body uses this as its burst interval.
       fidgetEvery: clamp(9 - 0.06 * drives.boredom, 2.5, 9),
       cooldown: activity ? 0 : Math.max(0, (cooldownUntil - t) / 1000),
@@ -211,6 +235,13 @@ export function createBeing({ rng = Math.random, now = 0, drives: seedDrives = {
     /** Read-only snapshot, for a probe or a test that does not want to advance time. */
     peek() {
       return view(lastAt ?? 0);
+    },
+    /** The activity in flight ends here, and not by finishing: the body reports why. §7.3, §9.5. */
+    interrupt(reason = "layer-gone") {
+      if (!activity) return null;
+      const key = activity.key;
+      close(lastAt ?? 0, "abandoned", reason);
+      return key;
     },
   };
 }

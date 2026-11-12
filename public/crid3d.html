@@ -5,13 +5,66 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Crid 3D — matched to his 2D art, alive on his own</title>
 <style>
-  html,body{margin:0;height:100%;background:#fff;overflow:hidden}
-  #c{position:fixed;inset:0;display:block;cursor:grab}
+  html,body{margin:0;height:100%;background:#0a0c13;overflow:hidden;
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  /* The rig paints over the desk: the canvas is the top layer and the panels live under it, which is
+     exactly the stacking the overlay needs for a lean to read as contact. */
+  #c{position:fixed;inset:0;display:block;cursor:grab;z-index:2}
   #c:active{cursor:grabbing}
-  #hud{position:fixed;left:14px;top:12px;color:#26212f;font:13px/1.5 ui-monospace,Menlo,monospace;
-       user-select:none;pointer-events:none}
-  #hud b{color:#5b4a8a}
+  /* The real desk's surfaces, with the real ids, so layers.mjs measures the same panels on air. */
+  #desk{position:fixed;inset:0;z-index:1;pointer-events:none;color:#e8ecf7;
+    font:12px/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  #desk-logo{position:absolute;left:2%;top:2.4%;padding:10px 16px;border-radius:10px;
+    background:linear-gradient(135deg,#1b2340,#121729);border:1px solid #2f3b63;
+    letter-spacing:.18em;font-size:12px;font-weight:700;color:#c9d6ff}
+  #desk-logo span{color:#7d8ff5}
+  #time-dock{position:absolute;right:2%;top:2.4%;width:clamp(150px,19vw,300px);padding:12px 16px;border-radius:12px;
+    background:#121729;border:1px solid #2f3b63;display:flex;align-items:baseline;gap:10px}
+  #time-dock b{font:600 30px/1 ui-monospace,Menlo,monospace;color:#eef2ff}
+  #time-dock span{color:#8b96b8;font-size:11px;letter-spacing:.08em}
+  .slot{position:absolute;left:2%;top:25%;width:clamp(150px,19vw,300px);height:30%;overflow:hidden}
+  .slot>.story-card{width:100%;height:100%;box-sizing:border-box;padding:14px 16px;border-radius:12px;
+    background:#131a2c;border:1px solid #2f3b63;border-top:3px solid #6d7ff0}
+  .story-card .kicker{font-size:10px;letter-spacing:.16em;color:#7d8ff5;margin-bottom:8px}
+  .story-card h3{margin:0 0 8px;font-size:15px;line-height:1.3;color:#f2f5ff}
+  .story-card p{margin:0;color:#9aa5c4;font-size:12px}
+  #dock-right{position:absolute;right:2%;top:18%;width:clamp(150px,19vw,300px);height:26%;box-sizing:border-box;
+    padding:12px 14px;border-radius:12px;background:#121729;border:1px solid #2f3b63}
+  #dock-right b{display:block;font-size:10px;letter-spacing:.16em;color:#7d8ff5;margin-bottom:8px}
+  #dock-right i{display:block;font-style:normal;color:#c2cbe6;padding:3px 0;border-bottom:1px solid #1d2540}
+  #map-plate{position:absolute;left:2%;top:56%;width:clamp(150px,19vw,300px);height:20%;border-radius:12px;overflow:hidden;
+    background:
+      repeating-linear-gradient(90deg,#101827 0 1px,transparent 1px 28px),
+      repeating-linear-gradient(0deg,#101827 0 1px,transparent 1px 28px),
+      #0d1421;
+    border:1px solid #2f3b63}
+  #map-plate b{position:absolute;left:12px;bottom:8px;font-size:10px;letter-spacing:.14em;color:#8ea0d8}
+  #map-plate .pin{position:absolute;left:58%;top:38%;width:9px;height:9px;border-radius:50%;
+    background:#6d7ff0;box-shadow:0 0 0 4px rgba(109,127,240,.22)}
+  #swae-chat{position:absolute;right:2%;top:50%;width:clamp(150px,19vw,300px);height:24%;box-sizing:border-box;
+    padding:12px 14px;border-radius:12px;background:#121729;border:1px solid #2f3b63;overflow:hidden}
+  #swae-chat .msg{color:#c2cbe6;margin-bottom:6px;font-size:11.5px}
+  #swae-chat .msg b{color:#7d8ff5}
+  #auto-headlines{position:absolute;left:2%;right:2%;bottom:2%;height:56px;box-sizing:border-box;
+    display:flex;align-items:center;gap:14px;padding:0 18px;border-radius:10px;
+    background:#121729;border:1px solid #2f3b63;color:#dfe6f8;font-size:13px;white-space:nowrap;overflow:hidden}
+  #auto-headlines b{font-size:10px;letter-spacing:.16em;color:#0b0e17;background:#6d7ff0;
+    padding:4px 8px;border-radius:4px}
+  /* He is measured like a layer too, so the paint-over rule has something to compare against. */
+  #crid-bot{position:fixed;left:0;top:0;width:1px;height:1px;z-index:3;pointer-events:none;background:transparent;opacity:1}
+  /* The read-out: one compact block in the clear band between the logo and the clock, so it never
+     sits on a panel and never runs into the other lines. */
+  #hud{position:fixed;left:50%;transform:translateX(-50%);top:8px;z-index:4;pointer-events:none;
+    display:flex;flex-direction:column;align-items:center;gap:1px;
+    max-width:min(560px,calc(100vw - 760px));padding:6px 14px;border-radius:9px;
+    background:rgba(10,12,20,.78);border:1px solid rgba(255,255,255,.09);
+    color:#cfd6ea;font:11px/1.45 ui-monospace,Menlo,monospace;text-align:center;user-select:none}
+  #hud b{color:#9aa8ff;letter-spacing:.1em;font-size:10px}
+  #hud span{overflow-wrap:anywhere}
   #state{color:#8a7fb0}
+  @media (max-width:1200px){
+    #hud{max-width:calc(100vw - 40px);bottom:76px;top:auto;font-size:10px}
+  }
 </style>
 <script type="importmap">
 {"imports":{"three":"./desk-assets/vendor/three/three.module.js",
@@ -19,8 +72,30 @@
 </script>
 </head>
 <body>
+<div id="desk">
+  <div id="desk-logo"><span>CYBER</span> LIVE DESK</div>
+  <div id="time-dock"><b id="clock-time">21:04</b><span>LAGOS · WED 11 NOV</span></div>
+  <div class="slot">
+    <article class="story-card">
+      <div class="kicker">TOP STORY</div>
+      <h3>Lagos moves its bus lanes overnight</h3>
+      <p>The third mainland route reopens at 04:00, the state says. Riders will see new signs first.</p>
+    </article>
+  </div>
+  <div id="dock-right"><b>IN THE ROOM</b>
+    <i>ada · 24 months</i><i>tunde · 9 months</i><i>zainab · 4 months</i><i>new: kaycee</i>
+  </div>
+  <div id="map-plate"><span class="pin"></span><b>UNILAG → LAGOS</b></div>
+  <div id="swae-chat">
+    <div class="msg"><b>ada:</b> is he climbing the map again</div>
+    <div class="msg"><b>tunde:</b> let him work</div>
+    <div class="msg"><b>kaycee:</b> the desk is alive today</div>
+  </div>
+  <div id="auto-headlines"><b>NOW</b>Lagos bus lanes reopen overnight · third mainland route</div>
+</div>
 <canvas id="c"></canvas>
-<div id="hud"><b>CRID 3D</b> — shot like the 2D art, moving on his own<br>drag to orbit · double-click = turntable<br><span id="bones">loading…</span><br><span id="state">starting…</span><br><span id="drives"></span></div>
+<div id="crid-bot"></div>
+<div id="hud"><b>CRID 3D · STAGING DESK</b><span id="bones">loading…</span><span id="state">starting…</span><span id="drives"></span><span id="stage">floor</span></div>
 <script>
 addEventListener("error",e=>{const el=document.getElementById("state");if(el)el.textContent="error: "+(e.message||e.type)});
 addEventListener("unhandledrejection",e=>{const el=document.getElementById("state");if(el)el.textContent="reject: "+(e.reason&&e.reason.message||e.reason)});
@@ -30,6 +105,8 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 // what he decides when nobody is touching anything — pure, no DOM (see the module header)
 import { createBeing } from "./desk-assets/being.mjs";
+// the panels the desk publishes, measured live — the same registry the stream page uses
+import { createLayerRegistry } from "./desk-assets/layers.mjs";
 
 const canvas=document.getElementById("c");
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
@@ -46,8 +123,12 @@ const key=new THREE.DirectionalLight(0xffffff,.35); key.position.set(.5,1.6,2.2)
 
 // Orthographic: the 2D art has no vanishing point, so the 3D is shot flat.
 const cam=new THREE.OrthographicCamera(-1,1,1,-1,.1,60);
-const VIEW_H=2.05;           // world units top-to-bottom, model is ~1.7 tall
-const camTarget=new THREE.Vector3(0,.86,0);
+// Two framings. `portrait` is the tight one the art was matched in (`?view=portrait`); the staging
+// desk pulls back so there is a floor to walk and panels low enough for him to climb onto one
+// without his head leaving the frame.
+const STAGE=/view=portrait/.test(location.search)?false:true;
+const VIEW_H=STAGE?3.6:2.05;           // world units top-to-bottom, model is ~1.7 tall
+const camTarget=new THREE.Vector3(0,STAGE?.95:.86,0);
 
 const turn=new THREE.Group(); scene.add(turn);      // camera orbit lives here
 const body=new THREE.Group(); turn.add(body);       // root motion lives here (he changes where he is)
@@ -352,6 +433,11 @@ function cue(name,at){
 }
 window.CRID={cue,clip:playClip,state:()=>({clip:clipName,idle:true,bag:!!(bagPivot&&bagPivot.visible),
     drives:plan&&plan.drives,activity:plan&&plan.intent,x:+walkX.toFixed(3)}),
+  // what the stage is doing, and the panel boxes it is doing it against — checkable without eyes
+  stage:()=>({state:stage.state,layer:stage.layer,surface:stage.surface&&stage.surface.name,
+    x:+walkX.toFixed(3),feetY:+stage.groundY.toFixed(3),roll:+stage.roll.toFixed(3),
+    topY:+stage.topY.toFixed(3),trace:stage.trace,reason:stage.reason,abandoned:stage.abandoned,
+    walking:stage.walking,offer:layerTargets(),layers:layers.snapshot()}),
   // a read-out of where the rig actually is, so the idle can be checked without eyes
   probe:()=>{const p=n=>{const b=bones[n];return b?b.getWorldPosition(new THREE.Vector3()).toArray().map(v=>+v.toFixed(4)):null};
     return {head:p("C_head_bind_JNT"),chest:p("C_spine0003_bind_JNT"),handL:p("L_hand0001_bind_JNT"),hip:p("C_pelvis0001_bind_JNT"),
@@ -391,6 +477,8 @@ loader.load("./desk-assets/crid3d/crid.glb",g=>{
   const box=new THREE.Box3().setFromObject(model);
   const h=box.max.y-box.min.y;
   const s=(Number.isFinite(h)&&h>1e-3)?1.7/h:1;
+  const size=box.getSize(new THREE.Vector3());
+  hisW=Math.max(.3,Math.abs(size.x)*s);          // his footprint, for the panel clearance
   model.scale.setScalar(s);
   model.position.y=-box.min.y*s;
   body.add(model);
@@ -401,6 +489,7 @@ loader.load("./desk-assets/crid3d/crid.glb",g=>{
   if(hip&&foot){
     const a=hip.getWorldPosition(new THREE.Vector3()), b=foot.getWorldPosition(new THREE.Vector3());
     const l=Math.abs(a.y-b.y); if(l>.2) legLen=l;
+    if(a.y>.4) hipY=a.y;                          // where his hips sit, for the seat on a panel
   }
   attachBag(g);
   // a cue can also arrive in the URL, for testing the clips one at a time
@@ -415,16 +504,18 @@ let yaw=0,pitch=.03,auto=false;
 const pointers=new Map();
 canvas.addEventListener("pointerdown",e=>{pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});canvas.setPointerCapture(e.pointerId);auto=false});
 canvas.addEventListener("pointermove",e=>{const p=pointers.get(e.pointerId);if(!p)return;
+  if(STAGE) return;                       // the desk is shot square on: the panels are placed in screen space
   yaw-=(e.clientX-p.x)*.008;pitch=Math.max(-.4,Math.min(.4,pitch+(e.clientY-p.y)*.006));
   p.x=e.clientX;p.y=e.clientY});
 const up=e=>{pointers.delete(e.pointerId)};
 canvas.addEventListener("pointerup",up);canvas.addEventListener("pointercancel",up);
-canvas.addEventListener("dblclick",()=>auto=!auto);
+canvas.addEventListener("dblclick",()=>{if(!STAGE)auto=!auto});
 
 const resize=()=>{const w=innerWidth,h=innerHeight;renderer.setSize(w,h,false);
   const half=VIEW_H/2, a=w/h;
   cam.left=-half*a;cam.right=half*a;cam.top=half;cam.bottom=-half;cam.updateProjectionMatrix()};
 addEventListener("resize",resize);resize();
+placeCam();
 
 // --- the loop -------------------------------------------------------------
 const C={};
@@ -435,19 +526,303 @@ const CH=["leanFwd","leanSide","twist","headYaw","headPitch","headTilt","eyeYaw"
 let last=performance.now(), bagVel=0, lastRootX=0;
 const stateEl=document.getElementById("state");
 const driveEl=document.getElementById("drives");
+const stageEl=document.getElementById("stage");
+const cridEl=document.getElementById("crid-bot");
+
+// --- the camera, and where he is in the frame ------------------------------
+// One place positions the camera, so the screen <-> world mapping the panels need is always the
+// mapping the render used.
+function placeCam(){
+  const r=4.2;
+  cam.position.set(Math.sin(yaw)*Math.cos(pitch)*r,camTarget.y+Math.sin(pitch)*r,Math.cos(yaw)*Math.cos(pitch)*r);
+  cam.lookAt(camTarget);
+  cam.updateMatrixWorld();
+}
+// He is a layer too: the paint-over rule compares the panels against where he actually is.
+let cridBox={x:-1,y:-1,w:-1,h:-1};
+function updateCridLayer(){
+  const a=project(walkX-hisW/2,stage.groundY), b=project(walkX+hisW/2,stage.groundY+1.7);
+  const x=Math.round(a.x), y=Math.round(b.y);
+  const w=Math.max(2,Math.round(b.x-a.x)), h=Math.max(2,Math.round(a.y-b.y));
+  if(x===cridBox.x&&y===cridBox.y&&w===cridBox.w&&h===cridBox.h) return;
+  cridBox={x,y,w,h};
+  cridEl.style.left=x+"px"; cridEl.style.top=y+"px";
+  cridEl.style.width=w+"px"; cridEl.style.height=h+"px";
+}
+
+// --- the staging desk: the real panels, and him treating them as objects -----
+// layers.mjs measures the desk by the ids the overlay uses, so this page lays out the same panels
+// and reads the same boxes. Everything below is in desk pixels until it is turned into the world
+// the rig lives in — one orthographic frame, one world unit is a fixed number of pixels.
+const layers=createLayerRegistry();
+const BENCH=["ticker","headlines","chat"];    // wide text plates: leaned on, never stood on
+
+const _sp=new THREE.Vector3();
+function project(x,y){ _sp.set(x,y,0).project(cam); return {x:(_sp.x*.5+.5)*innerWidth, y:(-.5*_sp.y+.5)*innerHeight}; }
+let viewPx={ox:0,oy:0,sx:1,sy:1};
+function measureView(){
+  const o=project(0,0), ux=project(1,0), uy=project(0,1);
+  viewPx={ox:o.x,oy:o.y,sx:(ux.x-o.x)||1,sy:(o.y-uy.y)||1};
+}
+const worldAt=(px,py)=>({x:(px-viewPx.ox)/viewPx.sx, y:-(py-viewPx.oy)/viewPx.sy});
+const pxPerUnit=()=>Math.max(1,viewPx.sy);
+
+let hisW=.55, hipY=.85;                        // his footprint and hip height, world units
+const clearance=()=>hisW/2+10/pxPerUnit();     // §9.2: a heavier body stands further out
+const boxOf=(n)=>{const b=layers.layer(n); return b&&b.w>1&&b.h>1?b:null;};
+const leftOf=(b)=>worldAt(b.edge.left,0).x, rightOf=(b)=>worldAt(b.edge.right,0).x;
+const topOf=(b)=>worldAt(0,b.edge.top).y, widthOf=(b)=>rightOf(b)-leftOf(b);
+
+// What the desk offers right now, in the three ways he can use a panel. Cached: the brain asks on
+// every tick, and the registry re-measures whenever anything on the desk moves.
+let offer={at:-1,list:{lean:[],sit:[],climb:[]}};
+function layerTargets(){
+  const t=performance.now();
+  if(t-offer.at<500) return offer.list;
+  const list={lean:[],sit:[],climb:[]};
+  const cridZ=(layers.layer("crid")||{}).z??0;
+  for(const name of layers.names){
+    if(name==="crid") continue;
+    const b=boxOf(name); if(!b) continue;
+    const top=topOf(b), w=widthOf(b);
+    if(b.z>cridZ) continue;                  // §9.6: it paints over him, so he only stands beside it
+    if(top<0.25) continue;                   // below his knees: nothing to lean on
+    list.lean.push(name);
+    if(top>1.05) continue;                   // above his reach: climbing it would leave the frame
+    if(w<hisW*1.2) continue;                 // §9.3: too narrow for his footprint
+    list.sit.push(name);
+    if(!BENCH.includes(name)) list.climb.push(name);
+  }
+  list.climb.sort((a,b)=>(topOf(boxOf(a))??9)-(topOf(boxOf(b))??9));   // the lowest ledge first
+  offer={at:t,list};
+  return list;
+}
+
+// --- the body half: walk to a panel, get on it, use it, get off it ----------
+const stage={
+  state:"floor", key:null, layer:null, side:"right", t:0,
+  targetX:0, groundY:0, roll:0, pitch:0, topY:0, lipX:0, seatY:0,
+  fromX:0, fromY:0, fromRoll:0, fromPitch:0, surface:null, walking:false, hold:0,
+  abandoned:false, trace:"floor", reason:""
+};
+const TRANSIENT=["approach","reach","pull","crouch","drop","settle","lean-in","push-off","hop","hop-down"];
+let lastSurfaceCheck=0;
+
+function go(state){ stage.state=state; stage.t=0; }
+
+function endStage(){
+  if(!stage.abandoned && stage.key) stage.trace=stage.key+" · done";
+  stage.abandoned=false; stage.key=null; stage.layer=null; stage.surface=null;
+  stage.roll=0; stage.pitch=0; stage.groundY=0; stage.walking=false;
+  go("floor");
+}
+
+// The floor he may walk: between whatever is on his left and whatever is on his right.
+function floorRange(){
+  const clr=clearance(); let lo=-1e3, hi=1e3;
+  for(const name of layers.names){
+    if(name==="crid") continue;
+    const b=boxOf(name); if(!b) continue;
+    const l=leftOf(b), r=rightOf(b);
+    if(r<-0.05) lo=Math.max(lo,r+clr);
+    else if(l>0.05) hi=Math.min(hi,l-clr);
+  }
+  if(lo<-999) lo=worldAt(48,0).x+clr;
+  if(hi> 999) hi=worldAt(innerWidth-48,0).x-clr;
+  return hi-lo<0.4?[0,0]:[lo,hi];
+}
+
+// Where he stands to use a panel: the edge that faces the room, at his own clearance.
+function standFor(name){
+  const b=boxOf(name); if(!b) return null;
+  const l=leftOf(b), r=rightOf(b), clr=clearance();
+  const side=(l+r)/2<walkX?"right":"left";
+  return {b,side,l,r,top:topOf(b),x:side==="right"?r+clr:l-clr};
+}
+
+// The brain says which panel; the body decides how he gets on it and where he stands.
+function begin(intent){
+  if(!intent||!intent.layer) return false;
+  const want=intent.key==="climb"?"climb":intent.key==="sit-on"?"sit":intent.key==="lean-watch"?"lean":null;
+  if(!want) return false;
+  if(!(layerTargets()[want]||[]).includes(intent.layer)) return false;   // not reachable any more
+  const s=standFor(intent.layer); if(!s) return false;
+  const lip=Math.min(hisW/2+6/pxPerUnit(),(s.r-s.l)/2);
+  stage.key=intent.key; stage.layer=intent.layer; stage.side=s.side;
+  stage.topY=s.top; stage.targetX=s.x; stage.fromX=s.x; stage.fromY=0;
+  stage.lipX=s.side==="right"?s.r-lip:s.l+lip;
+  stage.abandoned=false; stage.reason="";
+  go("approach");
+  return true;
+}
+
+// §9.5 — a panel that is gone, moved or narrowed under him is the one thing that interrupts him
+// mid-phase, because leaving him standing on a vanished panel is the most broken thing on air.
+function checkSurface(nowMs){
+  if(!stage.surface) return;
+  if(nowMs-lastSurfaceCheck<1000) return;
+  lastSurfaceCheck=nowMs;
+  const b=boxOf(stage.surface.name);
+  let why="";
+  if(!b) why="absent";
+  else if(Math.abs(topOf(b)-stage.surface.top)>6/pxPerUnit()) why="moved";
+  else if(widthOf(b)<hisW*1.2) why="narrow";
+  if(why) abandon("layer-gone");
+}
+
+function abandon(reason){
+  const was=stage.key;
+  stage.abandoned=true; stage.reason=reason;
+  stage.trace=(was||"activity")+" · abandoned ("+reason+")";
+  stage.surface=null;
+  being.interrupt(reason);                       // the activity in flight ends, and the trace says why
+  if(stage.groundY>0.02){ stage.fromY=stage.groundY; go("drop"); }
+  else if(stage.state==="lean"||stage.state==="lean-in"){ stage.fromRoll=stage.roll; stage.fromPitch=stage.pitch; go("push-off"); }
+  else if(stage.state==="seat"){ stage.fromY=stage.seatY; go("hop-down"); }
+  else endStage();
+}
+
+// Off it, the slow way: crouch, drop, land. Never a cut, and never longer than §9.5's 1200 ms.
+// `fromX` stays the floor stand point, so he lands beside the panel and not inside it.
+function finishStage(){
+  if(stage.state==="top"){ stage.fromY=stage.groundY; go("crouch"); }
+  else if(stage.state==="lean"||stage.state==="lean-in"){ stage.fromRoll=stage.roll; stage.fromPitch=stage.pitch; stage.surface=null; go("push-off"); }
+  else if(stage.state==="seat"){ stage.fromY=stage.seatY; stage.surface=null; go("hop-down"); }
+  else endStage();
+}
+
+function stageStep(dt,intent,nowMs){
+  stage.t+=dt;
+  checkSurface(nowMs);
+
+  if(stage.state==="floor"){
+    if(intent&&intent.layer&&intent.phase==="start") begin(intent);   // he starts it at its start beat
+    else if(intent&&intent.key==="wander"){
+      const [lo,hi]=floorRange();
+      stage.targetX=lo+(hi-lo)*clamp(intent.x,0,1);
+      stage.walking=true; stage.trace="wander";
+    } else stage.walking=false;
+    return;
+  }
+  // the brain has moved on: finish the sequence instead of holding a pose nobody asked for — but
+  // not before he has actually used the panel, or a long walk would eat the whole activity
+  if(intent&&intent.key!==stage.key&&!TRANSIENT.includes(stage.state)&&stage.hold<=0) return finishStage();
+
+  const ease=(u)=>{u=clamp(u,0,1);return u*u*(3-2*u)};
+
+  switch(stage.state){
+    case "approach":
+      stage.walking=true;
+      if(Math.abs(stage.targetX-walkX)<=0.02){
+        stage.walking=false;
+        go(stage.key==="lean-watch"?"lean-in":stage.key==="sit-on"?"hop":"reach");
+      }
+      break;
+    case "reach": {                              // hands on the lip, weight down
+      stage.walking=false;
+      if(stage.t>=0.5) go("pull");
+      break;
+    }
+    case "pull": {                               // the feet leave the floor and land on the top
+      const e=ease(stage.t/0.75);
+      stage.groundY=stage.topY*e;
+      walkX=stage.fromX+(stage.lipX-stage.fromX)*e;
+      if(stage.t>=0.75){
+        stage.groundY=stage.topY; walkX=stage.lipX;
+        stage.surface={name:stage.layer,top:stage.topY};
+        stage.hold=2.5; go("top");
+      }
+      break;
+    }
+    case "top": {                                // standing on it, drifting along the top
+      stage.groundY=stage.topY;
+      const b=boxOf(stage.layer);
+      if(b){
+        const lo=leftOf(b)+hisW/2+4/pxPerUnit(), hi=rightOf(b)-hisW/2-4/pxPerUnit();
+        const want=lo+(hi-lo)*(0.5+0.5*Math.sin(stage.t*0.35+1));
+        stage.targetX=clamp(want,Math.min(lo,hi),Math.max(lo,hi));
+        stage.walking=Math.abs(stage.targetX-walkX)>0.03;
+      } else stage.walking=false;
+      stage.hold=Math.max(0,stage.hold-dt);
+      if(stage.hold<=0&&((intent&&intent.phase==="end")||intent.key!==stage.key)){ stage.walking=false; finishStage(); }
+      break;
+    }
+    case "crouch":
+      stage.walking=false;
+      if(stage.t>=0.28) go("drop");
+      break;
+    case "drop": {                               // a controlled drop with a landing, not a fall
+      const e=ease(stage.t/0.4);
+      stage.groundY=stage.fromY*(1-e);
+      walkX=stage.lipX+(stage.fromX-stage.lipX)*e;
+      if(stage.t>=0.4){ stage.groundY=0; walkX=stage.fromX; stage.surface=null; go("settle"); }
+      break;
+    }
+    case "settle":
+      stage.walking=false;
+      if(stage.t>=0.6) endStage();
+      break;
+    case "lean-in": {                            // his shoulder goes back onto the panel edge
+      const e=ease(stage.t/0.45), dir=stage.side==="right"?1:-1;
+      stage.roll=dir*0.20*e; stage.pitch=-0.06*e;
+      if(stage.t>=0.45){ stage.surface={name:stage.layer,top:stage.topY}; stage.hold=3; go("lean"); }
+      break;
+    }
+    case "lean":
+      // the lean point is the edge and it stays fixed: only the chest breathes, so contact reads
+      stage.walking=false;
+      stage.hold=Math.max(0,stage.hold-dt);
+      if(stage.hold<=0&&((intent&&intent.phase==="end")||intent.key!==stage.key)){ stage.surface=null; finishStage(); }
+      break;
+    case "push-off": {
+      const e=ease(stage.t/0.45);
+      stage.roll=stage.fromRoll*(1-e); stage.pitch=stage.fromPitch*(1-e);
+      if(stage.t>=0.45){ stage.roll=0; stage.pitch=0; go("settle"); }
+      break;
+    }
+    case "hop": {                                // up onto the panel to sit on its lip
+      const e=ease(stage.t/0.55);
+      stage.groundY=stage.topY*e;
+      walkX=stage.fromX+(stage.lipX-stage.fromX)*e;
+      if(stage.t>=0.55){
+        walkX=stage.lipX; stage.seatY=stage.topY-hipY+0.02; stage.groundY=stage.seatY;
+        stage.surface={name:stage.layer,top:stage.topY};
+        stage.hold=3; go("seat");
+      }
+      break;
+    }
+    case "seat":
+      stage.walking=false;
+      stage.hold=Math.max(0,stage.hold-dt);
+      if(stage.hold<=0&&((intent&&intent.phase==="end")||intent.key!==stage.key)){ stage.surface=null; finishStage(); }
+      break;
+    case "hop-down": {
+      const e=ease(stage.t/0.5);
+      stage.groundY=stage.fromY*(1-e);
+      walkX=stage.lipX+(stage.fromX-stage.lipX)*e;
+      if(stage.t>=0.5){ stage.groundY=0; walkX=stage.fromX; go("settle"); }
+      break;
+    }
+    default: endStage();
+  }
+}
 
 // --- what he decides when nobody is touching anything ----------------------
-// The drives live in being.mjs and are pure; this page is his body. He walks the floor because
-// his own boredom says so — nothing else drives him.
-const being=createBeing({now:performance.now()});
+// The drives live in being.mjs and are pure; this page is his body. He walks the floor, and gets
+// up onto a panel, because his own boredom says so — nothing else drives him.
+const being=createBeing({now:performance.now(),targets:layerTargets});
 let plan=being.peek();
 let walkX=0, facing=0, stride=0, gaitW=0, burstTimer=2, intentKey=null;
-let floorHalf=1.1;                 // how far along the floor he may go, in world units
 
 function tick(now){
   requestAnimationFrame(tick);
   const dt=Math.min(.05,(now-last)/1000)||.016; last=now;
   const s=now/1000;
+
+  // where the camera is, and therefore how a desk pixel becomes a world unit — before anything
+  // reads a panel box, because the brain is about to ask which panels are reachable
+  cam.updateMatrixWorld();
+  measureView();
 
   // --- the decision: drives in, an intent out ------------------------------
   plan=being.step(now);
@@ -475,18 +850,17 @@ function tick(now){
   stepSpring(S.headYaw,dt,75,13); stepSpring(S.headPitch,dt,60,14); stepSpring(S.headTilt,dt,45,12);
   stepSpring(S.kneeL,dt,60,13); stepSpring(S.kneeR,dt,60,13);
 
-  // --- root motion: he changes where he is, and his feet carry him ---------
-  floorHalf=Math.max(.45,Math.min(1.3,(cam.right-cam.left)/2-.45));   // stay inside the frame
-  const wantX=(intent.x*2-1)*floorHalf;
-  const walking=intent.key==="wander"&&Math.abs(wantX-walkX)>0.02;
+  // --- root motion: the stage owns the target, the walk owns the travelling --
+  stageStep(dt,intent,now);
+  const energy=plan.drives.energy;
+  const speed=0.42*(energy>70?1.06:energy<40?0.90:1)*(stage.groundY>0.02?0.7:1);   // §9.2
+  const walking=stage.walking&&Math.abs(stage.targetX-walkX)>0.015;
   if(walking){
-    const energy=plan.drives.energy;
-    const speed=0.42*(energy>70?1.06:energy<40?0.90:1);        // §3.1 walk speed
-    walkX+=Math.sign(wantX-walkX)*Math.min(Math.abs(wantX-walkX),speed*dt);
+    walkX+=Math.sign(stage.targetX-walkX)*Math.min(Math.abs(stage.targetX-walkX),speed*dt);
     stride+=dt*speed*9;
   }
   gaitW=clamp(gaitW+(walking?dt/0.22:-dt/0.30),0,1);           // ramps in, settles out, never cuts
-  const faceTarget=walking?Math.sign(wantX-walkX)*.85:0;
+  const faceTarget=walking?Math.sign(stage.targetX-walkX)*.85:0;
   facing+=(faceTarget-facing)*Math.min(1,dt*(walking?6:3.5));
 
   // --- gather the pose ----------------------------------------------------
@@ -533,13 +907,35 @@ function tick(now){
   }
   if(!tracks.some(t=>t.big&&!t.release)) clipName=null;
 
+  // --- the stage's own pose: a reach, a landing, a seat ----------------------
+  // Built from the same channels the clips use, so it blends with the idle instead of replacing it.
+  if(stage.state==="reach"||stage.state==="pull"){
+    const reach=stage.state==="reach"?clamp(stage.t/0.5,0,1):1-clamp(stage.t/0.75,0,1)*0.6;
+    C.armLiftL+=1.9*reach; C.armLiftR+=1.9*reach;
+    C.armFwdL+=0.5*reach; C.armFwdR+=0.5*reach;
+    C.kneeL+=0.45*reach; C.kneeR+=0.45*reach;
+    C.leanFwd+=0.16*reach;
+  }
+  if(stage.state==="crouch"||stage.state==="drop"||stage.state==="settle"){
+    const dip=stage.state==="settle"?Math.max(0,1-stage.t/0.6):1;
+    C.kneeL+=0.55*dip; C.kneeR+=0.55*dip; C.leanFwd+=0.18*dip;
+    C.armLiftL+=0.35*dip; C.armLiftR+=0.35*dip;
+  }
+  if(stage.state==="seat"||stage.state==="hop-down"){
+    const u=stage.state==="seat"?1:1-clamp(stage.t/0.5,0,1);
+    C.kneeL+=1.4*u; C.kneeR+=1.4*u; C.legFwdL+=1.2*u; C.legFwdR+=1.2*u;
+    C.armFwdL+=0.30*u; C.armFwdR+=0.30*u;
+    C.kneeL+=Math.sin(s*1.9)*0.10*u; C.kneeR+=Math.sin(s*1.9+1.2)*0.10*u;   // the legs swing
+  }
+
   applyChannels(C);
   applyAcc();
 
   // --- root motion out: one place he is, and the way he is turned ----------
+  // His feet are pinned to whatever he is standing on: the floor, or the top of a panel.
   body.position.x=walkX;
-  body.position.y=C.rootY;
-  body.rotation.set(C.rootPitch||0,facing,0);
+  body.position.y=stage.groundY+C.rootY;
+  body.rotation.set((C.rootPitch||0)+stage.pitch,facing,stage.roll);
 
   // --- secondary motion: the bag lags behind him and settles after ---------
   if(bagLag){
@@ -566,16 +962,20 @@ function tick(now){
   });
 
   if(auto)yaw+=.0035;
-  const r=4.2;
-  cam.position.set(Math.sin(yaw)*Math.cos(pitch)*r,camTarget.y+Math.sin(pitch)*r,Math.cos(yaw)*Math.cos(pitch)*r);
-  cam.lookAt(camTarget);
+  placeCam();
+  renderer.render(scene,cam);
+  updateCridLayer();
   if(stateEl) stateEl.textContent=(clipName?"clip: "+clipName:"idle · nobody is driving him")+(bagPivot&&bagPivot.visible?" · bag on":" · bag off");
   if(driveEl) driveEl.textContent=
     "energy "+plan.drives.energy.toFixed(0)+" · boredom "+plan.drives.boredom.toFixed(0)+
     " · attention "+plan.drives.attention.toFixed(0)+" · "+
     (intent.key?intent.key+(intent.phase?" ("+intent.phase+")":""):"standing"+(plan.cooldown>0?" · "+Math.ceil(plan.cooldown)+"s":""))+
     " · x "+walkX.toFixed(2);
-  renderer.render(scene,cam);
+  if(stageEl) stageEl.textContent=
+    "stage: "+stage.state+(stage.layer?" · "+stage.layer:"")+
+    " · feet y "+stage.groundY.toFixed(2)+
+    (stage.roll?" · lean "+stage.roll.toFixed(2):"")+
+    " · trace: "+stage.trace;
 }
 requestAnimationFrame(tick);
 </script>

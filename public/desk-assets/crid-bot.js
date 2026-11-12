@@ -239,7 +239,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   let crid3d=null,lastPose=null,disposed3d=false;
   const hideFigure=()=>{parts.avatarBase.setAttribute("display","none");parts.rigG.setAttribute("display","none");parts.ph.setAttribute("display","none")};
   initCrid3D(host,()=>({p:lastPose,mode,dying,walking:!!(walk&&walk.to),
-    walkDir:walk&&walk.to?(walk.tx-walk.x<0?-1:1):0,fx,lean:leanAt,reduced,stage:BODIES[bodyI],
+    walkDir:walk&&walk.to?(walk.tx-walk.x<0?-1:1):0,fx,lean:leanAt,reduced,stage:BODIES[bodyI],face:faceNow,
     talking:host.classList.contains("is-active"),grooving:host.classList.contains("music-playing"),mood}),hideFigure)
     .then(h=>{crid3d=h}).catch(err=>{try{console.warn("[crid-3d] not started:",err&&err.message||err)}catch{}});
   // ---- the backpack: a prop with mass (docs/specs/backpack.md + physics.md) ---------------
@@ -843,9 +843,13 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // A micro-emotion, from FEEL: swap the body, play its beat, hold the body, then let his own weight
   // take it back. The beat is queued, never urgent, so a small feeling can never interrupt the loud
   // layer — the same promise the brain's bus makes (interrupt "none", lowest priority).
-  let feelTimer=null;
+  let feelTimer=null,faceNow=null,faceSeq=0;
   const feel=(name,{hold,onEnd}={})=>{const f=FEEL[name]; if(!f||mode==="dead"||dying)return false;
     if(mode==="doze"){mode="on";lastActive=Date.now()}
+    // The 3D face gets the same feeling the body borrows: facial.mjs runs the
+    // emotion envelope (onset/hold/release) over the GLB's morph targets while
+    // the gesture sequence plays on top. One channel, no second brain.
+    faceNow={name,hold:clamp(Number(hold)||f.hold,400,4e3),seq:++faceSeq};
     // A feeling is a different drawing for a moment, not a different body: now that the bodies are a
     // real size ladder, swapping to a fixed shape would balloon a lanky Crid into a fat one for a
     // beat and back. He borrows a build one step away from his own, so the stance changes and the

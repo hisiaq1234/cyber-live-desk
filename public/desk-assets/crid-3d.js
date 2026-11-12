@@ -13,14 +13,33 @@
 
    Failure is silent by design: any error resolves to null and the caller keeps the 2D rig.
    ?crid3d=off forces the 2D path for A/B checks. */
+import{createFacial}from"./facial.mjs";
 const GLB="/desk-assets/crid3d/crid.glb";
 const M={jaw:"ai_jawOpen",eyeShutL:"ai_eyeUpperClose_L",eyeShutR:"ai_eyeUpperClose_R",
   eyeShutLL:"ai_eyeLowerClose_L",eyeShutLR:"ai_eyeLowerClose_R",
+  eyeHeavyL:"ai_eyeUpperClose_25_L",eyeHeavyR:"ai_eyeUpperClose_25_R",
+  eyeWideUpL:"ai_eyeUpperWide_L",eyeWideUpR:"ai_eyeUpperWide_R",
+  eyeWideLoL:"ai_eyeLowerWide_L",eyeWideLoR:"ai_eyeLowerWide_R",
+  eyeLoSmileL:"ai_eyeLowerSmile_L",eyeLoSmileR:"ai_eyeLowerSmile_R",
+  irisUpL:"ai_eyeIrisUp_L",irisUpR:"ai_eyeIrisUp_R",
+  irisDownL:"ai_eyeIrisDown_L",irisDownR:"ai_eyeIrisDown_R",
+  irisInL:"ai_eyeIrisIn_L",irisInR:"ai_eyeIrisIn_R",
+  irisOutL:"ai_eyeIrisOut_L",irisOutR:"ai_eyeIrisOut_R",
+  browInnerUpL:"ai_browInnerUp_L",browInnerUpR:"ai_browInnerUp_R",
+  browInnerDnL:"ai_browInnerDn_L",browInnerDnR:"ai_browInnerDn_R",
+  browDownL:"ai_browDown_L",browDownR:"ai_browDown_R",
+  mouthDn:"ai_mouthDn",mouthUp:"ai_mouthUp",mouthLeft:"ai_mouthLeft",mouthRight:"ai_mouthRight",
+  mouthFrownL:"ai_mouthFrown_L",mouthFrownR:"ai_mouthFrown_R",
+  lipPuckerL:"ai_mouthIn_L",lipPuckerR:"ai_mouthIn_R",
+  noseSneerL:"ai_noseSneer_L",noseSneerR:"ai_noseSneer_R",
+  cheekPuffL:"ai_cheekPuff_L",cheekPuffR:"ai_cheekPuff_R",
+  cheekSquintL:"ai_cheekSquint_L",cheekSquintR:"ai_cheekSquint_R",
+  lipCornerSmileL:"ca_lipCornerSmile_L",lipCornerSmileR:"ca_lipCornerSmile_R",
   smileL:"ai_mouthSmile_L",smileR:"ai_mouthSmile_R",
   frownL:"ai_mouthFrown_L",frownR:"ai_mouthFrown_R",
   browUpL:"ai_browUp_L",browUpR:"ai_browUp_R",
   browInL:"ai_browInnerUp_L",browInR:"ai_browInnerUp_R"};
-const clamp=(n,a,b)=>Math.min(b,Math.max(a,n)),TAU=Math.PI*2,rand=(a,b)=>a+Math.random()*(b-a);
+const clamp=(n,a,b)=>Math.min(b,Math.max(a,n)),TAU=Math.PI*2;
 const swingOf=t=>{if(t<.5)return 0;const x=(t-.5)*2;return .5-.5*Math.cos(2*Math.PI*x)};
 
 export async function initCrid3D(host,getState,onReady,onFail){
@@ -149,7 +168,6 @@ export async function initCrid3D(host,getState,onReady,onFail){
       const want=M[name];if(!want)return MORPH_CACHE[name]=[];
       return MORPH_CACHE[name]=morphs.filter(x=>x.k===want||x.k.endsWith("."+want))};
     const setMorph=(name,v)=>{for(const x of morph(name))if(x.m.morphTargetInfluences)x.m.morphTargetInfluences[x.i]=v};
-    const setMorphs=pairs=>{for(const[k,v]of pairs)setMorph(k,v)};
 
     // Delta rotation on top of each bone's rest pose (userData.q0).
     const E=new THREE.Euler(),Q=new THREE.Quaternion(),Q2=new THREE.Quaternion();
@@ -167,7 +185,7 @@ export async function initCrid3D(host,getState,onReady,onFail){
     const RELAX={armL:{z:1.12},armR:{z:-1.12},foreL:{x:.3},foreR:{x:-.3}};
 
     let disposed=!1,raf=0,ready=!1,phase=0,heading=0;
-    let blinkAt=2.5,blinkUntil=-1;
+    const face=createFacial();let lastFaceKey=null;
     const reducedNow=()=>{try{return matchMedia("(prefers-reduced-motion: reduce)").matches}catch{return!1}};
 
     const resize=()=>{
@@ -242,19 +260,13 @@ export async function initCrid3D(host,getState,onReady,onFail){
       if(has("neck2"))rot(J.neck2,-droop*.4+br*.02*life,look*.05*life,0);
       if(has("head"))rot(J.head,-droop*.55-gy*.3+br*.025*life,clamp(gx,-.6,.6)*.6+look*.16*life,shift*.04*life);
 
-      // Face: jaw while "talking", scheduled blink, doze/dead hold eyes shut, mood shapes.
-      const talking=!!st.talking;
-      const jaw=talking?(reduced?.12:.28)+.22*Math.abs(Math.sin(t*11))+.08*Math.sin(t*23):0;
-      const shut=mode==="doze"?.75:mode==="dead"?.9:dying?.6:0;
-      const blink=t>=blinkUntil?0:1;
-      setMorphs([["jaw",clamp(jaw,0,.85)],["eyeShutL",Math.max(shut,blink)],["eyeShutR",Math.max(shut,blink)],
-        ["eyeShutLL",shut*.5],["eyeShutLR",shut*.5]]);
-      const mood=st.mood||"idle";
-      const smile=mood==="delighted"?.5:mood==="proud"?.4:mood==="curious"?.15:0;
-      const frown=mood==="sulky"?.45:mood==="flustered"?.4:mood==="alarmed"?.35:0;
-      const brow=mood==="curious"?.4:mood==="delighted"?.3:mood==="sleepy"?.25:0;
-      setMorphs([["smileL",smile],["smileR",smile],["frownL",frown],["frownR",frown],
-        ["browUpL",brow],["browUpR",brow],["browInL",brow*.6],["browInR",brow*.6]]);
+      // Face: the performance layer — gaze saccades, the blink engine, doze/dead
+      // lid hold, talking jaw, and the emotion envelope crid-bot cues in.
+      if(st.face&&st.face.name){const fk=st.face.name+":"+(st.face.seq||0);
+        if(fk!==lastFaceKey){lastFaceKey=fk;face.cue(st.face.name,st.face.hold)}}
+      face.update(dt,{t,dt,talking:!!st.talking,mode,dying,reduced,gx:p.gx,gy:p.gy});
+      const fc=face.channels();
+      for(const k in fc)setMorph(k,fc[k]);
     };
 
     let now=performance.now()/1000;
@@ -263,7 +275,6 @@ export async function initCrid3D(host,getState,onReady,onFail){
       raf=requestAnimationFrame(frame);
       const t=performance.now()/1000,dt=clamp(t-now,0,.05);now=t;
       if(document.hidden)return;
-      if(t>=blinkAt){blinkUntil=t+.13;blinkAt=t+rand(2.6,6.2)*(reducedNow()?1.5:1)}
       const st=getState?getState():{};
       if(!ready){ready=!0;onReady&&onReady()}
       try{drive(t,dt,st);renderer.render(scene,cam)}

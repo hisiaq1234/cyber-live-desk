@@ -32,7 +32,6 @@ export async function initCrid3D(host,getState,onReady,onFail){
     if(!probe.getContext||!(probe.getContext("webgl2")||probe.getContext("webgl")))return null;
     const THREE=await import("./vendor/three/three.module.js");
     const{GLTFLoader}=await import("./vendor/three/loaders/GLTFLoader.js");
-    const{RoomEnvironment}=await import("./vendor/three/environments/RoomEnvironment.js");
 
     const canvas=document.createElement("canvas");
     canvas.className="crid3d";canvas.setAttribute("aria-hidden","true");
@@ -42,19 +41,11 @@ export async function initCrid3D(host,getState,onReady,onFail){
     const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true,powerPreference:"low-power"});
     renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));
     renderer.outputColorSpace=THREE.SRGBColorSpace;
-    renderer.toneMapping=THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure=1.05;
+    // The GLB base colors are Snap's already-lit shader bakes (____Shader_*), not flat albedo.
+    // Tone mapping and extra lights would shift that color. Show the map as stored.
+    renderer.toneMapping=THREE.NoToneMapping;
 
     const scene=new THREE.Scene();
-    // Soft studio, not a hard cel rig. The seven-body renders read as warm key,
-    // a little fill, and a thin rim — that is what lets the normal maps show skin and cloth.
-    const pmrem=new THREE.PMREMGenerator(renderer);
-    scene.environment=pmrem.fromScene(new RoomEnvironment(),.04).texture;
-    pmrem.dispose();
-    scene.add(new THREE.HemisphereLight(0xfff3e4,0x3a2a22,.7));
-    const key=new THREE.DirectionalLight(0xfff1dc,1.7);key.position.set(-1.1,2.6,-2.4);scene.add(key);
-    const fill=new THREE.DirectionalLight(0xffd8c0,.55);fill.position.set(1.6,1.4,-1.8);scene.add(fill);
-    const rim=new THREE.DirectionalLight(0xffe7c8,1.15);rim.position.set(.2,2.0,2.6);scene.add(rim);
     const cam=new THREE.PerspectiveCamera(32,1,.1,50);
 
     // Camera sits at -Z. The bind pose faces +Z, so a half turn on the model
@@ -72,30 +63,16 @@ export async function initCrid3D(host,getState,onReady,onFail){
         for(const[k,i]of Object.entries(o.morphTargetDictionary))morphs.push({m:o,i,k})}
     });
     model.add(root);
-    // The GLB already carries Snap's maps (color, roughness, normal, occlusion). What was missing
-    // is how they are shaded: skin as a physical material with a warm sheen, cloth and the bag
-    // keeping their maps but not crushed by the environment.
-    const skinName=/^(body_MAT|head_MAT)$/;
+    // Base-color maps are the shaded image. Draw them unlit so the pixel is the texture's pixel.
     const dress=m=>{
-      if(!m||!m.isMaterial)return m;
+      if(!m||!m.isMaterial||!m.map)return m;
       const name=m.name||"";
-      if(skinName.test(name)){
-        const p=new THREE.MeshPhysicalMaterial({
-          name,map:m.map,normalMap:m.normalMap,roughnessMap:m.roughnessMap,metalnessMap:m.metalnessMap,
-          aoMap:m.aoMap,aoMapIntensity:1.15,emissive:m.emissive,emissiveMap:m.emissiveMap,
-          emissiveIntensity:m.emissiveIntensity,color:m.color,
-          roughness:.62,metalness:0,envMapIntensity:.72,
-          sheen:1,sheenColor:new THREE.Color("#e7b497"),sheenRoughness:.62,
-          clearcoat:.12,clearcoatRoughness:.4,
-          transparent:m.transparent,opacity:m.opacity,side:m.side,alphaTest:m.alphaTest
-        });
-        if(m.normalScale)p.normalScale.copy(m.normalScale).multiplyScalar(1.35);
-        return p;
-      }
-      if("envMapIntensity" in m)m.envMapIntensity=name.startsWith("outfit_bag")?.9:name.startsWith("hair")?.55:.6;
-      if(m.normalScale&&name.startsWith("outfit_bottom"))m.normalScale.multiplyScalar(1.2);
-      if(name.startsWith("outfit_bag")||name.startsWith("eyelash")||name.startsWith("hair")||name.startsWith("facialhair"))m.side=THREE.DoubleSide;
-      return m;
+      const thin=/bag|eyelash|hair|facialhair|brow|earring/i.test(name);
+      return new THREE.MeshBasicMaterial({
+        name,map:m.map,color:0xffffff,
+        transparent:m.transparent,opacity:m.opacity,alphaTest:m.alphaTest,
+        side:thin?THREE.DoubleSide:m.side,depthWrite:m.depthWrite
+      });
     };
     root.traverse(o=>{
       if(!o.material)return;

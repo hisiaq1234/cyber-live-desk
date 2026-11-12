@@ -76,7 +76,11 @@ export const DEFAULT_STATE = {
   // to fire one gesture; n counts up so the same reaction can be asked for twice in a row.
   // cue is the one-shot the brain performs through: { name, at, text? }, where at only ever
   // counts up, so the desk performs each stamp once and never replays an old one.
-  bot: null, // { on: boolean, subs?: number, react?: { kind, label?, n }, cue?: { name, at, text? } }
+  // being is the desk page's own persistence write-back (POST /api/desk/being): the sanitized
+  // { v, savedAt, drives, floorX, bag } snapshot his inner life was last seen in, so a reload
+  // continues the same Crid. See writeBeing below; every other bot writer spreads this object,
+  // so the snapshot survives untouched until his next save replaces it.
+  bot: null, // { on: boolean, subs?: number, react?: { kind, label?, n }, cue?: { name, at, text? }, being?: { v, savedAt, drives, floorX, bag } }
   // The desk lockup — the robot, the wordmark and the rule. null means "on, and the operator has
   // changed nothing yet", which is what a desk that has never been told otherwise looks like.
   // layers is a subset of LOGO_LAYERS below; replay counts up so the same intro can be asked for
@@ -1734,6 +1738,72 @@ export async function reportCue(store, b, now = Date.now()) {
   led.reports.push({ at, outcome, reportedAt: now });
   await store.setJSON(CUE_LEDGER_KEY, trimCueLedger(led, now));
   return { ok: true, ignored: false, at, outcome };
+}
+
+// ---------- Crid's persistence write-back ----------
+// The desk page is the only thing that knows where Crid actually is and what his drives have
+// decayed to, so it writes that snapshot back under state.bot.being (see the bot comment in
+// DEFAULT_STATE). It is deliberately tiny — a few numbers, ~150 bytes — because it rides the
+// same public state document every overlay poll already fetches. The server does not run his
+// brain: being.mjs lives in the page, and a second copy here would double-decay the drives.
+//
+// What is accepted is sanitized to exactly this shape, and nothing else:
+//   { v: 1, savedAt, drives: { energy, boredom, attention }, floorX, bag: { worn } | { worn:false, x, y } }
+// Everything is clamped, unknown keys are dropped, and a snapshot older than the stored one is
+// refused — two tabs (or a reload mid-write) must never roll his state backwards.
+export const BEING_SAVED_AT_SKEW_MS = 2 * 60 * 1000; // a client clock may run a little fast
+export const BEING_WRITE_MIN_MS = 2000;              // light rate limit: saves are ~5 s apart anyway
+
+const beingUnit = (v, field) => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) throw new HttpError(400, `${field} must be a number.`);
+  return Math.min(1, Math.max(0, n));
+};
+const beingDrive = (v, field) => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) throw new HttpError(400, `${field} must be a number.`);
+  return Math.min(100, Math.max(0, n));
+};
+
+/**
+ * Store one sanitized being snapshot into state.bot.being. Returns { ok:true } — throttled
+ * repeats answer the same without committing, so the page's unload flush never errors.
+ */
+export async function writeBeing(store, b, now = Date.now()) {
+  if (!b || typeof b !== "object" || Array.isArray(b)) throw new HttpError(400, "Send a JSON object as the request body.");
+  if (b.v !== 1) throw new HttpError(400, "being.v must be 1.");
+  const savedAt = Number(b.savedAt);
+  if (!Number.isFinite(savedAt) || savedAt <= 0) throw new HttpError(400, "being.savedAt must be a timestamp.");
+  if (savedAt > now + BEING_SAVED_AT_SKEW_MS) throw new HttpError(400, "being.savedAt is in the future.");
+  const d = b.drives;
+  if (!d || typeof d !== "object") throw new HttpError(400, "being.drives is required.");
+  const bag = b.bag;
+  if (!bag || typeof bag !== "object" || typeof bag.worn !== "boolean") {
+    throw new HttpError(400, "being.bag.worn must be true or false.");
+  }
+  const being = {
+    v: 1,
+    savedAt,
+    drives: {
+      energy: beingDrive(d.energy, "being.drives.energy"),
+      boredom: beingDrive(d.boredom, "being.drives.boredom"),
+      attention: beingDrive(d.attention, "being.drives.attention"),
+    },
+    floorX: beingUnit(b.floorX, "being.floorX"),
+    // Worn, the bag rides his back and has no room coordinate; dropped, it lies where it fell.
+    bag: bag.worn ? { worn: true } : { worn: false, x: beingUnit(bag.x, "being.bag.x"), y: beingUnit(bag.y, "being.bag.y") },
+  };
+
+  const state = await readState(store);
+  const prevAt = Number(state.bot?.being?.savedAt);
+  if (Number.isFinite(prevAt)) {
+    if (savedAt < prevAt) throw new HttpError(409, "Stale being snapshot — a newer one is already stored.");
+    if (savedAt - prevAt < BEING_WRITE_MIN_MS) return { ok: true, throttled: true };
+  }
+  // The version bump is the point: the overlay's long-poll only hears about the write because
+  // commitState moves it, and every other bot field rides the spread untouched.
+  await commitState(store, state, { bot: { ...(state.bot ?? {}), on: state.bot?.on ?? true, being } }, now);
+  return { ok: true };
 }
 
 export const toCard = (feed, c, now, i, { approval = "pending", autoApproved = false, question = "" } = {}) => ({

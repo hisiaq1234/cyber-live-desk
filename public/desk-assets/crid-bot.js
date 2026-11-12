@@ -28,6 +28,7 @@
 import{RIGS}from"./crid/rig.mjs";
 import{initCrid3D}from"./crid-3d.js";
 import{createWorld}from"./physics.mjs";
+import{createBeing}from"./being.mjs";
 const NS="http://www.w3.org/2000/svg",XLINK="http://www.w3.org/1999/xlink",PAL={onyx:"#1F1736",screen:"#0F0B17",edge:"#3A1D9E",indigo:"#6531F8",indigoDk:"#3A1D9E",mint:"#86F6BC",bone:"#A98BFF",ink:"#F4F0FF",slate:"#2B2738",red:"#FF5B57",dead:"#5E5873"},
 DOZE_AFTER_MS=12e4,BODIES=["3","0","4","5","1","11","2"],ROT=0,ASSETS="./desk-assets/crid",AV=b=>`${ASSETS}/body-${b}-r${ROT}.webp`,
 SUB_STEPS=[0,4,8,12,16,20,24],STAGE_STRETCH=.03,
@@ -220,7 +221,7 @@ html.low-power #crid-bot svg,html.swae #crid-bot svg{filter:none}
 // The ladder is exported so a test can hold it to the measurement in ladder.json; nothing in the
 // overlay has to import it to use it.
 export{BODY_LADDER};
-export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="bc",x=null,y=null,step=null,scale=1,layers=null,visitIn=null}={}){
+export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="bc",x=null,y=null,step=null,scale=1,layers=null,visitIn=null,init3d=initCrid3D,beingOpts={}}={}){
   if(!document.getElementById("crid-bot-css")){const st=document.createElement("style");st.id="crid-bot-css",st.textContent=CSS,document.head.append(st)}
   const STEP=step!=null?step:swae?220:lowPower?260:140,
   // Movement is sampled finer than the sequencing tick, so an eased beat is drawn as a movement
@@ -238,9 +239,13 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // is him. The SVG figure is hidden the moment the model is on the GPU and is not put back.
   let crid3d=null,lastPose=null,disposed3d=false;
   const hideFigure=()=>{parts.avatarBase.setAttribute("display","none");parts.rigG.setAttribute("display","none");parts.ph.setAttribute("display","none")};
-  initCrid3D(host,()=>({p:lastPose,mode,dying,walking:!!(walk&&walk.to),
-    walkDir:walk&&walk.to?(walk.tx-walk.x<0?-1:1):0,fx,lean:leanAt,reduced,stage:BODIES[bodyI],
-    talking:host.classList.contains("is-active"),grooving:host.classList.contains("music-playing"),mood}),hideFigure)
+  init3d(host,()=>({p:lastPose,mode,dying,walking:!!(walk&&walk.to),
+    walkDir:walk&&walk.to?(walk.tx-walk.x<0?-1:1):0,fx,lean:leanAt,reduced,stage:BODIES[bodyI],face:faceNow,
+    // Phase B attention: eyes fixate what the body is engaged with — the panel
+    // he's touching while leaning (dir=+1 is screen-right), a down-glance while
+    // pondering. null hands gaze back to the saccade/drift scheduler.
+    attend:leanAt?{x:leanAt.dir*.8,y:.15}:pondering?{x:0,y:.4}:null,
+    talking:host.classList.contains("is-active"),grooving:host.classList.contains("music-playing"),mood,bag:bag.worn}),hideFigure)
     .then(h=>{crid3d=h}).catch(err=>{try{console.warn("[crid-3d] not started:",err&&err.message||err)}catch{}});
   // ---- the backpack: a prop with mass (docs/specs/backpack.md + physics.md) ---------------
   // One world, one gravity, one floor — the same rules the spec gives every body. Worn, the bag
@@ -267,6 +272,9 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   let lastCX=0,lastCT=0,hisVx=0;
   const placeBag=()=>{
     const{w,h}=bagWH(); bagEl.style.width=`${w}px`; bagEl.style.height=`${h}px`;
+    // Worn on the 3D path the pack is the GLB's own skinned bag — the SVG is only
+    // ever the dropped prop on the floor, never a flat image pasted on his back.
+    if(bag.worn&&crid3d){bagEl.style.display="none";return}
     if(bag.worn){const r=host.getBoundingClientRect();
       bagEl.style.left=`${r.left+r.width/2-w/2}px`; bagEl.style.top=`${r.top+r.height*.07}px`}
     else if(bag.body){const b=bag.body;
@@ -288,6 +296,42 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // every verb below treats as "no such furniture", not as a reason to throw.
   let getLayer=typeof layers=="function"?layers:layers&&typeof layers.layer=="function"?n=>layers.layer(n):null;
   const layerOf=name=>{try{return (getLayer&&getLayer(name))||null}catch{return null}};
+  // What the desk offers his inner life, read off the same registry the lean verbs use, in desk
+  // pixels — the px stand-in for crid3d.html's layerTargets() (behaviour-drives §9). The filters
+  // are the same three, with the world-unit thresholds restated against his own drawn height:
+  // a panel that paints over him is furniture he only stands beside, one whose top is below his
+  // knees has nothing to lean on, and only a top wide enough for his footprint can hold him.
+  // No registry (or a name it does not know) simply offers less: with no panels at all the
+  // being still wanders, stretches and rests — a living desk, not a parked sprite.
+  const BEING_LAYERS=["card","clock","map","ticker","dock","logo","chat","headlines"],   // LAYER_NAMES minus "crid"; the fallback for injected fakes that carry no .names
+    BEING_BENCH=["ticker","headlines"],                                              // wide text plates: leaned on, never climbed
+    deskFeet=()=>innerHeight-(floorBottom||16),                                      // the floor line his feet actually stand on
+    deskTargets=()=>{
+      const out={lean:[],sit:[],climb:[]};
+      if(!getLayer)return out;
+      const names=(layers&&Array.isArray(layers.names)?layers.names:BEING_LAYERS).filter(n=>n!=="crid"),
+        cridZ=(layerOf("crid")||{}).z??0,
+        w=host.offsetWidth||innerWidth*.175,h=host.offsetHeight||w*168/VBW,
+        above=b=>deskFeet()-b.edge.top;                       // px the panel's top edge stands above his feet
+      for(const name of names){
+        const b=layerOf(name); if(!b||!b.edge||b.w<=10||b.h<=10)continue;
+        if(b.z>cridZ)continue;                                // it paints over him: he stands beside it, never on it
+        const top=above(b);
+        if(top<h*.25)continue;                               // below his knees (crid3d's 0.25 world units)
+        out.lean.push(name);
+        if(top>h)continue;                                   // taller than he is: its top is above his reach (crid3d's 1.05)
+        if(b.w<w*1.2)continue;                               // too narrow for his footprint (§9.3)
+        out.sit.push(name);
+        if(!BEING_BENCH.includes(name))out.climb.push(name);
+      }
+      out.climb.sort((a,b)=>above(layerOf(a))-above(layerOf(b)));   // the lowest ledge first
+      return out};
+  // His inner life (being.mjs is pure — drives in, an intent out; beingTick below is the body
+  // half). The registry is read live on every decision, so a panel that moves or leaves simply
+  // stops being offered. beingOpts is the test seam: rng/drives/cooldown can be pinned without
+  // touching the module under test. `let`, not `const`: the first observe that carries a saved
+  // snapshot rebuilds it once with those drives restored (see the persistence block below).
+  let being=createBeing({now:Date.now(),targets:deskTargets,...beingOpts});
   // Reduced motion is a request for less movement, never for a dead mascot: he keeps breathing and
   // ticking and only the travelling gestures (hops, walks, flights, slams) are cut back. It is read
   // live rather than once, because a browser source (OBS, Swae) can report the preference and can
@@ -516,7 +560,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       xAt=VB_CX+(qx-VB_CX)*Math.cos(th)+above*Math.sin(th),
       wallX=dir>0?box.edge.left+OVERLAP:box.edge.right-OVERLAP,
       left=wallX-(xAt+VB_PAD)*u;
-    return{left,centre:left+w/2,tilt,dir,contactY,w,h,feetY}};
+    return{left,centre:left+w/2,tilt,dir,contactY,wallX,w,h,feetY}};
   // Walk to a named panel and stop at the offset where a lean would start. Not a teleport: the
   // same stepping walk he uses for everything else, at the gait his body stage gives him.
   const walkTo=(name,side)=>{
@@ -537,7 +581,10 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // lean() and the resize re-solve both end here, so a lean that is re-taken lands in exactly the
   // same place as one that was asked for.
   const holdLean=(name,sp)=>{fx=1;                         // face forward: a lean has no direction of travel
-    leanAt={angle:sp.tilt,dir:sp.dir,layer:name};
+    // contact is the hand-plant point for the 3D arm IK: a few px inside the
+    // panel face at a hand below the shoulder contact, in viewport px.
+    leanAt={angle:sp.tilt,dir:sp.dir,layer:name,
+      contact:{x:sp.wallX-sp.dir*6,y:sp.contactY+sp.h*.07}};
     host.classList.remove(...homeCls); host.classList.add("roam");
     host.style.left=`${sp.centre/innerWidth*100}%`; host.style.top=`${(sp.feetY-sp.h)/innerHeight*100}%`;
     lastDrawn="";
@@ -581,7 +628,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
           visitPondered=!1;visit=null;visitAt=now+rand(42000,95000)}
       }else if(!pendingLean&&!walk){visit=null;visitAt=now+rand(20000,40000)}
       return}
-    if(mode!=="on"||now<visitAt||walk||leanAt||pendingLean||pondering||idleQ.length||gestureQ.length||running||jobs.length)return;
+    if(mode!=="on"||now<visitAt||walk||leanAt||pendingLean||pondering||idleQ.length||gestureQ.length||running||jobs.length||beingPrev)return;
     const names=VISIT_LAYERS.filter(n=>{const b=layerOf(n);return b&&b.w>10&&b.h>10});
     if(!names.length){visitAt=now+rand(20000,40000);return}
     const name=names[Math.floor(Math.random()*names.length)],side=Math.random()<.5?"left":"right";
@@ -794,7 +841,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     const tS=now/1000; world.step(Math.min(.25,tS-(tick.lastT||tS))); tick.lastT=tS;
     {const r=host.getBoundingClientRect(),cx=r.left+r.width/2; hisVx=(cx-(tick.lastCX||cx))/Math.max(.05,tS-(tick.lastCT||tS)); tick.lastCX=cx; tick.lastCT=tS}
     placeBag();
-    if(walk&&(jobs.length||running))stopWalk(); advanceJob(); advanceWalk(); maybeVisit(now); maybeBag(now);
+    if(walk&&(jobs.length||running))stopWalk(); advanceJob(); advanceWalk(); beingTick(now); maybeVisit(now); maybeBag(now);
     if(now>=trAt+trFor){ // the previous beat has finished travelling: choose the next one
       let frame=null; if(walk&&!walk.done&&!gestureQ.length)gestureQ.push(...SEQ.crawl);
       if(gestureQ.length){const head=gestureQ[0]; if(head&&head.__cueEnd!=null){gestureQ.shift(); endCue(head.__cueEnd,"done")} else {frame=gestureQ.shift(); if(frame&&frame.__bag)bagMark(frame.__bag,frame)}} else if(mode!=="dead"&&!dying){
@@ -843,18 +890,26 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // A micro-emotion, from FEEL: swap the body, play its beat, hold the body, then let his own weight
   // take it back. The beat is queued, never urgent, so a small feeling can never interrupt the loud
   // layer — the same promise the brain's bus makes (interrupt "none", lowest priority).
-  let feelTimer=null;
-  const feel=(name,{hold,onEnd}={})=>{const f=FEEL[name]; if(!f||mode==="dead"||dying)return false;
+  let feelTimer=null,faceNow=null,faceSeq=0;
+  const feel=(name,{hold,onEnd,faceOnly}={})=>{const f=FEEL[name]; if(!f||mode==="dead"||dying)return false;
     if(mode==="doze"){mode="on";lastActive=Date.now()}
+    // The 3D face gets the same feeling the body borrows: facial.mjs runs the
+    // emotion envelope (onset/hold/release) over the GLB's morph targets while
+    // the gesture sequence plays on top. One channel, no second brain.
+    faceNow={name,hold:clamp(Number(hold)||f.hold,400,4e3),seq:++faceSeq};
     // A feeling is a different drawing for a moment, not a different body: now that the bodies are a
     // real size ladder, swapping to a fixed shape would balloon a lanky Crid into a fat one for a
     // beat and back. He borrows a build one step away from his own, so the stance changes and the
     // size does not.
-    const i=BODIES.findIndex(b=>String(b)===String(f.body));
-    if(i>=0){const here=Math.max(0,bodyI), near=clamp(i,here-1,here+1); setBody(near)}
-    if(f.seq&&SEQ[f.seq])play(SEQ[f.seq]);
+    // On the 3D path this borrow is disabled outright: bodyI feeds getState().stage, and stage is
+    // subscription progression — Route B turns it into girth. An emotion must never move it.
+    // The gesture sequence and the face envelope carry the feeling instead.
+    const borrow=!(crid3d&&crid3d.active);
+    if(borrow){const i=BODIES.findIndex(b=>String(b)===String(f.body));
+      if(i>=0){const here=Math.max(0,bodyI), near=clamp(i,here-1,here+1); setBody(near)}}
+    if(!faceOnly&&f.seq&&SEQ[f.seq])play(SEQ[f.seq]);
     lastActive=Date.now(); clearTimeout(feelTimer);
-    feelTimer=setTimeout(()=>{if(mode!=="dead")setBody(stageFor(subs).i); if(typeof onEnd==="function")onEnd()},clamp(Number(hold)||f.hold,400,4e3));
+    feelTimer=setTimeout(()=>{if(borrow&&mode!=="dead")setBody(stageFor(subs).i); if(typeof onEnd==="function")onEnd()},clamp(Number(hold)||f.hold,400,4e3));
     return true};
   // ---- the cue channel ---------------------------------------------------------------------
   // One thing at a time, from the desk state. A cue is never stacked on another: if he is already
@@ -888,6 +943,91 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     if(mode!=="on"||dying||reduced||walk||leanAt||pendingLean||pondering||idleQ.length||gestureQ.length||running||jobs.length)return;
     if(bag.worn){if(now>=bucketThinkAt){bucketThinkAt=now+rand(200000,420000); if(Math.random()<.3)bagDrop(null)}}
     else if(bag.body&&world.settled(bag.body)&&now>=pickupThinkAt){pickupThinkAt=now+rand(60000,180000); if(Math.random()<.4)bagPickup(null)}};
+  // ---- his inner life -------------------------------------------------------------------
+  // being.mjs decides (drives → an intent); this is where the intent becomes a verb he already
+  // has. The yield rules are maybeVisit's and maybeBag's: nothing new STARTS while the cue
+  // channel is busy — a flight, a queued cue or react, the bag walk, any gesture on the frame —
+  // because the desk's asks always outrank his own restlessness. An intent already under way (a
+  // walk mid-stride, a lean held, a doze) is left alone; only its start waits for quiet. That is
+  // also why there is no being.interrupt("cue") here: pausing the decision is cleaner than
+  // abandoning the activity and paying the cooldown for a cue that was never a threat. When the
+  // activity ends or turns over, whatever it was holding is let go first.
+  let beingPrev=null,beingLean=null,beingFired=!1;
+  // Phase C: the activity carries its feeling on the face only — faceOnly skips
+  // the gesture sequence so it never fights the verb's own SEQ beat (climb,
+  // hop). rest gets none: doze already holds the lids and suppresses emotion.
+  const beingTick=now=>{
+    const plan=being.step(now),it=plan.intent,key=it.key;
+    if(key!==beingPrev){                              // the activity ended or turned over: let go of what it held
+      if(beingPrev==="rest"&&mode==="doze")setMode("on");
+      if(beingLean&&leanAt&&leanAt.layer===beingLean){ponder(!1);unlean()}
+      beingLean=null;beingPrev=key;beingFired=!1}
+    if(!key||mode!=="on"||dying||beingFired)return;
+    if(walk||running||jobs.length||pendingReact.length||pickupWalk||gestureQ.length||idleQ.length)return;
+    if(key==="wander"){
+      // intent.x is 0..1 across the floor band he is allowed to roam (the same clamp startWalk
+      // applies), at the height he is already standing — the y convention crawlScreen uses.
+      if(reduced){beingFired=!0;being.interrupt("reduced-motion");return}
+      beingFired=!0;
+      const r=pct(host.getBoundingClientRect()),
+        ok=startWalk(minCenterX()+(Math.max(0,maxCenterX()-minCenterX()))*clamp(it.x,0,1),r.y);
+      if(!ok)being.interrupt("no-floor");else feel("curious",{faceOnly:!0})}
+    else if(key==="lean-watch"||key==="sit-on"){
+      // /desk has no sittable top: sit-on degrades to the same panel lean — walkTo + the held
+      // lean, with lean()'s own side-pick and resettle doing the rest. Documented choice.
+      if(reduced){beingFired=!0;being.interrupt("reduced-motion");return}
+      beingFired=!0;
+      if(!it.layer||!lean(it.layer))being.interrupt("no-panel");
+      else{beingLean=it.layer;feel(key==="sit-on"?"smug":"curious",{faceOnly:!0})}}
+    else if(key==="climb"){
+      // No climbable geometry on /desk yet (that is the staging page's job): he walks the
+      // panel's edge and does the climb beat — the closest honest verb he has.
+      if(reduced){beingFired=!0;being.interrupt("reduced-motion");return}
+      beingFired=!0;
+      if(!it.layer||!walkTo(it.layer))being.interrupt("no-panel");
+      else{play(SEQ.climb);feel("flustered",{faceOnly:!0})}}
+    else if(key==="stretch"){beingFired=!0;play(SEQ.hop);feel("delighted",{faceOnly:!0})}   // the nearest "up and shake it out" beat he has
+    else if(key==="rest"){beingFired=!0;setMode("doze")}     // tired is doze: the mode he already has for it
+    // plan.fidgetEvery is deliberately unused: nextWait() is the idle-gesture gap, not a fidget
+    // timer, and there is no burst channel on this page to scale — skipped rather than faked.
+  };
+  // ---- his persistence (docs/specs/behaviour-drives.md §10) --------------------------------
+  // The desk state carries the last snapshot this page wrote back (state.bot.being, through
+  // POST /api/desk/being — see being-sync.mjs). The first observe that carries one re-seeds his
+  // drives exactly once, so a later poll can never re-roll a life already under way. The gap
+  // since savedAt gets the spec's offline decay: energy recovers toward full — he slept —
+  // while boredom and attention relax back toward an empty room's resting values (60 and 5,
+  // exponential with a one-hour constant). Anything stale, future-dated or not v:1 is ignored
+  // and he keeps the drives he booted with.
+  const BEING_MAX_GAP_MS=8*3600e3;
+  const beingOffline=(d,dtMs)=>{
+    const dt=Math.min(Math.max(dtMs,0),BEING_MAX_GAP_MS),h=dt/3600e3,k=Math.exp(-dt/3600000);
+    return{energy:clamp(d.energy+0.05*h*100,0,100),   // 0.05 of the scale per hour, capped at 8 h
+      boredom:clamp(60-(60-d.boredom)*k,0,100),
+      attention:clamp(5-(5-d.attention)*k,0,100)}};
+  let beingSeeded=!1;
+  const seedBeing=(snap,dtMs)=>{
+    const d=snap.drives;
+    if(!d)return;
+    being=createBeing({now:Date.now(),targets:deskTargets,...beingOpts,
+      drives:beingOffline({energy:+d.energy,boredom:+d.boredom,attention:+d.attention},dtMs)});
+    // The dropped bag is the one physical trace worth resurrecting: it lies exactly where it
+    // fell, on the same floor line, until he decides to pick it up again. Restoring it is a
+    // plain physics body at rest — placeBag() puts the element on it from the next tick.
+    const b=snap.bag;
+    if(b&&b.worn===!1&&Number.isFinite(b.x)&&Number.isFinite(b.y)&&!bag.body){
+      bag.worn=!1;
+      bag.body=world.add({x:clamp(b.x,0,1)*innerWidth,y:clamp(b.y,0,1)*innerHeight,vx:0,vy:0,
+        mass:1,drag:.4,restitution:reduced?0:.26,floor:floorY(),halfH:bagWH().h/2});
+      bagEl.style.display=""; placeBag()}
+  };
+  const maybeSeedBeing=s=>{
+    if(beingSeeded)return; beingSeeded=!0;
+    const snap=s.bot?s.bot.being:null;
+    if(!snap||snap.v!==1)return;
+    const dt=Date.now()-Number(snap.savedAt);
+    if(!(dt>=0)||dt>BEING_MAX_GAP_MS)return;   // future-dated or too old to mean anything
+    seedBeing(snap,dt)};
   const cue=(name,{text="",onEnd}={})=>{
     if(typeof name!=="string"||!name||mode==="dead"||dying)return false;
     const end=cueEndFor(onEnd);
@@ -922,7 +1062,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // null online means "not told yet", and the desk's own default is on, so an unknown state boots
   // him rather than freezing him. Only an explicit bot.on:false kills him.
   const power=()=>setMode(online===!1?"dead":"on");
-  const observe=s=>{var _a,_b,_c; if(!s)return; const on=s.bot?s.bot.on!==!1:!0; if(on!==online){online=on;power()} if(online===!1){prev=s; return}
+  const observe=s=>{var _a,_b,_c; if(!s)return; maybeSeedBeing(s); const on=s.bot?s.bot.on!==!1:!0; if(on!==online){online=on;power()} if(online===!1){prev=s; return}
     const reactN=(_c=(_b=(_a=s.bot)==null?void 0:_a.react)==null?void 0:_b.n)!=null?_c:0; if(lastReactN===null)lastReactN=reactN; else if(reactN!==lastReactN){lastReactN=reactN;react(s.bot.react.kind)}
     const sn=subCount(s); if(sn!=null){if(lastSubN===null){lastSubN=sn;applySubs(sn,!1)}else if(sn!==lastSubN){const up=sn>lastSubN;lastSubN=sn;applySubs(sn,up)}}
     if(talking&&mode==="on"&&tickN%9===0)play(SEQ.read);
@@ -944,5 +1084,15 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // The registry can arrive after him (the desk builds its panels as it goes), and a new one
     // replaces the old without remounting him.
     setLayers(v){getLayer=typeof v=="function"?v:v&&typeof v.layer=="function"?n=>v.layer(n):null; return !0},
-    setSubs:n=>{lastSubN=n|0;applySubs(n,!1)},setOnline(v){online=!!v;power()},get mode(){return mode},get subs(){return subs},get stage(){return build()},setMood,say,nudge,randomLine,place:replace,freeze(pose={}){frozen=!0;clearTimeout(timer); if(pose.mode)mode=pose.mode; if(pose.tag!==void 0)tagText=pose.tag; if(pose.subs!=null)applySubs(pose.subs,!1); lastDrawn=""; render({...REST[mode],tag:tagText,fx:pose.fx||1,sx:growth.sx,sy:growth.sy,...pose})},destroy(){clearTimeout(timer); clearTimeout(feelTimer); mo==null||mo.disconnect(); stripWatch==null||stripWatch.disconnect(); if(typeof removeEventListener=="function")removeEventListener("resize",replace); cancelJobs(); goHome(); crid3d&&crid3d.dispose(); host.remove()}}
+    setSubs:n=>{lastSubN=n|0;applySubs(n,!1)},setOnline(v){online=!!v;power()},get mode(){return mode},get subs(){return subs},get stage(){return build()},setMood,say,nudge,randomLine,place:replace,
+    // What being-sync.mjs posts back to the desk: the drives as they stand, where he is on the
+    // floor band (0..1 between the clock and the strip, the same band wander walks), and the
+    // bag — worn, or dropped at its normalized viewport spot. Tiny on purpose: it rides the
+    // public state document, so it stays a handful of numbers (docs/specs/behaviour-drives.md §10).
+    getBeing(){const r=host.getBoundingClientRect(),cx=(r.left+r.width/2)/innerWidth*100,
+      lo=minCenterX(),hi=Math.min(92,maxCenterX());
+      return{v:1,savedAt:Date.now(),drives:being.peek().drives,
+        floorX:hi>lo?clamp((cx-lo)/(hi-lo),0,1):.5,
+        bag:{worn:bag.worn,...(bag.worn?{}:{x:clamp((bag.body?bag.body.x:r.left+r.width/2)/innerWidth,0,1),
+          y:clamp((bag.body?bag.body.y:r.top+r.height*.22)/innerHeight,0,1)})}}},freeze(pose={}){frozen=!0;clearTimeout(timer); if(pose.mode)mode=pose.mode; if(pose.tag!==void 0)tagText=pose.tag; if(pose.subs!=null)applySubs(pose.subs,!1); lastDrawn=""; render({...REST[mode],tag:tagText,fx:pose.fx||1,sx:growth.sx,sy:growth.sy,...pose})},destroy(){clearTimeout(timer); clearTimeout(feelTimer); mo==null||mo.disconnect(); stripWatch==null||stripWatch.disconnect(); if(typeof removeEventListener=="function")removeEventListener("resize",replace); cancelJobs(); goHome(); crid3d&&crid3d.dispose(); host.remove()}}
 }

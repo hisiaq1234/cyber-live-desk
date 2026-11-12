@@ -51,12 +51,17 @@ the mid-torso axis on x=560.
 
 ## The rig
 
-`scripts/build-crid-rig.py` cuts **`body-3-r0.webp`** (the leanest stage) into ten pieces —
-head, torso, upper arm/forearm+hand per side, thigh/shin+foot per side — with joint overlap bands
-so no seam opens at the angles `crid-bot.js` uses. `rig.json`/`rig.mjs` carry pivots and draw
-order. The overlay draws the rig only while he is on the lean stage and not leaning; heavier
-stages use the flat drawing until every stage has its own rig cut (open item — cut each stage
-from its own frame, never borrow limbs across builds).
+`scripts/build-crid-rig.py` cuts **every stage from its own frame** — `rigs/<key>/` holds the
+ten pieces (head, torso, upper arm/forearm+hand per side, thigh/shin+foot per side) plus a
+`rig.json` table, and `rig.mjs` exports them all as `RIGS` keyed by stage. The anatomy is
+measured off each render: neck, shoulder offset, crotch, ankle and knee come from the
+silhouette, and the arm's per-row extent is measured where the arm is its own cluster and
+interpolated by thickness where a heavy build fuses it to the torso — no pixel constant is
+assumed, so the same script cuts the leanest and the heaviest build correctly. Joint overlap
+bands keep every seam solid at the angles `crid-bot.js` uses; `--check` proves coverage,
+rest-pose fidelity and joint integrity per stage. The overlay keeps one set of ten piece
+images and re-points them at the active stage's crops and pivots on every body swap, so the
+limbs he moves are always the same build as the body he wears.
 
 ## Verification
 

@@ -111,9 +111,10 @@ The owner's current arc, in order. Do not skip ahead; each step is the foundatio
 1. ~~**Body ladder, rebuilt from one render.**~~ **Done:** seven real builds from Snap's renderer
    at `rotation=0` — `body=3,0,4,5,1,11,2`, lean -> heavy — same pose, same height, width and mass
    only. Built by `scripts/build-body-ladder.py`; measured into `ladder.json`.
-2. **Rig on every stage.** Today `public/desk-assets/crid/rig.json` is cut from the lanky body only,
-   so walk / crawl / climb / push-up swap in a different person's limbs. Every stage needs a rig cut
-   from itself.
+2. ~~**Rig on every stage.**~~ **Done:** `scripts/build-crid-rig.py --all` cuts all seven stages
+   from their own frames into `public/desk-assets/crid/rigs/<key>/` (anatomy measured per body,
+   no shared pixel constants); `crid-bot.js` re-points one set of piece images at the active
+   stage's crops and pivots on every body swap, so limbs always match the body he wears.
 3. **The backpack.** Crid carries a bag he drops and picks up during the stream. Spec:
    `docs/specs/backpack.md`. SVG in `crid-bot.js`, in his palette, no image budget, must read at
    150 px.

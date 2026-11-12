@@ -1,0 +1,129 @@
+{
+  "source": {
+    "w": 1050,
+    "h": 1400,
+    "inkBottom": 1325
+  },
+  "order": [
+    "shin-l",
+    "thigh-l",
+    "shin-r",
+    "thigh-r",
+    "arm-fore-l",
+    "arm-upper-l",
+    "arm-fore-r",
+    "arm-upper-r",
+    "torso",
+    "head"
+  ],
+  "pivot": {
+    "head": {
+      "x": 560,
+      "y": 477
+    },
+    "shoulder-l": {
+      "x": 411.4,
+      "y": 612
+    },
+    "shoulder-r": {
+      "x": 701.1,
+      "y": 612
+    },
+    "elbow-l": {
+      "x": 387.4,
+      "y": 713
+    },
+    "elbow-r": {
+      "x": 732.0,
+      "y": 713
+    },
+    "hip-l": {
+      "x": 490.0,
+      "y": 887
+    },
+    "hip-r": {
+      "x": 614.5,
+      "y": 887
+    },
+    "knee-l": {
+      "x": 490.0,
+      "y": 1089
+    },
+    "knee-r": {
+      "x": 614.5,
+      "y": 1089
+    }
+  },
+  "pieces": {
+    "thigh-l": {
+      "x": 340,
+      "y": 885,
+      "w": 220,
+      "h": 212,
+      "src": "./desk-assets/crid/rigs/1/thigh-l.png"
+    },
+    "shin-l": {
+      "x": 375,
+      "y": 1081,
+      "w": 185,
+      "h": 246,
+      "src": "./desk-assets/crid/rigs/1/shin-l.png"
+    },
+    "thigh-r": {
+      "x": 560,
+      "y": 885,
+      "w": 215,
+      "h": 212,
+      "src": "./desk-assets/crid/rigs/1/thigh-r.png"
+    },
+    "shin-r": {
+      "x": 560,
+      "y": 1081,
+      "w": 280,
+      "h": 246,
+      "src": "./desk-assets/crid/rigs/1/shin-r.png"
+    },
+    "torso": {
+      "x": 341,
+      "y": 469,
+      "w": 434,
+      "h": 432,
+      "src": "./desk-assets/crid/rigs/1/torso.png"
+    },
+    "head": {
+      "x": 427,
+      "y": 135,
+      "w": 258,
+      "h": 350,
+      "src": "./desk-assets/crid/rigs/1/head.png"
+    },
+    "arm-upper-l": {
+      "x": 360,
+      "y": 607,
+      "w": 79,
+      "h": 114,
+      "src": "./desk-assets/crid/rigs/1/arm-upper-l.png"
+    },
+    "arm-fore-l": {
+      "x": 342,
+      "y": 705,
+      "w": 72,
+      "h": 183,
+      "src": "./desk-assets/crid/rigs/1/arm-fore-l.png"
+    },
+    "arm-upper-r": {
+      "x": 667,
+      "y": 607,
+      "w": 97,
+      "h": 114,
+      "src": "./desk-assets/crid/rigs/1/arm-upper-r.png"
+    },
+    "arm-fore-r": {
+      "x": 702,
+      "y": 705,
+      "w": 73,
+      "h": 183,
+      "src": "./desk-assets/crid/rigs/1/arm-fore-r.png"
+    }
+  }
+}

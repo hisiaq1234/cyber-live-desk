@@ -200,9 +200,11 @@ test("sprite and rig assets are present, readable, and not placeholders", async 
 
   // Expected files the bot/rig load must exist and be readable (not just present in name).
   const expected = [
-    "ladder.json", "rig.json", "rig.mjs",
-    ...["3", "0", "4", "5", "1", "11", "2"].map((b) => `body-${b}-r0.webp`),
-    ...["arm-fore-l.png", "arm-fore-r.png", "arm-upper-l.png", "arm-upper-r.png", "head.png", "shin-l.png", "shin-r.png", "thigh-l.png", "thigh-r.png", "torso.png"].map((f) => `rig/${f}`),
+    "ladder.json", "rig.mjs",
+    ...["3", "0", "4", "5", "1", "11", "2"].flatMap((b) => [
+      `body-${b}-r0.webp`, `rigs/${b}/rig.json`,
+      ...["arm-fore-l.png", "arm-fore-r.png", "arm-upper-l.png", "arm-upper-r.png", "head.png", "shin-l.png", "shin-r.png", "thigh-l.png", "thigh-r.png", "torso.png"].map((f) => `rigs/${b}/${f}`),
+    ]),
   ];
   const missing = [];
   for (const rel of expected) {

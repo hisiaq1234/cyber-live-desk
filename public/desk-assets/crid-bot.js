@@ -25,7 +25,7 @@
    from the sub total each time, so an overlay reload mid-stream restores it. The build also drives
    how he moves — see BODY_LADDER.slow and .heft, used by the walk, the gait and the gesture weight.
    Feed it with observe(state) where state.bot.subs is the sub count this stream, or call setSubs(n). */
-import{RIG}from"./crid/rig.mjs";
+import{RIGS}from"./crid/rig.mjs";
 const NS="http://www.w3.org/2000/svg",XLINK="http://www.w3.org/1999/xlink",PAL={onyx:"#1F1736",screen:"#0F0B17",edge:"#3A1D9E",indigo:"#6531F8",indigoDk:"#3A1D9E",mint:"#86F6BC",bone:"#A98BFF",ink:"#F4F0FF",slate:"#2B2738",red:"#FF5B57",dead:"#5E5873"},
 DOZE_AFTER_MS=12e4,BODIES=["3","0","4","5","1","11","2"],ROT=0,ASSETS="./desk-assets/crid",AV=b=>`${ASSETS}/body-${b}-r${ROT}.webp`,
 SUB_STEPS=[0,4,8,12,16,20,24],STAGE_STRETCH=.03,
@@ -125,9 +125,17 @@ function draw(){
   // shoulder it hangs from and a shin carries its thigh. The group is placed in the render's own
   // 1050x1400 space and scaled into the box the flat drawing used, so a rigged frame lands
   // exactly where the flat one did.
+  // Every stage has its own rig cut from its own render (rigs/<stage>/), so the limbs he moves
+  // are always the same build as the body he is wearing. The ten piece <image>s are shared; a
+  // stage swap re-points them at that stage's crops and pivots.
+  let rigStage="3";
+  const rigNow=()=>RIGS[rigStage]||RIGS["3"],rigImgs={};
+  const syncRig=()=>{const t=rigNow(); for(const n in rigImgs){const b=t.pieces[n],im=rigImgs[n];
+    im.setAttribute("x",b.x); im.setAttribute("y",b.y); im.setAttribute("width",b.w); im.setAttribute("height",b.h);
+    im.setAttribute("href",b.src); im.setAttributeNS(XLINK,"href",b.src)}};
   const rigJ={},rigG=el("g",{class:"rig",display:"none"}),
-    piece=n=>{const b=RIG.pieces[n],im=el("image",{class:`rig-${n}`,x:b.x,y:b.y,width:b.w,height:b.h,preserveAspectRatio:"none"});
-      im.setAttribute("href",b.src); im.setAttributeNS(XLINK,"href",b.src); return im},
+    piece=n=>{const b=rigNow().pieces[n],im=el("image",{class:`rig-${n}`,x:b.x,y:b.y,width:b.w,height:b.h,preserveAspectRatio:"none"});
+      im.setAttribute("href",b.src); im.setAttributeNS(XLINK,"href",b.src); rigImgs[n]=im; return im},
     joint=(n,...k)=>{const g=el("g",{class:`joint-${n}`});for(const c of k)g.append(c); rigJ[n]=g; return g};
   // The chest, the head and the arms hang off a group of their own, so the body can rise and lean
   // over the foot that is carrying him while the legs below stay where the floor is. The legs are
@@ -144,7 +152,7 @@ function draw(){
     joint("hip-l",joint("knee-l",piece("shin-l")),piece("thigh-l")),
     joint("hip-r",joint("knee-r",piece("shin-r")),piece("thigh-r")),
     rigUpper);
-  rigG.setAttribute("transform",`translate(${FIG_X} ${FIG_Y}) scale(${FIG_W/RIG.source.w})`);
+  rigG.setAttribute("transform",`translate(${FIG_X} ${FIG_Y}) scale(${FIG_W/rigNow().source.w})`);
   const figG=el("g",{class:"fig"},avatarBase,rigG,ph),bodyG=el("g",{class:"body"},figG);
   const ticket=el("g",{class:"ticket",opacity:0});
   const tkFill=[el("path",{d:"M100 4H138V22H100Z",fill:PAL.red,class:"ticket-fill"}),el("path",{d:"M108 22L106 31L118 22Z",fill:PAL.red,class:"ticket-fill"})];
@@ -152,7 +160,8 @@ function draw(){
   ticketText.textContent="";
   ticket.append(el("path",{d:"M100 4H138V22H100ZM108 22L106 31L118 22Z",...sticker,"stroke-width":6}),...tkFill,ticketText);
   svg.append(bodyG,ticket);
-  return{svg,parts:{ticket,ticketText,tkFill,bodyG,figG,avatarBase,rigG,rigJ,rigUpper,ph}};
+  return{svg,parts:{ticket,ticketText,tkFill,bodyG,figG,avatarBase,rigG,rigJ,rigUpper,ph,
+    rigNow,setRigStage:k=>{rigStage=k;syncRig()}}};
 }
 const CSS=`
 /* He is drawn at broadcast size: ~17.5vw is a full torso-and-head read on a 1080p stream, and the
@@ -249,7 +258,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // Staging: the lean he is holding, the lean he is walking towards, and the held wondering pose.
   leanAt=null,pendingLean=null,pondering=!1;
   const jobs=[]; let running=null; const flights=new WeakMap;
-  const paintBody=()=>{const src=AV(BODIES[bodyI]); parts.avatarBase.setAttribute("href",src); parts.avatarBase.setAttributeNS(XLINK,"href",src)};
+  const paintBody=()=>{const src=AV(BODIES[bodyI]); parts.avatarBase.setAttribute("href",src); parts.avatarBase.setAttributeNS(XLINK,"href",src); parts.setRigStage(BODIES[bodyI])};
   const setBody=i=>{if(i===bodyI)return; bodyI=clamp(i,0,BODIES.length-1); paintBody()};
   // The build he is in right now — the walk, the gait and the gesture weight all read it, so the
   // body is not just a picture that changes: a heavy Crid plods and slams, a lanky one trots.
@@ -554,7 +563,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // the whole gait reads as a body walking out of its own skin.
     if(on!==rigOn){rigOn=on; parts.rigG.setAttribute("display",on?"":"none"); parts.avatarBase.setAttribute("display",on?"none":"")}
     if(!on)return;
-    const set=(j,deg,dx=0,dy=0)=>{const q=RIG.pivot[j]; parts.rigJ[j].setAttribute("transform",
+    const set=(j,deg,dx=0,dy=0)=>{const q=parts.rigNow().pivot[j]; parts.rigJ[j].setAttribute("transform",
       `translate(${dx.toFixed(2)} ${dy.toFixed(2)}) rotate(${deg.toFixed(2)} ${q.x} ${q.y})`)};
     if(kind==="walk"){
       const tL=(u*2)%1,tR=(u*2+.5)%1,          // the left leg steps first, the right on the second half
@@ -593,7 +602,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // unevenly so the hands stay alive without either arm leaving his side.
     set("shoulder-l",-(w*8+d1*3)*calm,0,-twist); set("elbow-l",(-w3*4.5-d2*2)*calm);
     set("shoulder-r",-(w*5.5-d1*2)*calm,0,twist*.8); set("elbow-r",(w3*3.5+d2*1.5)*calm);
-    parts.rigUpper.setAttribute("transform",`translate(${sway.toFixed(2)} ${(-bob).toFixed(2)}) rotate(${((w*1.8+d1*.8)*calm).toFixed(2)} ${RIG.pivot["shoulder-l"].x} ${RIG.pivot["shoulder-l"].y})`);
+    parts.rigUpper.setAttribute("transform",`translate(${sway.toFixed(2)} ${(-bob).toFixed(2)}) rotate(${((w*1.8+d1*.8)*calm).toFixed(2)} ${parts.rigNow().pivot["shoulder-l"].x} ${parts.rigNow().pivot["shoulder-l"].y})`);
   };
   // The rig's own clock. Mid-stride it is the step's progress so feet land with the travel;
   // standing still it is a slower cycle for an idle weight shift (not a walk).
@@ -619,7 +628,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // the rendered character shows the dead-state treatment and the limbs stop moving. At rest the
     // rig is a living idle (subtle weight/posture/arm shifts), distinct from an actual walk.
     const stepping=!!(walk&&walk.to), alive=mode!=="dead"&&!dying;
-    const rigStep=!!(alive&&!leanAt&&BODIES[bodyI]==="3"),
+    const rigStep=!!(alive&&!leanAt),
       rigU=rigStep?rigPhase():0,
       rigKind=stepping?"walk":"idle",
       sig=JSON.stringify(p)+bodyI+(leanAt?leanAt.angle:0)+(pondering?1:0)+(baked?"b":"")+(rigStep?":"+rigKind+":"+Math.round(rigU*100):":flat:"+(dying?"d":"")+mode);
@@ -686,7 +695,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // cut back further: hr rotates the WHOLE figure about a pivot at his feet, which is the
     // lollipop sway — a rigid board pivoting on a stick. The rig already shifts his weight the
     // way a body does, so the pose layer only has to breathe and settle.
-    if(!frozen&&mode!=="dead"){const po=postureAt(now),rigIdle=mode!=="dead"&&!dying&&!leanAt&&BODIES[bodyI]==="3"&&!(walk&&walk.to),k=(leanAt?.3:1)*(rigIdle?.22:1); q.hr+=po.hr*k; q.tr+=po.tr*k; q.hy+=po.hy*k}
+    if(!frozen&&mode!=="dead"){const po=postureAt(now),rigIdle=mode!=="dead"&&!dying&&!leanAt&&!(walk&&walk.to),k=(leanAt?.3:1)*(rigIdle?.22:1); q.hr+=po.hr*k; q.tr+=po.tr*k; q.hy+=po.hy*k}
     // The wondering pose: weight on one leg, head tilted, held. It is a slow sway rather than a
     // still, because a perfectly still body reads as a paused image.
     if(pondering){const w=Math.sin((now-BOOT)/1000*1.35); q.hr+=7.6+w*1.2; q.tr+=3.8+w*1.6; q.hy+=1.5; q.bs*=.994}

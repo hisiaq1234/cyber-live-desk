@@ -61,6 +61,31 @@ The same recipe is machine-readable in `docs/crid-avatar-params.json`.
 
 `rotation=0` is the front view — this is the whole point. The shipped set used `rotation=7`.
 
+## Resolution: render a 2x master, cut the rig from the master
+
+`scale` in the renderer is not a multiplier above 2 — measured today:
+
+| scale | image | ink |
+|---|---|---|
+| 2 | **2100x2800** | 994x2374 |
+| 3 | 1050x1400 | 496x1187 |
+| 5, 6 | 1050x1400 | 496x1187 |
+| 4 | HTTP 500 | — |
+
+So **scale=2 is the biggest the renderer gives** and everything else is the small frame. Render the
+master at `scale=2` (2100x2800, no outfit) and treat it as the source of truth:
+
+- **Cut the rig from the 2100x2800 master**, not the shrunken sprite — limb edges are clean at 2x, and
+  the cut-out is what makes the walk / climb / carry poses not look like a different person.
+- **Derive the desk sprite by downscaling the master to 1050x1400** (LANCZOS), so the sprite is
+  supersampled and stays crisp at 150 px.
+- Keep the framing rule on the 1050x1400 sprite: ink bottom y=1325, axis x=560, and the same head-top
+  and sole line on every stage.
+
+Detail the owner asked for is in the master: hair texture, earring, moustache, eye whites, the line
+between arm and torso. If any of that is mush at 150 px, the silhouette or the outline is wrong — not
+the resolution.
+
 ## Deliverables
 
 1. `body-0-r0.webp`, `body-1-r0.webp` (and `body-2-r0.webp` only if it passes the height rule) at

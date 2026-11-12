@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Crid 3D — proof of concept</title>
+<style>
+  html,body{margin:0;height:100%;background:#0b0912;overflow:hidden}
+  #c{position:fixed;inset:0;display:block;cursor:grab}
+  #c:active{cursor:grabbing}
+  #hud{position:fixed;left:14px;top:12px;color:#f4f0ff;font:13px/1.5 ui-monospace,Menlo,monospace;
+       text-shadow:0 1px 3px #000;user-select:none;pointer-events:none}
+  #hud b{color:#a78bfa}
+</style>
+<script type="importmap">
+{"imports":{"three":"./desk-assets/vendor/three/three.module.js",
+            "three/addons/loaders/GLTFLoader.js":"./desk-assets/vendor/three/loaders/GLTFLoader.js"}}
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud"><b>CRID 3D</b> — Snap rigged GLB<br>drag to orbit · double-click = turntable<br><span id="bones">loading…</span></div>
+<script>
+addEventListener("error",e=>{const el=document.getElementById("bones");if(el)el.textContent="error: "+(e.message||e.type)});
+addEventListener("unhandledrejection",e=>{const el=document.getElementById("bones");if(el)el.textContent="reject: "+(e.reason&&e.reason.message||e.reason)});
+</script>
+<script type="module">
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+
+const canvas=document.getElementById("c");
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.05;
+
+const scene=new THREE.Scene();
+scene.add(new THREE.HemisphereLight(0xcfd8ff,0x2a2038,.9));
+const key=new THREE.DirectionalLight(0xfff2dd,2.2); key.position.set(1.4,2.2,1.6); scene.add(key);
+const rim=new THREE.DirectionalLight(0x8f7bff,1.1); rim.position.set(-1.6,1.4,-1.4); scene.add(rim);
+const cam=new THREE.PerspectiveCamera(34,1,.1,50);
+
+const turn=new THREE.Group(); scene.add(turn);
+const loader=new GLTFLoader();
+let model=null,bones={};
+loader.load("./desk-assets/crid3d/crid.glb",g=>{
+  model=g.scene;
+  // Snap's rig: find bones by name anywhere under the root.
+  model.traverse(o=>{if(o.isBone)bones[o.name]=o});
+  const names=Object.keys(bones);
+  document.getElementById("bones").textContent=names.length+" bones · "+names.filter(n=>/armUpper|thigh|spine|neck/.test(n)).slice(0,4).join(", ")+"…";
+  // ground the feet: skinned bounds need the world matrices updated first
+  model.updateMatrixWorld(true);
+  const box=new THREE.Box3().setFromObject(model);
+  const h=box.max.y-box.min.y;
+  const s=(Number.isFinite(h)&&h>1e-3)?1.7/h:1;
+  model.scale.setScalar(s);
+  model.position.y=-box.min.y*s;
+  turn.add(model);
+},undefined,e=>{document.getElementById("bones").textContent="load failed: "+e.message});
+
+// camera orbit (drag) + auto turntable
+let yaw=0.6,pitch=0.12,drag=null,auto=true;
+const pointers=new Map();
+canvas.addEventListener("pointerdown",e=>{pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});canvas.setPointerCapture(e.pointerId);drag=true;auto=false});
+canvas.addEventListener("pointermove",e=>{const p=pointers.get(e.pointerId);if(!p)return;
+  yaw-=(e.clientX-p.x)*.008;pitch=Math.max(-.5,Math.min(.6,pitch+(e.clientY-p.y)*.008));
+  p.x=e.clientX;p.y=e.clientY});
+const up=e=>{pointers.delete(e.pointerId);if(!pointers.size)drag=false};
+canvas.addEventListener("pointerup",up);canvas.addEventListener("pointercancel",up);
+canvas.addEventListener("dblclick",()=>auto=!auto);
+
+const resize=()=>{const w=innerWidth,h=innerHeight;renderer.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix()};
+addEventListener("resize",resize);resize();
+
+// living idle on the real skeleton — weight shift, breathing, small arm drift.
+// Bone names come from Snap's rig; missing names are skipped, never invented.
+const B=n=>bones[n];
+const tick=t=>{
+  requestAnimationFrame(tick);
+  const s=t/1000;
+  if(model){
+    if(auto)yaw+=.0035;
+    turn.rotation.y=yaw; turn.rotation.x=pitch;
+    const w=Math.sin(s*.9),b=Math.sin(s*1.7),d=Math.sin(s*.37+1.2);
+    const set=(n,x,y,z)=>{const j=B(n);if(j)j.rotation.set(x||0,y||0,z||0)};
+    set("C_spine0002_bind_JNT",w*.02,0,w*.008);          // weight sway through the spine
+    set("C_spine0003_bind_JNT",b*.012,0,0);             // breath
+    set("L_armUpper0001_bind_JNT",0,0,Math.sin(s*.8)*.05+d*.03);
+    set("R_armUpper0001_bind_JNT",0,0,-Math.sin(s*.8+1)*.05-d*.03);
+    set("L_armFore0001_bind_JNT",.06+Math.abs(b)*.03,0,0);
+    set("R_armFore0001_bind_JNT",.06+Math.abs(b)*.03,0,0);
+    set("C_neck0001_bind_JNT",w*.012,b*.008,0);         // head follows the shift
+    set("C_head_bind_JNT",d*.02,Math.sin(s*.5)*.03,0);
+  }
+  cam.position.set(Math.sin(yaw)*4.4,1.7+Math.sin(pitch)*2,Math.cos(yaw)*4.4);
+  cam.lookAt(0,.85,0);
+  renderer.render(scene,cam);
+};
+tick(0);
+</script>
+</body>
+</html>

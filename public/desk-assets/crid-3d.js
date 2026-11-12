@@ -80,39 +80,6 @@ export async function initCrid3D(host,getState,onReady,onFail){
       else o.material=dress(o.material);
     });
 
-    // One rig, seven builds. The pictures share a head and a height. Only the torso
-    // changes. The two ribcage renders (000, 00) replace the two leanest ladder
-    // stages; the side turntable of that lean body is why depth moves less than width.
-    // The head is counter-scaled so it stays this head at every stage. Arm length is
-    // put back because a width scale on the spine would otherwise shorten the arms.
-    const STAGE=[
-      {w:.78,d:.90}, // 000, ribs, replaces key 3
-      {w:.86,d:.93}, // 00, ribs softening, replaces key 0
-      {w:.96,d:.97}, // 4
-      {w:1,d:1},     // 5, the mesh as exported
-      {w:1.06,d:1.04}, // 1
-      {w:1.16,d:1.10}, // 11
-      {w:1.32,d:1.18}, // 2, the belly
-    ];
-    const GIRTH=["C_spine0001_bind_JNT","C_head_bind_JNT","L_armUpper0001_bind_JNT","R_armUpper0001_bind_JNT","C_pelvis0001_bind_JNT","L_legUpper0001_bind_JNT","R_legUpper0001_bind_JNT"];
-    const baseScale={};
-    for(const n of GIRTH){const b=bones[n];if(b)baseScale[n]=b.scale.clone()}
-    let stageOn=-1;
-    const applyStage=i=>{
-      i=clamp(i|0,0,STAGE.length-1);
-      if(i===stageOn)return; stageOn=i;
-      const {w,d}=STAGE[i];
-      const set=(n,x,y,z)=>{const b=bones[n],s0=baseScale[n];if(!b||!s0)return;b.scale.set(s0.x*x,s0.y*y,s0.z*z)};
-      set("C_spine0001_bind_JNT",1,w,d);
-      set("C_head_bind_JNT",1,1/w,1/d);
-      set("L_armUpper0001_bind_JNT",1/w,w,w);
-      set("R_armUpper0001_bind_JNT",1/w,w,w);
-      set("C_pelvis0001_bind_JNT",1,w,d);
-      set("L_legUpper0001_bind_JNT",1,w,d);
-      set("R_legUpper0001_bind_JNT",1,w,d);
-    };
-    applyStage(0);
-
     // Fit: bounds come from the SKELETON joints, not the skinned-mesh bbox — morph targets and
     // bind-pose geometry can report a degenerate box that flings the model off-camera.
     model.updateMatrixWorld(!0);
@@ -253,7 +220,6 @@ export async function initCrid3D(host,getState,onReady,onFail){
       if(document.hidden)return;
       if(t>=blinkAt){blinkUntil=t+.13;blinkAt=t+rand(2.6,6.2)*(reducedNow()?1.5:1)}
       const st=getState?getState():{};
-      applyStage(st.stage);
       if(!ready){ready=!0;onReady&&onReady()}
       try{drive(t,dt,st);renderer.render(scene,cam)}
       catch(err){

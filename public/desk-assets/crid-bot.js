@@ -26,6 +26,7 @@
    how he moves — see BODY_LADDER.slow and .heft, used by the walk, the gait and the gesture weight.
    Feed it with observe(state) where state.bot.subs is the sub count this stream, or call setSubs(n). */
 import{RIGS}from"./crid/rig.mjs";
+import{initCrid3D}from"./crid-3d.js";
 const NS="http://www.w3.org/2000/svg",XLINK="http://www.w3.org/1999/xlink",PAL={onyx:"#1F1736",screen:"#0F0B17",edge:"#3A1D9E",indigo:"#6531F8",indigoDk:"#3A1D9E",mint:"#86F6BC",bone:"#A98BFF",ink:"#F4F0FF",slate:"#2B2738",red:"#FF5B57",dead:"#5E5873"},
 DOZE_AFTER_MS=12e4,BODIES=["3","0","4","5","1","11","2"],ROT=0,ASSETS="./desk-assets/crid",AV=b=>`${ASSETS}/body-${b}-r${ROT}.webp`,
 SUB_STEPS=[0,4,8,12,16,20,24],STAGE_STRETCH=.03,
@@ -227,6 +228,17 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   if(Number.isFinite(scale)&&scale>0)host.style.setProperty("--bws",String(clamp(scale,.4,2.5)));
   const homeCls=[...host.classList].filter(c=>c.startsWith("pos-"));
   host.append(svg); root.append(host);
+  // ---- the 3D body -----------------------------------------------------------------------
+  // His real rigged Bitmoji (crid-3d.js): Snap's own GLB, 167 bones, facial morphs. While it
+  // loads the 2D rig stays up; the moment the model is on the GPU the flat drawing and the cut
+  // rig are hidden for good — one Crid per page, and when WebGL works it is the 3D one. Any
+  // failure resolves to null and every path below stays exactly as it was.
+  let crid3d=null,lastPose=null;
+  const hideFigure=()=>{parts.avatarBase.setAttribute("display","none");parts.rigG.setAttribute("display","none");parts.ph.setAttribute("display","none")};
+  initCrid3D(host,()=>({p:lastPose,mode,dying,walking:!!(walk&&walk.to),
+    walkDir:walk&&walk.to?(walk.tx-walk.x<0?-1:1):0,fx,lean:leanAt,reduced,
+    talking:host.classList.contains("is-active"),grooving:host.classList.contains("music-playing"),mood}),hideFigure)
+    .then(h=>{crid3d=h}).catch(()=>{});
   // ---- the desk's furniture ---------------------------------------------------------------
   // The desk hands in its layer registry (layers.mjs) and this is the only way he learns where a
   // panel is. It is read at the moment he moves, never cached: the registry answers for a panel
@@ -613,6 +625,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     return ((now-rigIdleAt)/5200)%1; // ~5.2s idle cycle, slow weight shift
   };
   const render=p=>{
+    lastPose=p;
     // Stamped before the unchanged-pose early return: the mode/dying state is what the overlay,
     // theme and checks read, and it must never lag a transition (including the dying beat).
     host.dataset.mode=dying?"dying":mode;
@@ -653,7 +666,10 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // into the bitmap there is nothing to rotate here: the bitmap is already tipped about the same
     // feet, so the pose goes on unchanged and the drawing stays sharp.
     parts.figG.setAttribute("transform",`${leanAt&&!baked?`rotate(${leanAt.angle.toFixed(2)} ${VB_CX} ${VB_FEET}) `:""}translate(${(shift+p.gx*1.15).toFixed(2)} ${(p.hy*.85-plank*14).toFixed(2)}) translate(70 158) rotate(${L.toFixed(2)}) scale(${(p.fx*p.sx*k).toFixed(3)} ${(p.sy*k).toFixed(3)}) translate(-70 -158)`);
-    showSprite(baked); showRig(rigStep,rigU,stepping?"walk":"idle");
+    // When the 3D body is live the SVG figure stays hidden — the canvas is him. The 2D rig is
+    // only ever the fallback for a page where WebGL or the GLB failed.
+    if(crid3d&&crid3d.active)hideFigure();
+    else{showSprite(baked); showRig(rigStep,rigU,stepping?"walk":"idle")}
   };
   // ---- human timing ----------------------------------------------------------------------
   // The sprite is a still drawing, so the only life it has is what the engine moves. Two layers:
@@ -834,5 +850,5 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // The registry can arrive after him (the desk builds its panels as it goes), and a new one
     // replaces the old without remounting him.
     setLayers(v){getLayer=typeof v=="function"?v:v&&typeof v.layer=="function"?n=>v.layer(n):null; return !0},
-    setSubs:n=>{lastSubN=n|0;applySubs(n,!1)},setOnline(v){online=!!v;power()},get mode(){return mode},get subs(){return subs},get stage(){return build()},setMood,say,nudge,randomLine,place:replace,freeze(pose={}){frozen=!0;clearTimeout(timer); if(pose.mode)mode=pose.mode; if(pose.tag!==void 0)tagText=pose.tag; if(pose.subs!=null)applySubs(pose.subs,!1); lastDrawn=""; render({...REST[mode],tag:tagText,fx:pose.fx||1,sx:growth.sx,sy:growth.sy,...pose})},destroy(){clearTimeout(timer); clearTimeout(feelTimer); mo==null||mo.disconnect(); stripWatch==null||stripWatch.disconnect(); if(typeof removeEventListener=="function")removeEventListener("resize",replace); cancelJobs(); goHome(); host.remove()}}
+    setSubs:n=>{lastSubN=n|0;applySubs(n,!1)},setOnline(v){online=!!v;power()},get mode(){return mode},get subs(){return subs},get stage(){return build()},setMood,say,nudge,randomLine,place:replace,freeze(pose={}){frozen=!0;clearTimeout(timer); if(pose.mode)mode=pose.mode; if(pose.tag!==void 0)tagText=pose.tag; if(pose.subs!=null)applySubs(pose.subs,!1); lastDrawn=""; render({...REST[mode],tag:tagText,fx:pose.fx||1,sx:growth.sx,sy:growth.sy,...pose})},destroy(){clearTimeout(timer); clearTimeout(feelTimer); mo==null||mo.disconnect(); stripWatch==null||stripWatch.disconnect(); if(typeof removeEventListener=="function")removeEventListener("resize",replace); cancelJobs(); goHome(); crid3d&&crid3d.dispose(); host.remove()}}
 }

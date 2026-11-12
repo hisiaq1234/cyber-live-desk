@@ -3,10 +3,16 @@
    and hands it a snapshot each frame through getState(). Everything here is derived motion on
    Snap's own skeleton — no clips, no retargeting, no redrawn art.
 
-   Failure is silent by design: any error (no WebGL, GLB 404, bad GPU) resolves to null and the
-   caller keeps the 2D rig. ?crid3d=off forces the 2D path for A/B checks. */
+   Joint axes were measured from the GLB itself (world transform of each bone):
+     local X points along the limb for arms/legs; spine/neck/head share one convention —
+     pitch = local Y, roll = local Z, yaw = local X.
+   Legs swing fore/aft on local Y (negative Y = forward, he faces -Z), knees fold on +Y.
+   Shoulders lower on local Z (L +, R -) — the bind pose is a wide A-pose, so the relaxed
+   hang is part of every pose, not a one-time fix. Arm swing rides local X (L +, R -).
+
+   Failure is silent by design: any error resolves to null and the caller keeps the 2D rig.
+   ?crid3d=off forces the 2D path for A/B checks. */
 const GLB="/desk-assets/crid3d/crid.glb";
-// Morph target names live under face_shapes.*; we match by suffix so _L/_R variants resolve.
 const M={jaw:"ai_jawOpen",eyeShutL:"ai_eyeUpperClose_L",eyeShutR:"ai_eyeUpperClose_R",
   eyeShutLL:"ai_eyeLowerClose_L",eyeShutLR:"ai_eyeLowerClose_R",
   smileL:"ai_mouthSmile_L",smileR:"ai_mouthSmile_R",
@@ -36,7 +42,7 @@ export async function initCrid3D(host,getState,onReady){
     renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));
     renderer.outputColorSpace=THREE.SRGBColorSpace;
     renderer.toneMapping=THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure=1.05;
+    renderer.toneMappingExposure=1.18;
 
     const scene=new THREE.Scene();
     // Image-based lighting: Snap's materials are PBR — without an environment map they render
@@ -44,13 +50,14 @@ export async function initCrid3D(host,getState,onReady){
     const pmrem=new THREE.PMREMGenerator(renderer);
     scene.environment=pmrem.fromScene(new RoomEnvironment(),.04).texture;
     pmrem.dispose();
-    scene.add(new THREE.HemisphereLight(0xcfd8ff,0x2a2038,.55));
-    const key=new THREE.DirectionalLight(0xfff2dd,2.4);key.position.set(1.3,2.4,1.7);scene.add(key);
-    const fill=new THREE.DirectionalLight(0x9db4ff,.7);fill.position.set(-1.8,1.1,1.2);scene.add(fill);
-    const rim=new THREE.DirectionalLight(0xb9a5ff,1.5);rim.position.set(-1.2,1.8,-1.8);scene.add(rim);
+    scene.add(new THREE.HemisphereLight(0xd8e2ff,0x241a33,.6));
+    const key=new THREE.DirectionalLight(0xfff0d8,2.6);key.position.set(1.2,2.3,-1.7);scene.add(key);
+    const fill=new THREE.DirectionalLight(0x9db4ff,.9);fill.position.set(-1.7,1.1,-1.1);scene.add(fill);
+    const rim=new THREE.DirectionalLight(0xc4b0ff,1.8);rim.position.set(-1.1,1.9,1.9);scene.add(rim);
     const cam=new THREE.PerspectiveCamera(32,1,.1,50);
 
-    // Turn group: yaw (which way he faces) and roll (the lean) live here so the body pose stays clean.
+    // Camera sits at -Z: the GLB's bind pose faces -Z (verified from L/R eye joint positions),
+    // so this is his front. Turn group carries yaw/roll; model carries the skeleton.
     const turn=new THREE.Group(),model=new THREE.Group();turn.add(model);scene.add(turn);
 
     const bones={},morphs=[];
@@ -62,9 +69,8 @@ export async function initCrid3D(host,getState,onReady){
         for(const[k,i]of Object.entries(o.morphTargetDictionary))morphs.push({m:o,i,k})}
     });
     model.add(root);
-    // Snap's textures carry their own baked shading; a full-strength studio env washes them out.
     root.traverse(o=>{if(o.material){const ms=Array.isArray(o.material)?o.material:[o.material];
-      for(const m of ms)if("envMapIntensity" in m)m.envMapIntensity=.55}});
+      for(const m of ms)if("envMapIntensity" in m)m.envMapIntensity=.7}});
 
     // Fit: normalise height to ~1.5 world units, feet on y=0.
     model.updateMatrixWorld(!0);
@@ -72,19 +78,17 @@ export async function initCrid3D(host,getState,onReady){
     const s=h>1e-3?1.5/h:1;model.scale.setScalar(s);
     const feetY=box.min.y*s;
     model.position.y=-feetY;
-    const dist=1.5/(2*Math.tan(cam.fov*Math.PI/360))*1.28;
-    cam.position.set(0,.82,dist);cam.lookAt(0,.72,0);
+    const dist=1.5/(2*Math.tan(cam.fov*Math.PI/360))*1.3;
+    cam.position.set(0,.8,-dist);cam.lookAt(0,.7,0);
 
-    // Contact shadow: a soft radial blob on the floor plane, so he stands IN the room instead of
-    // hovering over it. It lives in turn-space so the lean/turn moves it with him.
+    // Contact shadow: a soft radial blob on the floor plane, so he stands IN the room.
     const shC=document.createElement("canvas");shC.width=shC.height=128;
-    const shG=shC.getContext("2d"),shGrad=shG.createRadialGradient(64,64,8,64,64,62);
-    shGrad.addColorStop(0,"rgba(6,4,12,.55)");shGrad.addColorStop(.7,"rgba(6,4,12,.28)");shGrad.addColorStop(1,"rgba(6,4,12,0)");
+    const shG=shC.getContext("2d"),shGrad=shG.createRadialGradient(64,64,10,64,64,62);
+    shGrad.addColorStop(0,"rgba(5,3,10,.6)");shGrad.addColorStop(.65,"rgba(5,3,10,.32)");shGrad.addColorStop(1,"rgba(5,3,10,0)");
     shG.fillStyle=shGrad;shG.fillRect(0,0,128,128);
-    const shTex=new THREE.CanvasTexture(shC);
-    const shadow=new THREE.Mesh(new THREE.PlaneGeometry(1.15,.5),
-      new THREE.MeshBasicMaterial({map:shTex,transparent:!0,depthWrite:!1}));
-    shadow.rotation.x=-Math.PI/2;shadow.position.y=.012;shadow.renderOrder=-1;
+    const shadow=new THREE.Mesh(new THREE.PlaneGeometry(1.25,.55),
+      new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(shC),transparent:!0,depthWrite:!1}));
+    shadow.rotation.x=-Math.PI/2;shadow.position.y=.014;shadow.renderOrder=-1;
     turn.add(shadow);
 
     const B=n=>bones[n];
@@ -96,7 +100,7 @@ export async function initCrid3D(host,getState,onReady){
     const setMorph=(name,v)=>{for(const x of morph(name))x.m.morphTargetInfluences[x.i]=v};
     const setMorphs=pairs=>{for(const[k,v]of pairs)setMorph(k,v)};
 
-    // Per-bone delta rotation on top of the rest pose (bone.userData.q0).
+    // Delta rotation on top of each bone's rest pose (userData.q0).
     const E=new THREE.Euler(),Q=new THREE.Quaternion(),Q2=new THREE.Quaternion();
     const rot=(n,x=0,y=0,z=0)=>{const b=B(n);if(!b)return;E.set(x,y,z,"XYZ");Q.setFromEuler(E);Q2.copy(b.userData.q0).multiply(Q);b.quaternion.copy(Q2)};
 
@@ -108,9 +112,11 @@ export async function initCrid3D(host,getState,onReady){
       armL:"L_armUpper0001_bind_JNT",foreL:"L_armLower0001_bind_JNT",
       armR:"R_armUpper0001_bind_JNT",foreR:"R_armLower0001_bind_JNT"};
     const has=k=>!!B(J[k]);
+    // The bind pose holds his arms wide (A-pose); the relaxed hang is the baseline of every pose.
+    const RELAX={armL:{z:1.12},armR:{z:-1.12},foreL:{x:.3},foreR:{x:-.3}};
 
     let disposed=!1,raf=0,ready=!1,phase=0,heading=0;
-    let blinkAt=2.5,blinkUntil=-1;                        // seconds on the drive() clock
+    let blinkAt=2.5,blinkUntil=-1;
     const reducedNow=()=>{try{return matchMedia("(prefers-reduced-motion: reduce)").matches}catch{return!1}};
 
     const resize=()=>{
@@ -125,56 +131,57 @@ export async function initCrid3D(host,getState,onReady){
       const p=st.p||{},mode=st.mode||"dead",dying=!!st.dying,
         alive=mode==="on"&&!dying,walking=!!st.walking&&alive,
         reduced=st.reduced||reducedNow(),grooving=!!st.grooving,
-        pr=clamp((p.pr||0)*Math.PI/180,-1.4,1.4);
+        pr=clamp((p.pr||0)*Math.PI/180,-1.2,1.2);
       if(walking)phase=(phase+dt*(reduced?3.4:5.2))%1;
-      const u=phase,tL=(u*2)%1,tR=(u*2+.5)%1,
-        wL=walking?swingOf(tL):0,wR=walking?swingOf(tR):0,
-        kL=walking?swingOf((tL+.5)%1):0,kR=walking?swingOf((tR+.5)%1):0;
+      const u=phase,gait=Math.sin(TAU*u),          // one full gait cycle per phase wrap
+        kL=walking?swingOf(((u*2)%1+.5)%1):0,kR=walking?swingOf(((u*2+.5)%1+.5)%1):0;
 
       // Facing: eased yaw toward travel direction; a lean pulls him toward the panel.
       const dir=st.walkDir||(st.fx<0?-1:1),
-        targetYaw=(walking?.95:0)*dir+(st.lean?st.lean.dir*.3:0);
+        targetYaw=(walking?.85:0)*dir+(st.lean?st.lean.dir*.3:0);
       heading+=(targetYaw-heading)*Math.min(1,dt*7);
       turn.rotation.y=heading;
       turn.rotation.z=st.lean?st.lean.angle*Math.PI/180*.55:0;
 
-      // Root height/scale from the 2D pose contract: by drops him, bs squashes him.
       const by=(p.by||0)/100,bs=clamp(p.bs||1,.8,1.15);
-      model.position.y=-feetY-by*.9*s;
+      model.position.y=-feetY-by*.9*s+(walking?Math.abs(Math.sin(TAU*u))*.02*s:0);
       model.scale.set(s*(1+.05*(1-bs)),s*bs,s*(1+.05*(1-bs)));
 
-      // Gait: thigh swings forward/back, knee folds, arms counter-swing. All deltas on rest pose.
-      const swing=.5,fold=.85,lift=.5;
-      if(has("thighL"))rot(J.thighL,wL*swing*lift,0,0);
-      if(has("shinL"))rot(J.shinL,-(kL*fold),0,0);
-      if(has("thighR"))rot(J.thighR,-wR*swing*lift,0,0);
-      if(has("shinR"))rot(J.shinR,kR*fold,0,0);
-      if(has("footL"))rot(J.footL,(wL-kL)*.3,0,0);
-      if(has("footR"))rot(J.footR,-(wR-kR)*.3,0,0);
-      const armAmp=walking?.45:.1;
-      if(has("armL"))rot(J.armL,-Math.sin(TAU*tL)*armAmp+.05,0,.1);
-      if(has("foreL"))rot(J.foreL,.22+Math.abs(Math.sin(TAU*tL))*.18*(walking?1:.35),0,0);
-      if(has("armR"))rot(J.armR,Math.sin(TAU*tL)*armAmp+.05,0,-.1);
-      if(has("foreR"))rot(J.foreR,.22+Math.abs(Math.sin(TAU*tR))*.18*(walking?1:.35),0,0);
-
-      // Torso: breath, weight shift, pose sway, crawl/push-up pitch (clamped).
       const br=Math.sin(t*1.7),w1=Math.sin(t*.9),w2=Math.sin(t*4.1),calm=reduced?.45:1;
-      if(has("spine2"))rot(J.spine2,(.02*br+(p.tr||0)*.004+pr*.55)*calm,w1*.012*calm,(w1*.035+p.hr*.004)*calm+(grooving?.05*Math.sin(t*3):0));
-      if(has("spine3"))rot(J.spine3,.015*br+.01*w2,0,w1*.02*calm);
-      if(has("pelvis"))rot(J.pelvis,w2*.015*calm,0,w1*.02*calm);
+      const still=(walking?0:1),droop=mode==="doze"?.42:mode==="dead"?.6:dying?.35:0;
+      const swing=walking?1:still*.12;              // idle arms/legs keep a whisper of motion
 
-      // Head: gaze params scaled down from the 2D pixel contract; doze/dead droop it.
+      // Legs: local Y, negative = forward. Knees fold on +Y during the swing-through.
+      if(has("thighL"))rot(J.thighL,0,-gait*.5*walking+still*w1*.015,0);
+      if(has("shinL"))rot(J.shinL,0,(kL*.75+still*.04)*calm,0);
+      if(has("footL"))rot(J.footL,0,(wL-kL)*.22,0);
+      if(has("thighR"))rot(J.thighR,0,gait*.5*walking-still*w1*.015,0);
+      if(has("shinR"))rot(J.shinR,0,-(kR*.75+still*.04)*calm,0);
+      if(has("footR"))rot(J.footR,0,-(wR-kR)*.22,0);
+
+      // Arms: relaxed hang is constant; swing counter to the same-side leg on local X.
+      if(has("armL"))rot(J.armL,-gait*.38*swing+still*Math.sin(t*.8)*.02,0,RELAX.armL.z+still*w1*.015);
+      if(has("foreL"))rot(J.foreL,RELAX.foreL.x+still*Math.sin(t*.8+1)*.03-gait*.12*swing,0,0);
+      if(has("armR"))rot(J.armR,gait*.38*swing-still*Math.sin(t*.8+1)*.02,0,RELAX.armR.z-still*w1*.015);
+      if(has("foreR"))rot(J.foreR,RELAX.foreR.x-still*Math.sin(t*.8+2)*.03+gait*.12*swing,0,0);
+
+      // Torso: breath, weight shift, pose sway; pr pitches him forward for crawl/push-up.
+      if(has("spine2"))rot(J.spine2,(.02*br-pr*.55+(p.tr||0)*.004)*calm,(w2*.01)*calm,
+        (w1*.045+p.hr*.004+ (grooving?.05*Math.sin(t*3):0))*calm);
+      if(has("spine3"))rot(J.spine3,(.015*br+.01*w2-pr*.2)*calm,0,w1*.025*calm);
+      if(has("pelvis"))rot(J.pelvis,w2*.02*calm,0,w1*.025*calm);
+
+      // Head/neck: gaze params scaled down; doze/dead droop forward (negative local Y = down).
       const gx=(p.gx||0)/60,gy=(p.gy||0)/60;
-      const droop=mode==="doze"?.38:mode==="dead"?.55:dying?.3:0;
-      if(has("neck1"))rot(J.neck1,droop*.5+gy*.3,clamp(gx,-.5,.5)*.5,0);
-      if(has("neck2"))rot(J.neck2,droop*.4,0,0);
-      if(has("head"))rot(J.head,droop*.5+gy*.3+br*.008,clamp(gx,-.6,.6)*.6+Math.sin(t*.5)*.04*calm,0);
+      if(has("neck1"))rot(J.neck1,-droop*.5-gy*.3,clamp(gx,-.5,.5)*.5,0);
+      if(has("neck2"))rot(J.neck2,-droop*.4,0,0);
+      if(has("head"))rot(J.head,-droop*.55-gy*.3+br*.01,clamp(gx,-.6,.6)*.6+Math.sin(t*.5)*.05*calm,w1*.015*calm);
 
       // Face: jaw while "talking", scheduled blink, doze/dead hold eyes shut, mood shapes.
       const talking=!!st.talking;
       const jaw=talking?(reduced?.12:.28)+.22*Math.abs(Math.sin(t*11))+.08*Math.sin(t*23):0;
       const shut=mode==="doze"?.75:mode==="dead"?.9:dying?.6:0;
-      const blink=t>=blinkUntil?0:1;                  // blinkUntil is a deadline second
+      const blink=t>=blinkUntil?0:1;
       setMorphs([["jaw",clamp(jaw,0,.85)],["eyeShutL",Math.max(shut,blink)],["eyeShutR",Math.max(shut,blink)],
         ["eyeShutLL",shut*.5],["eyeShutLR",shut*.5]]);
       const mood=st.mood||"idle";
@@ -191,7 +198,6 @@ export async function initCrid3D(host,getState,onReady){
       raf=requestAnimationFrame(frame);
       const t=performance.now()/1000,dt=clamp(t-now,0,.05);now=t;
       if(document.hidden)return;
-      // blink scheduler on the same seconds clock drive() uses
       if(t>=blinkAt){blinkUntil=t+.13;blinkAt=t+rand(2.6,6.2)*(reducedNow()?1.5:1)}
       const st=getState?getState():{};
       if(!ready){ready=!0;onReady&&onReady()}
@@ -202,7 +208,6 @@ export async function initCrid3D(host,getState,onReady){
     return{get active(){return ready},dispose(){disposed=!0;cancelAnimationFrame(raf);ro&&ro.disconnect();
       renderer.dispose();gltf.scene.traverse(o=>{if(o.geometry)o.geometry.dispose()});canvas.remove()}};
   }catch(err){
-    // Silent for the viewer, loud for whoever is debugging: the 2D rig carries the page either way.
     try{console.warn("[crid-3d] fallback to 2D rig:",err&&err.message||err)}catch{}
     return null}
 }

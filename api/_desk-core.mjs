@@ -1287,6 +1287,9 @@ export async function runAction(store, b, now = Date.now()) {
 
   if (quiet) return { state, queueLength: queue.length, ...(lettersResult ? { letters: lettersResult } : {}) };
   const committed = await commitState(store, state, patch, now);
+  // A minted cue is remembered, because the state only ever carries the newest one: a report about
+  // the cue it replaced is still a report about a stamp this desk really issued.
+  if (b.action === "bot-cue") await recordIssuedCue(store, committed.bot?.cue, now);
   return { state: committed, queueLength: queue.length, ...(lettersResult ? { letters: lettersResult } : {}) };
 }
 
@@ -1671,6 +1674,66 @@ export async function readHeldResearch(store, now = Date.now()) {
 export async function writeHeldResearch(store, held) {
   if (held.length) await store.setJSON(HELD_RESEARCH_KEY, held.slice(0, RESEARCH_HELD_MAX));
   else if (typeof store.delete === "function") await store.delete(HELD_RESEARCH_KEY).catch(() => {});
+}
+
+// ---------- the cue report ----------
+// The cue channel is one-way by design: the brain mints a stamp, the page performs it, and nobody
+// ever learns whether he finished. The page now says so, once, into a ledger the brain reads on its
+// next tick — and this ledger is the only thing the report endpoint touches. It stores two short
+// lists: the stamps this desk issued, so a made-up one is refused, and the reports it accepted, so a
+// repeated stamp is ignored rather than counted twice. Neither list is public state, neither can
+// trigger an action, and the endpoint that writes here can do nothing else.
+export const CUE_OUTCOMES = ["done", "aborted", "failed"];
+export const CUE_LEDGER_KEY = "cue-ledger";
+export const CUE_LEDGER_KEEP = 24; // stamps remembered: enough for a report that lands after a newer cue
+export const CUE_LEDGER_MAX_AGE_MS = 10 * 60 * 1000;
+// A page can only report cues the desk issued, so the ceiling is really "a bug, not a viewer": a
+// reload loop or a duplicated tab cannot fill the ledger.
+export const CUE_REPORT_RATE = { max: 20, windowMs: 60 * 1000 };
+
+export async function readCueLedger(store) {
+  const led = await store.get(CUE_LEDGER_KEY, { type: "json" });
+  return {
+    issued: Array.isArray(led?.issued) ? led.issued.filter((e) => Number.isFinite(e?.at)) : [],
+    reports: Array.isArray(led?.reports) ? led.reports.filter((e) => Number.isFinite(e?.at)) : [],
+  };
+}
+
+const trimCueLedger = (led, now) => ({
+  issued: led.issued.filter((e) => now - (e.issuedAt ?? 0) <= CUE_LEDGER_MAX_AGE_MS).slice(-CUE_LEDGER_KEEP),
+  reports: led.reports.filter((e) => now - (e.reportedAt ?? 0) <= CUE_LEDGER_MAX_AGE_MS).slice(-CUE_LEDGER_KEEP),
+});
+
+/** Remember the stamp this desk just minted, so a later report can be checked against it. */
+export async function recordIssuedCue(store, cue, now = Date.now()) {
+  const at = Number(cue?.at);
+  if (!Number.isFinite(at)) return;
+  const led = await readCueLedger(store);
+  if (led.issued.some((e) => e.at === at)) return;
+  led.issued.push({ at, name: String(cue?.name ?? ""), issuedAt: now });
+  await store.setJSON(CUE_LEDGER_KEY, trimCueLedger(led, now));
+}
+
+/**
+ * One report from the desk page: which cue, and how it ended. Nothing else is accepted, nothing is
+ * returned about the desk, and nothing is triggered — the brain reads the ledger on its own tick.
+ * A stamp this desk never issued is refused; a stamp already reported is ignored, so a page that
+ * reports twice (a reload, two tabs) cannot turn one finished cue into two.
+ */
+export async function reportCue(store, b, now = Date.now()) {
+  const at = Number(b?.at);
+  const outcome = String(b?.outcome ?? "");
+  if (!Number.isFinite(at) || at <= 0) throw new HttpError(422, "at must be the stamp of a cue.");
+  if (!CUE_OUTCOMES.includes(outcome)) throw new HttpError(422, `outcome must be one of ${CUE_OUTCOMES.join(", ")}.`);
+  const led = trimCueLedger(await readCueLedger(store), now);
+  if (!led.issued.some((e) => e.at === at)) throw new HttpError(409, "That cue stamp was never issued.");
+  if (led.reports.some((r) => r.at === at)) return { ok: true, ignored: true, at };
+  if (led.reports.filter((r) => now - (r.reportedAt ?? 0) <= CUE_REPORT_RATE.windowMs).length >= CUE_REPORT_RATE.max) {
+    throw new HttpError(429, "Too many cue reports. Slow down.");
+  }
+  led.reports.push({ at, outcome, reportedAt: now });
+  await store.setJSON(CUE_LEDGER_KEY, trimCueLedger(led, now));
+  return { ok: true, ignored: false, at, outcome };
 }
 
 export const toCard = (feed, c, now, i, { approval = "pending", autoApproved = false, question = "" } = {}) => ({

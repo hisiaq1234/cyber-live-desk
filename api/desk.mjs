@@ -44,6 +44,7 @@ import {
   readCards,
   readHeldResearch,
   readState,
+  reportCue,
   runAction,
   runResearch,
   upsertCard,
@@ -73,7 +74,12 @@ const PAGE = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
   "&family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700" +
   "&family=Anton&family=Instrument+Serif:ital@0;1&display=swap\">" +
   "<style>html,body{margin:0;background:transparent}</style></head>" +
-  "<body><script type=\"module\" src=\"__OVERLAY_JS__\"></script></body></html>";
+  "<body><script>window.__DESK_CUE_REPORT__=__CUE_REPORT__</script>" +
+  "<script type=\"module\" src=\"__OVERLAY_JS__\"></script></body></html>";
+
+// Where the desk page says how a cue ended. One path, used by the page and by the route below, so
+// the address the browser posts to and the address the server answers cannot drift apart.
+export const CUE_REPORT_PATH = "/api/desk/cue-report";
 
 const store = () => getStore();
 
@@ -114,9 +120,16 @@ const handler = async (req) => {
       const variant = (url.searchParams.get("overlay") || url.searchParams.get("variant") || "").toLowerCase();
       const useBrand = variant === "brand" || url.searchParams.get("brand") === "1";
       const overlaySrc = useBrand ? "/desk-assets/overlay-brand.js" : "/desk-assets/overlay.js";
-      const page = PAGE.replace("__OVERLAY_JS__", overlaySrc);
+      // The page is the one place that can say how a cue ended, so it carries the operator token the
+      // report endpoint asks for. The owner was told plainly what a token on a public URL means and
+      // chose it anyway; the token buys exactly one write from this page — a cue report — and
+      // nothing else in the overlay is given it or uses it.
+      const page = PAGE.replace("__OVERLAY_JS__", overlaySrc)
+        .replace("__CUE_REPORT__", JSON.stringify({ url: CUE_REPORT_PATH, token: process.env.DESK_OPERATOR_TOKEN || "" }));
       return new Response(req.method === "HEAD" ? null : page, {
-        headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=300" },
+        // Not cached: the page now carries a secret, so a shared cache must not hand it out or
+        // serve yesterday's token after it is rotated.
+        headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
       });
     }
     // The overlay can be loaded straight from a local file in OBS, so the public
@@ -213,6 +226,12 @@ const handler = async (req) => {
     if (req.method === "POST" && route === "/api/desk/action") {
       const result = await runAction(s, await readBody(req));
       return json({ ok: true, ...result, serverNow: Date.now() });
+    }
+    // The desk page reports how the cue it performed ended. It writes one ledger entry and nothing
+    // else: no state is handed back, no action runs, and the only thing the caller learns is whether
+    // the report was accepted, ignored (a repeated stamp) or refused (a stamp never issued here).
+    if (req.method === "POST" && route === CUE_REPORT_PATH) {
+      return json({ ...(await reportCue(s, await readBody(req))), serverNow: Date.now() });
     }
     if (req.method === "POST" && route === "/api/desk/research") return json(await runResearch(s, await readBody(req)));
     throw new HttpError(404, "Not found.");

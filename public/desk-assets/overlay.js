@@ -33,7 +33,7 @@ import { createCridAudioSync } from "./crid-audio.js";
 import { createSoundOrbSync } from "./sound-orb.js";
 import { requestXFeed } from "./x-feed-client.js";
 import { createCridBot, CUE_NAMES } from "./crid-bot.js";
-import { createCueReader } from "./cue.mjs";
+import { createCueReader, createCueReporter } from "./cue.mjs";
 import { createLayerRegistry } from "./layers.mjs";
 import { createLogo, LOGO_POSITIONS, LOGO_MARKS } from "./logo.js";
 import { CYBER_CSS } from "./cyber-theme.js";
@@ -1013,6 +1013,11 @@ html.swae #desk .letters{background:#0b0d12f5}
   // off the same poll as everything else and drained once per stamp (see cue.mjs), then handed to
   // CRID as a cue — queued behind whatever he is already doing, never stacked on it.
   const cues = createCueReader({ known: (name) => CUE_NAMES.includes(name) });
+  // The way back: the same stamp, reported once, when the cue he was given actually ends. The page is
+  // served with the token it needs for exactly this one write (see api/desk.mjs); without it the
+  // reporter is off and the brain falls back to its own timer, exactly as it did before this existed.
+  const cueReport = window.__DESK_CUE_REPORT__ || {};
+  const cueReports = createCueReporter({ token: cueReport.token || "", url: cueReport.url || "/api/desk/cue-report" });
   const soundOrb = bot ? bot.el : h("div", { id: "sound-orb", "aria-hidden": "true" },
     h("span", { class: "orb-ring" }), h("span", { class: "orb-ring" }), h("span", { class: "orb-core" }));
   if (!bot) root.append(soundOrb);
@@ -1541,7 +1546,12 @@ html.swae #desk .letters{background:#0b0d12f5}
     // reload mid-gesture cannot replay it, and an unknown name is dropped here rather than thrown.
     // Nothing below touches the frame — CRID owns his own pose.
     const cue = cues.read(s.bot);
-    if (cue && bot) bot.cue(cue.name, { text: cue.text });
+    if (cue) {
+      const started = bot ? bot.cue(cue.name, { text: cue.text, onEnd: (outcome) => cueReports.report(cue.at, outcome) }) : false;
+      // He could not be told: dead, or the page has no bot at all. That is a real answer too, and
+      // saying so is cheaper than letting the brain wait out its timer to guess the same thing.
+      if (!started) cueReports.report(cue.at, "failed");
+    }
     if (changed) {
       clearTimeout(telemetryTimer);
       root.classList.remove("telemetry-pulse");

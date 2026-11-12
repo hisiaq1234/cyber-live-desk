@@ -41,3 +41,56 @@ export function createCueReader({ known = () => true } = {}) {
     },
   };
 }
+
+/* THE WAY BACK — how the cue it just performed ended.
+ *
+ * The reader above is one-way: the desk says "wave", he waves, and the brain is left assuming. This
+ * is the other half of the same stamp. When the cue actually finishes, is interrupted by something
+ * louder, or cannot be performed at all, the page posts one short report to the desk
+ * (`{ at, outcome }`) and the brain reads it on its next tick. The timer in the brain stays as the
+ * fallback, so a page that is reloaded or killed mid-gesture simply says nothing and the activity
+ * still closes.
+ *
+ * Three rules, all testable without a browser:
+ *   - one report per stamp: a reload, a second tab or a re-render cannot report the same cue twice;
+ *   - an unknown outcome is never sent — the vocabulary is `done`, `aborted`, `failed`;
+ *   - a failed post is worth nothing on air: it is swallowed, and the brain's timer closes the
+ *     activity unconfirmed exactly as it did before this existed.
+ */
+export const CUE_OUTCOMES = ["done", "aborted", "failed"];
+
+export function createCueReporter({
+  token = "",
+  url = "/api/desk/cue-report",
+  fetchFn = globalThis.fetch,
+  log = null,
+} = {}) {
+  const sent = new Set();
+  const on = Boolean(token && url && fetchFn);
+  return {
+    /** False when the page was served without a token, exactly like the cue channel being off. */
+    on,
+    /** Report how one cue ended. Resolves to the desk's answer, or null when nothing was sent. */
+    async report(at, outcome) {
+      if (!on) return null;
+      const stamp = Number(at);
+      if (!Number.isFinite(stamp) || !CUE_OUTCOMES.includes(outcome)) return null;
+      if (sent.has(stamp)) return null;
+      sent.add(stamp);
+      // Only the last few matter; the brain closes anything older on its own timer anyway.
+      if (sent.size > 32) sent.delete(sent.values().next().value);
+      try {
+        const res = await fetchFn(url, {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify({ at: stamp, outcome }),
+        });
+        if (!res.ok) return null;
+        return await res.json().catch(() => null);
+      } catch (err) {
+        log?.(`[cue-report] ${outcome} ${stamp} not delivered: ${err?.message || err}`);
+        return null;
+      }
+    },
+  };
+}

@@ -41,7 +41,7 @@ test("the rig is mounted and visible at rest, not only mid-stride (living idle, 
   bot.observe({bot:{on:true}});
   await sleep(60);
   assert.equal(rigVisible(bot.el),"", "the rig group must be displayed while he is standing still");
-  assert.equal(bot.stage.key,"000", "base body stage is the only articulated rig");
+  assert.equal(bot.stage.key,"0", "lean body stage is the only articulated rig");
   bot.destroy();
 });
 

@@ -3,7 +3,7 @@
 
 WHAT THIS DOES
 --------------
-public/desk-assets/crid/body-000-r7.webp is one flat drawing: head, torso, two arms and two
+public/desk-assets/crid/body-0-r0.webp is one flat drawing: head, torso, two arms and two
 legs painted into a single 1050x1400 picture. A walk can only translate that picture, so his
 legs never step and his arms never swing. This script slices the same pixels into ten pieces —
 head, torso, upper arm / forearm+hand per side, thigh / shin+foot per side — and writes the
@@ -18,11 +18,13 @@ channel rather than guessed:
 
   * the neck is the narrowest single run of ink between the head and the shoulders;
   * each arm is the outermost run of each row below the shoulder, clipped to the arm's own
-    measured width — the left arm is fused to the hanging vest flap for a few rows, and taking
-    the outer band keeps the vest with the torso where it belongs;
+    measured width — the arm is fused to the torso for a few rows near the shoulder, and taking
+    the outer band keeps the body with the torso where it belongs;
   * the crotch is the first row where the body splits into two runs, and the hip pivot sits
     just above it on each leg's own axis;
-  * the knee is a little under half way from the crotch to the top of the shoe;
+  * the ankle is the narrowest row of each leg near the bottom, and the knee sits a little
+    under half way from the crotch to it (no shoe, no denim edge: the landmark is the
+    silhouette, because he renders in his bare base body);
   * the elbow is half way from the shoulder to the wrist.
 
 No two pieces meet on a line. Every cut is a few pixels of overlap: the piece above a cut
@@ -61,7 +63,7 @@ from PIL import Image, ImageChops
 
 ROOT = Path(__file__).resolve().parent.parent
 CRID = ROOT / "public" / "desk-assets" / "crid"
-SOURCE = CRID / "body-000-r7.webp"
+SOURCE = CRID / "body-0-r0.webp"
 OUT = CRID / "rig"
 
 # --- the render's own framing (crid-bot.js: INK_BOTTOM / FIG_X / FIG_W / FIG_Y) --------------
@@ -69,7 +71,7 @@ W, H = 1050, 1400
 INK_BOTTOM = 1325
 
 # --- tunables, all in render pixels ---------------------------------------------------------
-# The arm's painted width. The left arm touches the hanging vest flap for a few rows near the
+# The arm's painted width. The left arm touches the torso for a few rows near the
 # shoulder, so each row's arm is the outer ARM_W pixels of its outermost run rather than the
 # whole run. The hand is wider and its fingers stand apart, so below the wrist the band is wider
 # still — a narrower one would leave the separated fingers behind in the torso.
@@ -94,7 +96,7 @@ RIG_ANGLES = {"hip-l": 5, "hip-r": 5, "knee-l": 8, "knee-r": 8,
               "shoulder-l": 6, "shoulder-r": 6, "elbow-l": 3, "elbow-r": 3}
 # Where the head is cut off the neck, as a fraction of the way down the narrowest neck row.
 NECK_DROP = 17
-# The knee, as a fraction of the way from the crotch to the top of the shoe.
+# The knee, as a fraction of the way from the crotch down to the ankle.
 KNEE_FRAC = 0.48
 
 
@@ -127,7 +129,7 @@ def measure(img):
     a = alpha(img)
     box = bbox(img)
     if box is None:
-        raise SystemExit("body-000-r7.webp has no opaque pixels: nothing to cut")
+        raise SystemExit(f"{SOURCE.name} has no opaque pixels: nothing to cut")
     # The render must actually have a transparent ground, or a cut-out rig is meaningless.
     px = [a[0, y] for y in range(0, H, 7)] + [a[W - 1, y] for y in range(0, H, 7)] + \
          [a[x, 0] for x in range(0, W, 7)] + [a[x, H - 1] for x in range(0, W, 7)]
@@ -178,7 +180,7 @@ def measure(img):
         return left, right
 
     # The hand ends where the outer band stops reaching out past the torso's own edge. The band
-    # has to stay narrow as well: below him the shoe also reaches past x=460, and a shoe is not a
+    # has to stay narrow as well: below him the foot also reaches past x=460, and a foot is not a
     # hand.
     hand_bottom = shoulder_y
     for y in range(shoulder_y, int(H * .75)):
@@ -215,21 +217,24 @@ def measure(img):
             break
     if crotch_y is None:
         raise SystemExit("could not find the crotch: the legs never separate")
-    # The top of the shoe: the first white row below the knee band, i.e. where the denim ends.
-    shoe_top = None
-    for y in range(crotch_y + 60, H):
-        r = [q for q in runs(a, y, x0=460, x1=670) if q[1] - q[0] >= 20]
-        if r and all(sum(img.getpixel(((q[0] + q[1]) // 2, y))[:3]) / 3 > 150 for q in r):
-            shoe_top = y
-            break
-    if shoe_top is None:
-        raise SystemExit("could not find the shoes: no white band under the denim")
+    # The ankle: the narrowest row of each leg in the bottom of the figure, where the calf tapers
+    # into the bare foot. With no cloth on him there is no shoe and no denim edge to read, so the
+    # landmark is the silhouette's own waist instead of a colour change.
+    ankle_y, ankle_w = None, 10 ** 9
+    for y in range(crotch_y + round((INK_BOTTOM - crotch_y) * .55), INK_BOTTOM):
+        r = [q for q in runs(a, y, x0=460, x1=670) if q[1] - q[0] >= 6]
+        if len(r) == 2:
+            w = max(q[1] - q[0] + 1 for q in r)
+            if w < ankle_w:
+                ankle_y, ankle_w = y, w
+    if ankle_y is None:
+        raise SystemExit("could not find the ankles: the legs never narrow into the feet")
 
     hip, knee = {}, {}
     for side, i in (("l", 0), ("r", 1)):
         q = legs[i]
         hip[side] = (round((q[0] + q[1]) / 2, 1), crotch_y - 6)
-        ky = crotch_y + round((shoe_top - crotch_y) * KNEE_FRAC)
+        ky = crotch_y + round((ankle_y - crotch_y) * KNEE_FRAC)
         r = [t for t in runs(a, ky, x0=460, x1=670) if t[1] - t[0] >= 20]
         k = r[i] if len(r) > i else q
         knee[side] = (round((k[0] + k[1]) / 2, 1), ky)
@@ -239,7 +244,7 @@ def measure(img):
         "neck": {"y": head_cut, "narrowest": neck_y},
         "shoulder": shoulder, "elbow": elbow, "wristY": wrist_y, "handBottom": hand_bottom,
         "shoulderY": shoulder_y, "hip": hip, "knee": knee,
-        "crotchY": crotch_y, "shoeTop": shoe_top, "armW": ARM_W,
+        "crotchY": crotch_y, "ankleY": ankle_y, "ankleW": ankle_w, "armW": ARM_W,
     }
 
 
@@ -388,40 +393,47 @@ def overlap(img, masks, m):
     for up, down, y, _ in joints(m):
         # The piece above the cut reaches down past it, the piece below reaches up past it. Each
         # band is filled from the row of its own piece that touches the cut.
-        for name, other, rows, edge, step in (
-                (up, down, range(y, y + OVERLAP), y - 1, -1),
-                (down, up, range(y - OVERLAP, y), y, +1)):
+        for name, other, rows, edge, step, whole_seam in (
+                (up, down, range(y, y + OVERLAP), y - 1, -1, True),
+                (down, up, range(y - OVERLAP, y), y, +1, False)):
             for x in range(W):
-                if not core[name][x, edge]:
+                # Only onto the other piece's own solid ink: no new silhouette, no fringe.
+                seam = [yy for yy in rows if 0 <= yy < H and core[other][x, yy] and a[x, yy] == 255]
+                if not seam:
+                    continue
+                # The piece above the cut has to hold the WHOLE seam, not just the columns it has
+                # ink in itself: where the limb below bulges out past the row the cut was taken on
+                # — the top of an arm that hangs clear of the torso, 3px wider there than the fused
+                # shoulder row above it — turning the limb uncovers a sliver of him that neither
+                # piece covers, and the joint opens. So its band goes on every solid pixel of the
+                # piece below in those rows. The piece below still reaches up only over the columns
+                # above it, where it has its own edge to carry.
+                if not core[name][x, edge] and not whole_seam:
                     continue
                 # The colour to carry: the nearest solid pixel of this piece, looked for in its
                 # own cut row first — that row is the piece's edge at the joint, so its colour is
                 # the limb continuing. A column on the silhouette rim never reaches full alpha,
                 # and reading sideways along the row keeps the band filled right out to the edge.
                 colour = None
-                for k in range(W):
-                    for xx in (x - k, x + k) if k else (x,):
-                        if 0 <= xx < W and core[name][xx, edge] and a[xx, edge] == 255:
-                            colour = src[xx, edge]
+                if core[name][x, edge]:
+                    for k in range(W):
+                        for xx in (x - k, x + k) if k else (x,):
+                            if 0 <= xx < W and core[name][xx, edge] and a[xx, edge] == 255:
+                                colour = src[xx, edge]
+                                break
+                        if colour is not None:
                             break
-                    if colour is not None:
-                        break
-                if colour is None:          # nothing solid in that row at all: try the column
+                if colour is None:          # nothing solid in that row: try the column
                     for k in range(OVERLAP + 1):
                         yy = edge + step * k
                         if 0 <= yy < H and a[x, yy] == 255:
                             colour = src[x, yy]
                             break
-                if colour is None:
-                    continue
-                for yy in rows:
-                    if not (0 <= yy < H):
-                        continue
-                    # Only onto the other piece's own solid ink: no new silhouette, no fringe.
-                    if not (core[other][x, yy] and a[x, yy] == 255):
-                        continue
+                for yy in seam:
                     under = src[x, yy]
-                    if max(abs(colour[i] - under[i]) for i in range(3)) > BAND_TOL:
+                    # With no edge colour of its own the band takes the drawing's own pixel, so the
+                    # rest pose stays the render exactly.
+                    if colour is None or max(abs(colour[i] - under[i]) for i in range(3)) > BAND_TOL:
                         colour_here = under          # the edge colour would stripe the rest pose
                     else:
                         colour_here = colour
@@ -468,7 +480,7 @@ def write(img, m, pieces, table):
     (CRID / "rig.mjs").write_text(
         "// GENERATED by scripts/build-crid-rig.py — do not edit by hand.\n"
         "// Crid's base render cut into limbs: where each piece sits in the 1050x1400 frame and the\n"
-        "// joint it turns about. body-000-r7.webp is the only stage with a rig; every other body\n"
+        "// joint it turns about. body-0-r0.webp is the only stage with a rig; every other body\n"
         "// in the ladder is still the flat drawing.\n"
         f"export const RIG={json.dumps(table, separators=(',', ':'))};\n")
 
@@ -558,7 +570,7 @@ def check(img, pieces, band, m, table):
                         raise SystemExit(
                             f"{joint} opens a hole at {x},{yy} when it turns {sign * deg:+.0f} degrees")
 
-    print(f"ok: {len(PIECES)} pieces cover every pixel of body-000-r7.webp, rebuild him at rest "
+    print(f"ok: {len(PIECES)} pieces cover every pixel of {SOURCE.name}, rebuild him at rest "
           f"to within {worst}/255, and no joint opens when turned")
 
 

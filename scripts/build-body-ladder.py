@@ -1,43 +1,56 @@
 #!/usr/bin/env python3
-"""Build Crid's body ladder from the seven drawings that already ship.
+"""Build Crid's body ladder out of Snap's own renderer, at rotation 0.
 
-WHERE THE SEVEN FRAMES COME FROM (established before this script existed)
-------------------------------------------------------------------------
-fetch-crid-views.mjs asks preview.bitmoji.com/bm-preview/v3/avatar/body with the owner's own avatar
-parameters and varies only two of them: `body=` (the shape the Bitmoji editor offers) and
-`rotation=` (viewing angle). It asks at scale=3 first, falls back to scale=1, and writes
-views/shape-<body>.png and views/angle-<rotation>.png — 1050x1400 PNGs, rotation 0 for the shapes.
+WHY THIS WAS REBUILT
+--------------------
+The first ladder was cut from seven *different* Snap renders at rotation 7: 000/00 faced the camera,
+3/0/5 were three-quarter turned, and 1/2 were turned further with a visibly smaller head. A weight
+change therefore swapped the pose, the head size and the silhouette — it read as a different person,
+not the same man heavier.
 
-The seven frames in public/desk-assets/crid/ are cut from those renders at rotation 7 (hence the
--r7 in every filename) at the master's own 1050x1400, with the feet on y=1325 and the torso centre
-on x=560. views/shape-<body>-r7.png is that same request at rotation 7 for the five shapes the
-ladder is cut from, so a frame is the render itself and not a copy of a copy. body-000 and body-00
-have no master in views/: they are two slimmer drawings committed straight as 600x800 webp, so they
-are re-cut by enlarging the frame they already ship — the same drawing, no detail invented.
+Snap's renderer takes a `body` parameter and returns the same avatar in the same front-facing pose at
+genuinely different builds, so the ladder is now three real builds, not seven warps of one drawing:
 
-So there are five distinct masters, not seven, and three of them measure within 2px of each other:
-the art alone cannot carry a body ladder. This script builds one from that art without drawing
-anything — it crops the ink out of each shipped frame, resizes it to the stage's height, and warps
-it horizontally with a smooth width profile so the torso carries the weight while the head keeps
-its own proportions. Every stage is still the owner's own Bitmoji.
+    body=0  lean      body=1  average      body=2  heavy (belly, thicker limbs, same head)
 
-Framing is preserved exactly as the renderer assumes (crid-bot.js: INK_BOTTOM, FIG_X, FIG_W):
-  canvas 1050x1400, ink bottom on y=1325, torso axis on x=560.
-A body swap therefore never moves his feet and never shifts him sideways.
+Everything about the pose is identical across the three because it is one render: the head top, the
+feet, the stance and the base body are the same pixels. Only the build changes. Anything the desk
+wants between them is the renderer's own sub-step stretch, never a new drawing.
+
+WHERE THE FRAMES COME FROM
+--------------------------
+`--fetch` asks preview.bitmoji.com/avatar-builder-v3/preview/body at scale=3, rotation=0, for body=0,
+1 and 2, and writes the masters to views/body-<n>-r0.png (1050x1400 PNG, the API's own size). The face
+is the one the desk already ships — the parameters in fetch-crid-views.mjs, with the two gold hoops —
+because crid-ladder-spec.md's recipe renders a different man: no earrings, a solid handlebar moustache
+instead of the split one, a rounder hair line and heavy blush. There is no `outfit` parameter at all:
+the owner's rule is *no cloth*, so he renders as Snap's base body — no camo cargos, no backpack
+straps and no shoes, only the renderer's own plain base layer over bare feet. `outfit=-1` is
+rejected with HTTP 400, so the parameter is simply omitted.
+
+FRAMING (what crid-bot.js assumes: INK_BOTTOM, FIG_X, FIG_Y)
+-----------------------------------------------------------
+Snap already returns the figure at 1050x1400 with the ink bottom on y=1322 and the mid-torso on
+x≈527.5, identically for all three bodies, so the framing is a pure translation: +3px down puts the
+ink bottom on y=1325, +32px right puts the mid-torso on x=560. One shared shift, taken from the lean
+frame, so the head lands on the same pixels in every stage and the face cannot jump when the build
+changes.
 
 Needs Pillow (not a runtime dependency — this is a one-off asset tool):
   python3 -m pip install pillow
 
-  python3 scripts/build-body-ladder.py            # re-cut the seven frames + ladder.json from the masters
+  python3 scripts/build-body-ladder.py --fetch    # download the three masters from Snap
+  python3 scripts/build-body-ladder.py            # frame + measure: frames, ladder.json
   python3 scripts/build-body-ladder.py --measure  # print the ink box of every shipped frame
-  python3 scripts/build-body-ladder.py --sheet OUT.png   # side-by-side sheet at real desk size
+  python3 scripts/build-body-ladder.py --sheet OUT.png   # comparison sheet at 336px and 150px
 """
 import json
-import math
 import sys
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
 CRID = ROOT / "public" / "desk-assets" / "crid"
@@ -48,26 +61,28 @@ FRAME_W, FRAME_H = 1050, 1400
 GROUND = 1325         # ink bottom, the y crid-bot.js maps onto the floor line
 AXIS = 560            # torso axis, the x crid-bot.js maps onto the sprite centre
 ALPHA_MIN = 8
+QUALITY = 88          # webp quality: a 1050x1400 frame still has to be light to load on air
 
-# The 1050x1400 render each stage is cut from, at rotation 7 — the stance every frame is in. The
-# two frames with no master are enlarged from what already ships (see the docstring).
-MASTERS = {"0": "shape-0-r7.png", "1": "shape-1-r7.png", "2": "shape-2-r7.png",
-           "3": "shape-3-r7.png", "5": "shape-5-r7.png"}
-NO_MASTER = ("000", "00")
-SCALE = FRAME_W / 600      # the master is 1.75x the frame the stage sizes below were designed in
-QUALITY = 82               # webp quality: a 1050x1400 frame still has to be a light file to load on air
+BODIES = [0, 1, 2]    # lean, average, heavy
+SUB_STEPS = [0, 8, 16]
+BODY_NAMES = {0: "lean", 1: "average", 2: "heavy"}
 
-
-# key, target ink height, target ink width, torso width bias (+fatter/-leaner), head damping
-STAGES = [
-    ("000", 660, 176, -0.10, 0.00),
-    ("00", 672, 208, -0.04, 0.00),
-    ("3", 684, 240, 0.02, 0.00),
-    ("0", 700, 278, 0.10, 0.00),
-    ("5", 716, 320, 0.20, 0.04),
-    ("1", 734, 386, 0.28, 0.08),
-    ("2", 752, 470, 0.36, 0.12),
-]
+# The Snap recipe. The face is the one the desk ships (fetch-crid-views.mjs). No `outfit` — the
+# owner's rule is no cloth, and `outfit=-1` answers 400; the clothing qualifiers that go with an
+# outfit (clothing_type / is_tucked / ua / breast) are gone with it. Tones are decimal integers:
+# the endpoint also answers 400 to 0x… values.
+API = "https://preview.bitmoji.com/avatar-builder-v3/preview/body"
+RECIPE = (
+    "scale=3 gender=1 style=5 rotation=0 "
+    "beard=8696 brow=1538 cheek_details=-1 ear=1424 eye=1626 eyelash=-1 eye_details=-1 "
+    "face_lines=-1 glasses=-1 hair=1657 hat=-1 jaw=1396 mouth=2338 nose=1449 "
+    "earringL_lobe1=5 earringL_lobe1_tone1=16763909 earringL_lobe1_tone2=16763909 "
+    "earringL_lobe1_tone3=16763909 earringL_lobe1_tone4=16763909 "
+    "earringR_lobe1=5 earringR_lobe1_tone1=16763909 earringR_lobe1_tone2=16763909 "
+    "earringR_lobe1_tone3=16763909 earringR_lobe1_tone4=16763909 "
+    "face_proportion=10 eye_spacing=0 eye_size=0 "
+    "brow_tone=1579802 hair_tone=2039326 pupil_tone=5977116 skin_tone=8080170"
+)
 
 
 # --- measuring -----------------------------------------------------------------------------
@@ -76,182 +91,98 @@ def alpha_bbox(im):
     return a.getbbox()
 
 
-def row_spans(im):
-    """Per-row ink span on the alpha channel — the shape of the drawing, row by row."""
-    a = im.getchannel("A").load()
-    w, h = im.size
-    spans = []
-    for y in range(h):
-        lo = hi = None
-        for x in range(w):
-            if a[x, y] > ALPHA_MIN:
-                if lo is None:
-                    lo = x
-                hi = x
-        spans.append((lo, hi))
-    return spans
-
-
 def ink(im):
     x0, y0, x1, y1 = alpha_bbox(im)
     return {"x0": x0, "y0": y0, "x1": x1, "y1": y1, "w": x1 - x0, "h": y1 - y0,
             "cx": round((x0 + x1) / 2, 1), "bottom": y1}
 
 
-# --- the warp ------------------------------------------------------------------------------
-def premultiply(im):
-    r, g, b, a = im.split()
-    return Image.merge("RGBA", (ImageChops.multiply(r, a), ImageChops.multiply(g, a),
-                                ImageChops.multiply(b, a), a))
+def mid_torso_axis(im):
+    """The centre of the body between the shoulders and the hips — the axis the figure stands on."""
+    a = im.getchannel("A").load()
+    x0, y0, x1, y1 = alpha_bbox(im)
+    h = y1 - y0
+    centres = []
+    for y in range(y0 + int(h * .35), y0 + int(h * .55)):
+        lo = hi = None
+        for x in range(im.width):
+            if a[x, y] > ALPHA_MIN:
+                if lo is None:
+                    lo = x
+                hi = x
+        if lo is not None:
+            centres.append((lo + hi) / 2)
+    return sum(centres) / len(centres)
 
 
-def unpremultiply(im):
-    px = im.load()
-    w, h = im.size
-    for y in range(h):
-        for x in range(w):
-            r, g, b, a = px[x, y]
-            if a == 0:
-                px[x, y] = (0, 0, 0, 0)
-            elif a < 255:
-                px[x, y] = (min(255, r * 255 // a), min(255, g * 255 // a), min(255, b * 255 // a), a)
+# --- fetching ------------------------------------------------------------------------------
+def query(body):
+    q = {}
+    for pair in RECIPE.split():
+        k, v = pair.split("=")
+        q[k] = str(int(v, 16)) if v.lower().startswith("0x") else v
+    q["body"] = str(body)
+    return q
+
+
+def fetch():
+    VIEWS.mkdir(exist_ok=True)
+    for body in BODIES:
+        url = API + "?" + urllib.parse.urlencode(query(body))
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=90) as r:
+            data = r.read()
+            ctype = r.headers.get("content-type")
+        if not ctype.startswith("image"):
+            raise SystemExit(f"body={body}: the API answered {ctype!r}, not an image")
+        p = VIEWS / f"body-{body}-r0.png"
+        p.write_bytes(data)
+        print(f"body={body}  {ctype}  {len(data) / 1024:.0f} KB  -> {p.relative_to(ROOT)}")
+
+
+# --- framing -------------------------------------------------------------------------------
+def master(body):
+    p = VIEWS / f"body-{body}-r0.png"
+    if not p.exists():
+        raise SystemExit(f"missing {p.relative_to(ROOT)} — run with --fetch first")
+    im = Image.open(p).convert("RGBA")
+    if im.size != (FRAME_W, FRAME_H):
+        raise SystemExit(f"{p.name} is {im.size}, expected {(FRAME_W, FRAME_H)}")
     return im
 
 
-def profile(v, b, hd):
-    """Width multiplier at v (0 = top of the head, 1 = the feet).
-
-    A Gaussian on the torso widens (b > 0) or narrows (b < 0) the body; a second Gaussian on the
-    head pulls it back so a fat stage is a fat body, not a fat head.
-    """
-    torso = math.exp(-(((v - 0.58) / 0.30) ** 2))
-    head = math.exp(-(((v - 0.07) / 0.16) ** 2))
-    return 1.0 + b * torso - hd * head
-
-
-def build(src_im, height, width, b, hd, k):
-    """One stage: crop the ink, stretch it to `height`, warp every row horizontally by k*profile."""
-    bb = alpha_bbox(src_im)
-    crop = src_im.crop(bb)
-    crop = premultiply(crop)
-    crop = crop.resize((crop.width, height), Image.LANCZOS)
-    spans = row_spans(crop)
-    # The axis the whole drawing scales about: the mid-torso, so the body itself does not move
-    # when the build changes. (Scaling about the bounding-box centre would let a raised arm drag
-    # him sideways between stages.)
-    mid = [y for y in (int(height * v) for v in (0.35, 0.40, 0.45, 0.50, 0.55)) if spans[y][0] is not None]
-    axis = sum((spans[y][0] + spans[y][1]) / 2 for y in mid) / len(mid)
-
+def frame(im, dx, dy):
     canvas = Image.new("RGBA", (FRAME_W, FRAME_H), (0, 0, 0, 0))
-    top = GROUND - height
-    for y in range(height):
-        lo, hi = spans[y]
-        if lo is None:
-            continue
-        s = k * profile(y / (height - 1), b, hd)
-        row = crop.crop((0, y, crop.width, y + 1))
-        new_w = max(1, round(crop.width * s))
-        row = row.resize((new_w, 1), Image.LANCZOS)
-        # Every row grows about its own centre, so the girth is added around the body's own axis and
-        # the stance is left alone; the row's centre keeps its offset from the mid-torso axis, which
-        # is what lands on x=320. Widening about one fixed x instead pulled his belly to one side.
-        centre = (lo + hi) / 2
-        canvas.paste(row, (round(AXIS + (centre - axis) - centre * s), top + y))
-    return unpremultiply(canvas)
-
-
-def fit(src_im, height, width, b, hd, tries=6):
-    """Solve the horizontal scale so the ink comes out exactly `width` px wide."""
-    k = width / max(1, ink(src_im)["w"])
-    out = None
-    for _ in range(tries):
-        out = build(src_im, height, width, b, hd, k)
-        got = ink(out)["w"]
-        if abs(got - width) <= 1:
-            break
-        k *= width / got
-    return out, k
-
-
-# --- commands ------------------------------------------------------------------------------
-def measure():
-    print(f"{'frame':<16}{'ink w':>7}{'ink h':>7}{'x0':>6}{'x1':>6}{'centre':>8}{'bottom':>8}")
-    for key, *_ in STAGES:
-        path = CRID / f"body-{key}-r7.webp"
-        m = ink(Image.open(path).convert("RGBA"))
-        print(f"{path.name:<16}{m['w']:>7}{m['h']:>7}{m['x0']:>6}{m['x1']:>6}{m['cx']:>8}{m['bottom']:>8}")
-    widths = [ink(Image.open(CRID / f"body-{k}-r7.webp").convert("RGBA"))["w"] for k, *_ in STAGES]
-    print("\nconsecutive ink-width difference:", [widths[i + 1] - widths[i] for i in range(len(widths) - 1)])
-
-
-def sheet(out_path):
-    """Side by side at the size he is actually drawn: 17.5vw on a 1080p stream, capped at 340px."""
-    desk_w = min(max(150.0, 1920 * 0.175), 340.0)          # --bw on a 1920-wide stream
-    scale = desk_w / 160 * (142 / FRAME_H)                 # viewBox px per frame px
-    stages = []
-    for key, *_ in STAGES:
-        stages.append((key, Image.open(CRID / f"body-{key}-r7.webp").convert("RGBA")))
-    pad, label_h = 26, 62
-    widths = [max(1, round(im.width * scale)) for _, im in stages]
-    heights = [max(1, round(im.height * scale)) for _, im in stages]
-    sheet_w = sum(widths) + pad * (len(stages) + 1)
-    sheet_h = max(heights) + pad * 2 + label_h
-    out = Image.new("RGBA", (sheet_w, sheet_h), (15, 11, 23, 255))
-    d = ImageDraw.Draw(out)
-    try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 13)
-        bold = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 15)
-    except OSError:
-        font = bold = ImageFont.load_default()
-    x = pad
-    ground_y = pad + max(heights)
-    d.line([(pad // 2, ground_y), (sheet_w - pad // 2, ground_y)], fill=(70, 52, 130, 255), width=1)
-    for i, (key, im) in enumerate(stages):
-        m = ink(im)
-        small = im.resize((widths[i], heights[i]), Image.LANCZOS)
-        out.alpha_composite(small, (x, ground_y - heights[i]))
-        d.text((x, ground_y + 8), f"stage {i}  body={key}", fill=(244, 240, 255, 255), font=bold)
-        d.text((x, ground_y + 26), f"{m['w']}x{m['h']} px ink", fill=(169, 139, 255, 255), font=font)
-        d.text((x, ground_y + 42), f"{SUB_STEPS[i]}+ subs", fill=(134, 246, 188, 255), font=font)
-        x += widths[i] + pad
-    d.text((pad, 6), f"Crid body ladder at real desk size ({desk_w:.0f}px wide on a 1920px stream)",
-           fill=(244, 240, 255, 255), font=bold)
-    out.convert("RGB").save(out_path)
-    print(f"sheet -> {out_path}  ({sheet_w}x{sheet_h}, {desk_w:.0f}px desk size)")
-
-
-SUB_STEPS = [0, 4, 8, 12, 16, 20, 24]
+    canvas.paste(im, (dx, dy))
+    return canvas
 
 
 def build_all():
-    # The sources are the 1050x1400 masters in views/, never the frames this writes, so a second run
-    # re-cuts from the same render instead of warping the warp.
-    widths, heights = [], []
-    stages = []
-    for key, height, width, b, hd in STAGES:
-        src_path = CRID / f"body-{key}-r7.webp"
-        if key in MASTERS:
-            src = Image.open(VIEWS / MASTERS[key]).convert("RGBA")
-            out, k = fit(src, round(height * SCALE), round(width * SCALE), b, hd)
-        else:
-            # No master for this one: enlarge the frame that already ships, so it keeps exactly the
-            # drawing it has and gains nothing but pixels.
-            src = Image.open(src_path).convert("RGBA").resize((FRAME_W, FRAME_H), Image.LANCZOS)
-            out, k = src, 1.0
-        before = ink(src)
-        after = ink(out)
-        if after["x0"] <= 0 or after["x1"] >= FRAME_W or after["y0"] <= 0:
-            print(f"WARNING body={key} touches the frame edge: {after}")
-        out.save(src_path, "WEBP", quality=QUALITY, method=6)
-        widths.append(after["w"])
-        heights.append(after["h"])
-        stages.append({"key": key, "ink": after, "scale": round(k, 4),
-                       "was": {"w": before["w"], "h": before["h"]}})
-        print(f"stage {len(stages) - 1}  body={key:<4} ink {after['w']}x{after['h']}  "
-              f"centre {after['cx']}  bottom {after['bottom']}  was {before['w']}x{before['h']}")
+    masters = {b: master(b) for b in BODIES}
+    # One shared shift, solved on the lean frame: every stage then has its head on the same pixels.
+    dx = round(AXIS - mid_torso_axis(masters[0]))
+    dy = GROUND - ink(masters[0])["bottom"]
 
-    # Movement follows the build: the wider he is the slower and heavier he moves. Derived here so
-    # the numbers the renderer uses are the numbers the frames measured.
+    stages, widths = [], []
+    for body in BODIES:
+        was = ink(masters[body])
+        out = frame(masters[body], dx, dy)
+        got = ink(out)
+        if got["bottom"] != GROUND:
+            raise SystemExit(f"body={body} lands its feet on y={got['bottom']}, not {GROUND}")
+        if got["x0"] <= 0 or got["x1"] >= FRAME_W or got["y0"] <= 0:
+            raise SystemExit(f"body={body} touches the frame edge: {got}")
+        p = CRID / f"body-{body}-r0.webp"
+        out.save(p, "WEBP", quality=QUALITY, method=6)
+        widths.append(got["w"])
+        stages.append({"key": str(body), "ink": got, "was": {"w": was["w"], "h": was["h"]},
+                       "file": p.name})
+        print(f"body={body} ({BODY_NAMES[body]:<7}) ink {got['w']}x{got['h']}  "
+              f"x {got['x0']}..{got['x1']}  cx {got['cx']}  top {got['y0']}  "
+              f"bottom {got['bottom']}  {p.name}  {p.stat().st_size / 1024:.0f} KB")
+
+    # Movement follows the build: the wider he is, the slower and heavier he moves. Derived from the
+    # widths measured here, so the numbers the renderer uses are the numbers the frames have.
     span = widths[-1] - widths[0]
     for s in stages:
         t = (s["ink"]["w"] - widths[0]) / span
@@ -262,18 +193,82 @@ def build_all():
               "dw": stages[i + 1]["ink"]["w"] - stages[i]["ink"]["w"],
               "dh": stages[i + 1]["ink"]["h"] - stages[i]["ink"]["h"]}
              for i in range(len(stages) - 1)]
-    doc = {"frame": [FRAME_W, FRAME_H], "ground": GROUND, "axis": AXIS, "sub_steps": SUB_STEPS,
+    doc = {"frame": [FRAME_W, FRAME_H], "ground": GROUND, "axis": AXIS,
+           "rotation": 0, "sub_steps": SUB_STEPS,
            "min_step": {"w": min(d["dw"] for d in diffs), "h": min(d["dh"] for d in diffs)},
            "stages": stages, "diffs": diffs}
     LADDER_JSON.write_text(json.dumps(doc, indent=2) + "\n")
     print("\nconsecutive differences:", [(d["dw"], d["dh"]) for d in diffs])
-    print(f"min consecutive ink-width step: {doc['min_step']['w']}px, height step: {doc['min_step']['h']}px")
+    print(f"min consecutive ink-width step: {doc['min_step']['w']}px, "
+          f"height step: {doc['min_step']['h']}px")
     print(f"ladder -> {LADDER_JSON.relative_to(ROOT)}")
+
+
+# --- commands ------------------------------------------------------------------------------
+def measure():
+    print(f"{'frame':<18}{'ink w':>7}{'ink h':>7}{'x0':>6}{'x1':>6}{'centre':>8}{'top':>7}{'bottom':>8}")
+    for body in BODIES:
+        p = CRID / f"body-{body}-r0.webp"
+        m = ink(Image.open(p).convert("RGBA"))
+        print(f"{p.name:<18}{m['w']:>7}{m['h']:>7}{m['x0']:>6}{m['x1']:>6}{m['cx']:>8}"
+              f"{m['y0']:>7}{m['bottom']:>8}")
+
+
+def sheet(out_path):
+    """The three stages at the two sizes he is actually judged at: 336px on a 1920 stream, and the
+    150px phone width. If a limb disappears at 150px the silhouette is wrong."""
+    sizes = [336, 150]
+    pad, label_h, gap = 24, 54, 26
+    rows = []
+    for w in sizes:
+        tiles = []
+        for body in BODIES:
+            im = Image.open(CRID / f"body-{body}-r0.webp").convert("RGBA")
+            h = round(im.height * w / im.width)
+            tiles.append((body, im.resize((w, h), Image.LANCZOS), ink(im)))
+        rows.append((w, tiles))
+
+    sheet_w = max(sum(t[1].width for t in tiles) + gap * (len(tiles) - 1) for _, tiles in rows)
+    sheet_w += pad * 2
+    sheet_h = pad + 26
+    for w, tiles in rows:
+        sheet_h += label_h + max(t[1].height for t in tiles) + pad
+    out = Image.new("RGBA", (sheet_w, sheet_h), (15, 11, 23, 255))
+    d = ImageDraw.Draw(out)
+    try:
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
+        bold = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 17)
+        small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
+    except OSError:
+        font = bold = small = ImageFont.load_default()
+
+    d.text((pad, pad - 4), "Crid body ladder — one Snap render at rotation 0, three builds",
+           fill=(244, 240, 255, 255), font=bold)
+    y = pad + 26
+    for w, tiles in rows:
+        d.text((pad, y), f"{w}px wide" + ("  (phone scale)" if w == 150 else "  (1920 stream)"),
+               fill=(169, 139, 255, 255), font=font)
+        y += label_h - 16
+        ground = y + max(t[1].height for t in tiles)
+        x = pad
+        d.line([(pad // 2, ground), (sheet_w - pad // 2, ground)], fill=(70, 52, 130, 255), width=1)
+        for body, im, m in tiles:
+            out.alpha_composite(im, (x, ground - im.height))
+            d.text((x, ground + 6), f"{BODY_NAMES[body]}  body={body}", fill=(244, 240, 255, 255),
+                   font=font)
+            d.text((x, ground + 24), f"{m['w']}x{m['h']} px ink in the frame", fill=(134, 246, 188, 255),
+                   font=small)
+            x += im.width + gap
+        y = ground + label_h
+    out.convert("RGB").save(out_path)
+    print(f"sheet -> {out_path}  ({sheet_w}x{sheet_h})")
 
 
 if __name__ == "__main__":
     args = sys.argv[1:]
-    if args and args[0] == "--measure":
+    if args and args[0] == "--fetch":
+        fetch()
+    elif args and args[0] == "--measure":
         measure()
     elif args and args[0] == "--sheet":
         sheet(args[1] if len(args) > 1 else "/home/team/shared/crid-body-ladder.png")

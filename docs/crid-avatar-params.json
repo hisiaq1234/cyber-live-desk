@@ -4,11 +4,13 @@
   "_also_works": "Swap /preview/body for /preview/bust for a head-and-shoulders crop, or /preview/head for the face alone.",
   "_derivation": "These values were recovered by sampling the shipped Crid renders against Snap's avatar asset database (skin, hair, moustache, brows, eyes, outfit). They reproduce the shipped renders faithfully. If the owner ever supplies his Bitmoji avatar id, that id is more authoritative than these numbers — prefer it, and update this file.",
   "_rules": [
+    "NO OUTFIT — the owner's direction is 'no cloth'. Omit the outfit parameter so he renders as the base body. This also removes the camo cargos and the yellow backpack straps that read as a second torso at slim widths.",
     "rotation MUST be 0. Crid is drawn front-facing. rotation=7 (three-quarter) is what made earlier weight stages look like different people.",
     "body: 0 = lean, 1 = average, 2 = short-and-heavy. body=2 is BANNED — it makes him short, and the owner has said he is never short.",
     "Height and head size are fixed across stages. Only width and mass may change.",
     "Render at 1050x1400 with the ink bottom at y=1325 and the body axis at x=560, then let scripts/build-body-ladder.py place it.",
-    "Never pass these parameters to an image-generation model. They belong to Snap's renderer and nowhere else."
+    "Never pass these parameters to an image-generation model. They belong to Snap's renderer and nowhere else.",
+    "The *_tone values must be sent as DECIMAL integers. Writing them as '0x181b1a' strings in a URL makes the renderer answer HTTP 400 with an empty body — convert first."
   ],
   "params": {
     "gender": 1,
@@ -40,7 +42,8 @@
     "face_proportion": 13,
     "eye_spacing": 0,
     "eye_size": 2,
-    "outfit": 990491
+    "_outfit_note": "NO OUTFIT. The owner's direction is 'no cloth' — Crid renders as the base body, no camo cargos and no backpack straps. Omit the outfit parameter entirely; outfit=-1 is rejected by the renderer (HTTP 400) and outfit=0 renders the same base body as omitting it. The old camo outfit id was 990491 and must not be passed any more.",
+    "outfit": null
   },
   "body_stages": {
     "0": "lean — narrow through the torso and limbs, same height",

@@ -6,7 +6,8 @@
    Joint axes were measured from the GLB itself (world transform of each bone):
      local X points along the limb for arms/legs; spine/neck/head share one convention —
      pitch = local Y, roll = local Z, yaw = local X.
-   Legs swing fore/aft on local Y (negative Y = forward, he faces -Z), knees fold on +Y.
+   Legs swing fore/aft on local Y (positive Y = forward, toward the face). The bind
+   pose faces +Z, so the model is turned 180° to meet the camera on -Z. Knees fold on +Y.
    Shoulders lower on local Z (L +, R -) — the bind pose is a wide A-pose, so the relaxed
    hang is part of every pose, not a one-time fix. Arm swing rides local X (L +, R -).
 
@@ -58,9 +59,11 @@ export async function initCrid3D(host,getState,onReady,onFail){
     const rim=new THREE.DirectionalLight(0xd6c2ff,3.2);rim.position.set(-.4,2.4,2.5);scene.add(rim);
     const cam=new THREE.PerspectiveCamera(32,1,.1,50);
 
-    // Camera sits at -Z: the GLB's bind pose faces -Z (verified from L/R eye joint positions),
-    // so this is his front. Turn group carries yaw/roll; model carries the skeleton.
+    // Camera sits at -Z. The bind pose faces +Z, so a half turn on the model
+    // puts the face toward the camera. Turn group still carries walk yaw and lean.
+    // Gait signs below are flipped to match: local -Y is the back, forward is +Y.
     const turn=new THREE.Group(),model=new THREE.Group();turn.add(model);scene.add(turn);
+    model.rotation.y=Math.PI;
 
     const bones={},morphs=[];
     const gltf=await new Promise((res,rej)=>new GLTFLoader().load(GLB,res,undefined,rej));
@@ -140,7 +143,7 @@ export async function initCrid3D(host,getState,onReady,onFail){
       if(walking)phase=(phase+dt*(reduced?3.4:5.2))%1;
       const u=phase,gait=Math.sin(TAU*u),          // one full gait cycle per phase wrap
         kL=walking?swingOf(((u*2)%1+.5)%1):0,kR=walking?swingOf(((u*2+.5)%1+.5)%1):0,
-        wL=gait*(walking?1:0),wR=-gait*(walking?1:0);
+        wL=-gait*(walking?1:0),wR=gait*(walking?1:0);
 
       // Facing: eased yaw toward travel direction; a lean pulls him toward the panel.
       const dir=st.walkDir||(st.fx<0?-1:1),
@@ -157,19 +160,19 @@ export async function initCrid3D(host,getState,onReady,onFail){
       const still=(walking?0:1),droop=mode==="doze"?.42:mode==="dead"?.6:dying?.35:0;
       const swing=walking?1:still*.12;              // idle arms/legs keep a whisper of motion
 
-      // Legs: local Y, negative = forward. Knees fold on +Y during the swing-through.
-      if(has("thighL"))rot(J.thighL,0,-gait*.5*walking+still*w1*.015,0);
+      // Legs: local +Y is forward (toward the face). Knees still fold on +Y.
+      if(has("thighL"))rot(J.thighL,0,gait*.5*walking+still*w1*.015,0);
       if(has("shinL"))rot(J.shinL,0,(kL*.75+still*.04)*calm,0);
       if(has("footL"))rot(J.footL,0,(wL-kL)*.22,0);
-      if(has("thighR"))rot(J.thighR,0,gait*.5*walking-still*w1*.015,0);
+      if(has("thighR"))rot(J.thighR,0,-gait*.5*walking-still*w1*.015,0);
       if(has("shinR"))rot(J.shinR,0,-(kR*.75+still*.04)*calm,0);
       if(has("footR"))rot(J.footR,0,-(wR-kR)*.22,0);
 
-      // Arms: relaxed hang is constant; swing counter to the same-side leg on local X.
-      if(has("armL"))rot(J.armL,-gait*.38*swing+still*Math.sin(t*.8)*.02,0,RELAX.armL.z+still*w1*.015);
-      if(has("foreL"))rot(J.foreL,RELAX.foreL.x+still*Math.sin(t*.8+1)*.03-gait*.12*swing,0,0);
-      if(has("armR"))rot(J.armR,gait*.38*swing-still*Math.sin(t*.8+1)*.02,0,RELAX.armR.z-still*w1*.015);
-      if(has("foreR"))rot(J.foreR,RELAX.foreR.x-still*Math.sin(t*.8+2)*.03+gait*.12*swing,0,0);
+      // Arms: swing counter to the same-side leg on local X.
+      if(has("armL"))rot(J.armL,gait*.38*swing+still*Math.sin(t*.8)*.02,0,RELAX.armL.z+still*w1*.015);
+      if(has("foreL"))rot(J.foreL,RELAX.foreL.x+still*Math.sin(t*.8+1)*.03+gait*.12*swing,0,0);
+      if(has("armR"))rot(J.armR,-gait*.38*swing-still*Math.sin(t*.8+1)*.02,0,RELAX.armR.z-still*w1*.015);
+      if(has("foreR"))rot(J.foreR,RELAX.foreR.x-still*Math.sin(t*.8+2)*.03-gait*.12*swing,0,0);
 
       // Torso: breath, weight shift, pose sway; pr pitches him forward for crawl/push-up.
       if(has("spine2"))rot(J.spine2,(.02*br-pr*.55+(p.tr||0)*.004)*calm,(w2*.01)*calm,

@@ -9,7 +9,7 @@
    frame is a COMPLETE drawing with its own painted face, so he is drawn as one layer. The
    eyes-<state>/mouth-<state> frames were never registered to these bodies (a different scale and
    position, squeezed into a 44x22 box over a face that already has eyes) and produced a second
-   ghost face; they are unused until a real registered rig is built. Emotion therefore comes from a
+   ghost face; those unregistered frames have been removed. Emotion therefore comes from a
    body swap + a motion beat + a hold — see FEEL.
    BODY LADDER: seven frames, and they are seven builds of ONE render — the distinct builds Snap's
    own body= parameter gives at rotation 0 (3/0/4/5/1/11/2 lean -> heavy; every other value returns

@@ -25,9 +25,8 @@ WHERE THE FRAMES COME FROM
 `--fetch` asks preview.bitmoji.com/avatar-builder-v3/preview/body at scale=3, rotation=0, for the
 seven distinct builds, and writes the masters to views/body-<n>-r0.png (1050x1400 PNG, the API's own
 size). The face
-is the one the desk already ships — the parameters in fetch-crid-views.mjs, with the two gold hoops —
-because crid-ladder-spec.md's recipe renders a different man: no earrings, a solid handlebar moustache
-instead of the split one, a rounder hair line and heavy blush. There is no `outfit` parameter at all:
+is the one the desk already ships — the RECIPE constant below, derived from the original avatar
+URL — with the two gold hoops. There is no `outfit` parameter at all:
 the owner's rule is *no cloth*, so he renders as Snap's base body — no camo cargos, no backpack
 straps and no shoes, only the renderer's own plain base layer over bare feet. `outfit=-1` is
 rejected with HTTP 400, so the parameter is simply omitted.
@@ -72,7 +71,7 @@ SUB_STEPS = [0, 4, 8, 12, 16, 20, 24]
 BODY_NAMES = {3: "leanest", 0: "lean", 4: "light", 5: "average",
               1: "full", 11: "heavy", 2: "heaviest"}
 
-# The Snap recipe. The face is the one the desk ships (fetch-crid-views.mjs). No `outfit` — the
+# The Snap recipe — the face the desk ships, recovered from the original avatar URL. No `outfit` — the
 # owner's rule is no cloth, and `outfit=-1` answers 400; the clothing qualifiers that go with an
 # outfit (clothing_type / is_tucked / ua / breast) are gone with it. Tones are decimal integers:
 # the endpoint also answers 400 to 0x… values.

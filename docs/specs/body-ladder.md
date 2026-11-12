@@ -40,8 +40,9 @@ to fetch; growth *between* stages is the renderer's own sub-step stretch (`SUB_S
 ## The recipe
 
 The authoritative parameters are the `RECIPE` constant in `scripts/build-body-ladder.py`
-(the face from `scripts/fetch-crid-views.mjs` plus the two gold hoops, `face_proportion=10`,
-`skin_tone=8080170`), mirrored in `docs/crid-avatar-params.json`. Fetch with
+(the face parameters now live verbatim in the `RECIPE` constant — `beard=8696`, `brow=1538`,
+`eye=1626`, `mouth=2338`, `jaw=1396`, `nose=1449`, `hair=1657`, `face_proportion=10`,
+`skin_tone=8080170`, plus the two gold hoops), mirrored in `docs/crid-avatar-params.json`. Fetch with
 `python3 scripts/build-body-ladder.py --fetch`, rebuild frames + `ladder.json` with a plain run.
 Render at `scale=3` (1050x1400); framing is a shared translation putting ink bottom on y=1325 and
 the mid-torso axis on x=560.

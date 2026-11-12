@@ -25,6 +25,7 @@ export async function initCrid3D(host,getState,onReady){
     if(!probe.getContext||!(probe.getContext("webgl2")||probe.getContext("webgl")))return null;
     const THREE=await import("./vendor/three/three.module.js");
     const{GLTFLoader}=await import("./vendor/three/loaders/GLTFLoader.js");
+    const{RoomEnvironment}=await import("./vendor/three/environments/RoomEnvironment.js");
 
     const canvas=document.createElement("canvas");
     canvas.className="crid3d";canvas.setAttribute("aria-hidden","true");
@@ -38,9 +39,15 @@ export async function initCrid3D(host,getState,onReady){
     renderer.toneMappingExposure=1.05;
 
     const scene=new THREE.Scene();
-    scene.add(new THREE.HemisphereLight(0xcfd8ff,0x2a2038,.95));
-    const key=new THREE.DirectionalLight(0xfff2dd,2.1);key.position.set(1.4,2.2,1.6);scene.add(key);
-    const rim=new THREE.DirectionalLight(0x8f7bff,1.0);rim.position.set(-1.6,1.4,-1.4);scene.add(rim);
+    // Image-based lighting: Snap's materials are PBR — without an environment map they render
+    // flat and grey. A neutral studio room gives skin, cloth and hair their real response.
+    const pmrem=new THREE.PMREMGenerator(renderer);
+    scene.environment=pmrem.fromScene(new RoomEnvironment(),.04).texture;
+    pmrem.dispose();
+    scene.add(new THREE.HemisphereLight(0xcfd8ff,0x2a2038,.55));
+    const key=new THREE.DirectionalLight(0xfff2dd,2.4);key.position.set(1.3,2.4,1.7);scene.add(key);
+    const fill=new THREE.DirectionalLight(0x9db4ff,.7);fill.position.set(-1.8,1.1,1.2);scene.add(fill);
+    const rim=new THREE.DirectionalLight(0xb9a5ff,1.5);rim.position.set(-1.2,1.8,-1.8);scene.add(rim);
     const cam=new THREE.PerspectiveCamera(32,1,.1,50);
 
     // Turn group: yaw (which way he faces) and roll (the lean) live here so the body pose stays clean.
@@ -55,6 +62,9 @@ export async function initCrid3D(host,getState,onReady){
         for(const[k,i]of Object.entries(o.morphTargetDictionary))morphs.push({m:o,i,k})}
     });
     model.add(root);
+    // Snap's textures carry their own baked shading; a full-strength studio env washes them out.
+    root.traverse(o=>{if(o.material){const ms=Array.isArray(o.material)?o.material:[o.material];
+      for(const m of ms)if("envMapIntensity" in m)m.envMapIntensity=.55}});
 
     // Fit: normalise height to ~1.5 world units, feet on y=0.
     model.updateMatrixWorld(!0);
@@ -64,6 +74,18 @@ export async function initCrid3D(host,getState,onReady){
     model.position.y=-feetY;
     const dist=1.5/(2*Math.tan(cam.fov*Math.PI/360))*1.28;
     cam.position.set(0,.82,dist);cam.lookAt(0,.72,0);
+
+    // Contact shadow: a soft radial blob on the floor plane, so he stands IN the room instead of
+    // hovering over it. It lives in turn-space so the lean/turn moves it with him.
+    const shC=document.createElement("canvas");shC.width=shC.height=128;
+    const shG=shC.getContext("2d"),shGrad=shG.createRadialGradient(64,64,8,64,64,62);
+    shGrad.addColorStop(0,"rgba(6,4,12,.55)");shGrad.addColorStop(.7,"rgba(6,4,12,.28)");shGrad.addColorStop(1,"rgba(6,4,12,0)");
+    shG.fillStyle=shGrad;shG.fillRect(0,0,128,128);
+    const shTex=new THREE.CanvasTexture(shC);
+    const shadow=new THREE.Mesh(new THREE.PlaneGeometry(1.15,.5),
+      new THREE.MeshBasicMaterial({map:shTex,transparent:!0,depthWrite:!1}));
+    shadow.rotation.x=-Math.PI/2;shadow.position.y=.012;shadow.renderOrder=-1;
+    turn.add(shadow);
 
     const B=n=>bones[n];
     const MORPH_CACHE={};

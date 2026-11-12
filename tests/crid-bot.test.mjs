@@ -253,3 +253,40 @@ test("he goes to find a panel on his own when the desk is quiet", async () => {
   assert.ok(roamed, "within a few seconds of waking he should be on his way to a panel");
   bot.destroy();
 });
+
+test("on the 3D path an emotion never borrows a subscription build", async () => {
+  // The girth morph reads getState().stage, which is BODIES[bodyI]. feel() used to
+  // setBody() one step toward the feeling's build — on air that visibly changed his
+  // subscription girth. The seven stages are progression, not emotion.
+  const root = installDom();
+  const bot = createCridBot({ root, step: 12, position: "bc",
+    init3d: async () => ({ active: true, dispose() {} }) });
+  bot.observe({ bot: { on: true } });
+  await sleep(30);                        // let the init3d promise resolve
+  bot.setSubs(0);
+  assert.equal(bot.stage.key, "3", "stage 0 is the leanest build");
+  assert.ok(bot.feel("delighted"), "the feeling itself must still fire");
+  await sleep(80);
+  assert.equal(bot.stage.key, "3", "a feeling must not move his subscription girth");
+  await sleep(1600);                      // past the 1300 ms hold plus margin
+  assert.equal(bot.stage.key, "3", "and nothing may restore it into a different build either");
+  bot.destroy();
+});
+
+test("on the 2D fallback the emotional body borrow still works and restores", async () => {
+  // The borrow is the 2D rig's designed stance swap — it stays, but only where no
+  // girth morph is reading bodyI.
+  const root = installDom();
+  const bot = createCridBot({ root, step: 12, position: "bc",
+    init3d: async () => null });
+  bot.observe({ bot: { on: true } });
+  await sleep(30);
+  bot.setSubs(0);
+  const home = bot.stage.key;
+  bot.feel("delighted");                  // borrows body "0" — one step up the ladder
+  await sleep(80);
+  assert.notEqual(bot.stage.key, home, "the fallback keeps its designed stance swap");
+  await sleep(1600);
+  assert.equal(bot.stage.key, home, "the hold releases back to his subscription build");
+  bot.destroy();
+});

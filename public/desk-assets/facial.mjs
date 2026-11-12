@@ -149,7 +149,10 @@ export function createFacial({rand=Math.random}={}){
     if(mode==="doze")put("mouthDn",.25*shutBase);
     if(mode==="dead")put("mouthDn",.4);
 
-    for(const[k,v]of Object.entries(tgt))smooth(k,clamp(v,0,1),dt,k.startsWith("iris")?18:10);
+    // Lids run hot: the blink curve is already the easing (35/30/35), so the
+    // smoother only needs to track it — at rate 10 a .14 s blink peaked at .6.
+    for(const[k,v]of Object.entries(tgt))
+      smooth(k,clamp(v,0,1),dt,k.startsWith("iris")?18:k.startsWith("eyeShut")?50:10);
     for(const k in cur)if(!(k in tgt))smooth(k,0,dt,10);   // released channels decay home
   }
 

@@ -220,7 +220,7 @@ html.low-power #crid-bot svg,html.swae #crid-bot svg{filter:none}
 // The ladder is exported so a test can hold it to the measurement in ladder.json; nothing in the
 // overlay has to import it to use it.
 export{BODY_LADDER};
-export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="bc",x=null,y=null,step=null,scale=1,layers=null,visitIn=null}={}){
+export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="bc",x=null,y=null,step=null,scale=1,layers=null,visitIn=null,init3d=initCrid3D}={}){
   if(!document.getElementById("crid-bot-css")){const st=document.createElement("style");st.id="crid-bot-css",st.textContent=CSS,document.head.append(st)}
   const STEP=step!=null?step:swae?220:lowPower?260:140,
   // Movement is sampled finer than the sequencing tick, so an eased beat is drawn as a movement
@@ -238,9 +238,9 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // is him. The SVG figure is hidden the moment the model is on the GPU and is not put back.
   let crid3d=null,lastPose=null,disposed3d=false;
   const hideFigure=()=>{parts.avatarBase.setAttribute("display","none");parts.rigG.setAttribute("display","none");parts.ph.setAttribute("display","none")};
-  initCrid3D(host,()=>({p:lastPose,mode,dying,walking:!!(walk&&walk.to),
+  init3d(host,()=>({p:lastPose,mode,dying,walking:!!(walk&&walk.to),
     walkDir:walk&&walk.to?(walk.tx-walk.x<0?-1:1):0,fx,lean:leanAt,reduced,stage:BODIES[bodyI],face:faceNow,
-    talking:host.classList.contains("is-active"),grooving:host.classList.contains("music-playing"),mood}),hideFigure)
+    talking:host.classList.contains("is-active"),grooving:host.classList.contains("music-playing"),mood,bag:bag.worn}),hideFigure)
     .then(h=>{crid3d=h}).catch(err=>{try{console.warn("[crid-3d] not started:",err&&err.message||err)}catch{}});
   // ---- the backpack: a prop with mass (docs/specs/backpack.md + physics.md) ---------------
   // One world, one gravity, one floor — the same rules the spec gives every body. Worn, the bag
@@ -267,6 +267,9 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   let lastCX=0,lastCT=0,hisVx=0;
   const placeBag=()=>{
     const{w,h}=bagWH(); bagEl.style.width=`${w}px`; bagEl.style.height=`${h}px`;
+    // Worn on the 3D path the pack is the GLB's own skinned bag — the SVG is only
+    // ever the dropped prop on the floor, never a flat image pasted on his back.
+    if(bag.worn&&crid3d){bagEl.style.display="none";return}
     if(bag.worn){const r=host.getBoundingClientRect();
       bagEl.style.left=`${r.left+r.width/2-w/2}px`; bagEl.style.top=`${r.top+r.height*.07}px`}
     else if(bag.body){const b=bag.body;
@@ -854,11 +857,15 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // real size ladder, swapping to a fixed shape would balloon a lanky Crid into a fat one for a
     // beat and back. He borrows a build one step away from his own, so the stance changes and the
     // size does not.
-    const i=BODIES.findIndex(b=>String(b)===String(f.body));
-    if(i>=0){const here=Math.max(0,bodyI), near=clamp(i,here-1,here+1); setBody(near)}
+    // On the 3D path this borrow is disabled outright: bodyI feeds getState().stage, and stage is
+    // subscription progression — Route B turns it into girth. An emotion must never move it.
+    // The gesture sequence and the face envelope carry the feeling instead.
+    const borrow=!(crid3d&&crid3d.active);
+    if(borrow){const i=BODIES.findIndex(b=>String(b)===String(f.body));
+      if(i>=0){const here=Math.max(0,bodyI), near=clamp(i,here-1,here+1); setBody(near)}}
     if(f.seq&&SEQ[f.seq])play(SEQ[f.seq]);
     lastActive=Date.now(); clearTimeout(feelTimer);
-    feelTimer=setTimeout(()=>{if(mode!=="dead")setBody(stageFor(subs).i); if(typeof onEnd==="function")onEnd()},clamp(Number(hold)||f.hold,400,4e3));
+    feelTimer=setTimeout(()=>{if(borrow&&mode!=="dead")setBody(stageFor(subs).i); if(typeof onEnd==="function")onEnd()},clamp(Number(hold)||f.hold,400,4e3));
     return true};
   // ---- the cue channel ---------------------------------------------------------------------
   // One thing at a time, from the desk state. A cue is never stacked on another: if he is already

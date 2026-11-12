@@ -108,8 +108,10 @@ export async function initCrid3D(host,getState,onReady,onFail){
     // Snap's skinned meshes ship degenerate bind-pose bounds — three.js frustum-culls
     // them every frame and he never draws. Skeleton joints are the truth; disable culling.
     root.traverse(o=>{if(o.isMesh||o.isSkinnedMesh)o.frustumCulled=false});
-    // The ladder fronts have no pack, so the bag mesh stays off.
-    root.traverse(o=>{if(/bag/i.test(o.name||""))o.visible=false});
+    // The pack is Snap's own bag mesh, skinned to his spine — worn it rides his
+    // back in 3D. crid-bot reports bag.worn through the snapshot; a dropped bag
+    // hides this and the SVG prop on the floor is the only bag left.
+    const bagMeshes=[];root.traverse(o=>{if(/bag/i.test(o.name||""))bagMeshes.push(o)});
 
     // Fit: bounds come from the SKELETON joints, not the skinned-mesh bbox — morph targets and
     // bind-pose geometry can report a degenerate box that flings the model off-camera.
@@ -184,8 +186,12 @@ export async function initCrid3D(host,getState,onReady,onFail){
     // The bind pose holds his arms wide (A-pose); the relaxed hang is the baseline of every pose.
     const RELAX={armL:{z:1.12},armR:{z:-1.12},foreL:{x:.3},foreR:{x:-.3}};
 
-    let disposed=!1,raf=0,ready=!1,phase=0,heading=0;
+    let disposed=!1,raf=0,ready=!1,phase=0,heading=0,bagShown=true;
     const face=createFacial();let lastFaceKey=null;
+    // Read-only handle for visual QA: the shot harness polls channels() to catch
+    // a blink at its peak, and morph() proves the weight actually reached the GLB.
+    try{window.__cridFace={channels:()=>face.channels(),
+      morph:name=>{let v=0;for(const x of morph(name))if(x.m.morphTargetInfluences)v=Math.max(v,x.m.morphTargetInfluences[x.i]||0);return v}}}catch{}
     const reducedNow=()=>{try{return matchMedia("(prefers-reduced-motion: reduce)").matches}catch{return!1}};
 
     const resize=()=>{
@@ -267,6 +273,11 @@ export async function initCrid3D(host,getState,onReady,onFail){
       face.update(dt,{t,dt,talking:!!st.talking,mode,dying,reduced,gx:p.gx,gy:p.gy});
       const fc=face.channels();
       for(const k in fc)setMorph(k,fc[k]);
+
+      // The pack: Snap's bag mesh is on his back only while the snapshot says he
+      // wears it — a dropped bag leaves the floor prop as the only bag in the room.
+      const showBag=st.bag!==false;
+      if(showBag!==bagShown){bagShown=showBag;for(const m of bagMeshes)m.visible=showBag}
     };
 
     let now=performance.now()/1000;

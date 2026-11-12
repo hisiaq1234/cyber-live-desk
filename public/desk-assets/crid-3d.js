@@ -209,15 +209,14 @@ export async function initCrid3D(host,getState,onReady,onFail){
       if(!ready){ready=!0;onReady&&onReady()}
       try{drive(t,dt,st);renderer.render(scene,cam)}
       catch(err){
-        // One bad frame must not leave a transparent canvas where Crid should be: hand the
-        // page back to the 2D rig and stop the loop.
-        try{console.warn("[crid-3d] render failed, restoring 2D:",err&&err.message||err)}catch{}
-        disposed=!0;onFail&&onFail();return}};
+        // A bad frame is logged and skipped. It does not dispose the model or hand the
+        // page back to the 2D figure — the canvas is him.
+        try{console.warn("[crid-3d] frame skipped:",err&&err.message||err)}catch{}}};
     raf=requestAnimationFrame(frame);
 
     return{get active(){return ready},dispose(){disposed=!0;cancelAnimationFrame(raf);ro&&ro.disconnect();
       renderer.dispose();gltf.scene.traverse(o=>{if(o.geometry)o.geometry.dispose()});canvas.remove()}};
   }catch(err){
-    try{console.warn("[crid-3d] fallback to 2D rig:",err&&err.message||err)}catch{}
-    return null}
+    try{console.warn("[crid-3d] init failed:",err&&err.message||err)}catch{}
+    throw err}
 }

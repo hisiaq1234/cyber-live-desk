@@ -229,17 +229,14 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const homeCls=[...host.classList].filter(c=>c.startsWith("pos-"));
   host.append(svg); root.append(host);
   // ---- the 3D body -----------------------------------------------------------------------
-  // His real rigged Bitmoji (crid-3d.js): Snap's own GLB, 167 bones, facial morphs. While it
-  // loads the 2D rig stays up; the moment the model is on the GPU the flat drawing and the cut
-  // rig are hidden for good — one Crid per page, and when WebGL works it is the 3D one. Any
-  // failure resolves to null and every path below stays exactly as it was.
+  // His real rigged Bitmoji (crid-3d.js): Snap's own GLB, 167 bones, facial morphs. The canvas
+  // is him. The SVG figure is hidden the moment the model is on the GPU and is not put back.
   let crid3d=null,lastPose=null,disposed3d=false;
   const hideFigure=()=>{parts.avatarBase.setAttribute("display","none");parts.rigG.setAttribute("display","none");parts.ph.setAttribute("display","none")};
-  const showFigure=()=>{disposed3d=true;for(const k of["avatarBase","rigG","ph"])parts[k].removeAttribute("display");lastDrawn=""};
   initCrid3D(host,()=>({p:lastPose,mode,dying,walking:!!(walk&&walk.to),
     walkDir:walk&&walk.to?(walk.tx-walk.x<0?-1:1):0,fx,lean:leanAt,reduced,
-    talking:host.classList.contains("is-active"),grooving:host.classList.contains("music-playing"),mood}),hideFigure,showFigure)
-    .then(h=>{crid3d=h}).catch(()=>{});
+    talking:host.classList.contains("is-active"),grooving:host.classList.contains("music-playing"),mood}),hideFigure)
+    .then(h=>{crid3d=h}).catch(err=>{try{console.warn("[crid-3d] not started:",err&&err.message||err)}catch{}});
   // ---- the desk's furniture ---------------------------------------------------------------
   // The desk hands in its layer registry (layers.mjs) and this is the only way he learns where a
   // panel is. It is read at the moment he moves, never cached: the registry answers for a panel
@@ -667,10 +664,9 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // into the bitmap there is nothing to rotate here: the bitmap is already tipped about the same
     // feet, so the pose goes on unchanged and the drawing stays sharp.
     parts.figG.setAttribute("transform",`${leanAt&&!baked?`rotate(${leanAt.angle.toFixed(2)} ${VB_CX} ${VB_FEET}) `:""}translate(${(shift+p.gx*1.15).toFixed(2)} ${(p.hy*.85-plank*14).toFixed(2)}) translate(70 158) rotate(${L.toFixed(2)}) scale(${(p.fx*p.sx*k).toFixed(3)} ${(p.sy*k).toFixed(3)}) translate(-70 -158)`);
-    // When the 3D body is live the SVG figure stays hidden — the canvas is him. The 2D rig is
-    // only ever the fallback for a page where WebGL or the GLB failed.
+    // The canvas is him. Once the model is live the SVG figure stays hidden.
     if(crid3d&&crid3d.active&&!disposed3d)hideFigure();
-    else{if(disposed3d)crid3d=null;showSprite(baked); showRig(rigStep,rigU,stepping?"walk":"idle")}
+    else{showSprite(baked); showRig(rigStep,rigU,stepping?"walk":"idle")}
   };
   // ---- human timing ----------------------------------------------------------------------
   // The sprite is a still drawing, so the only life it has is what the engine moves. Two layers:

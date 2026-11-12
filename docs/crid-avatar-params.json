@@ -1,0 +1,54 @@
+{
+  "_what_this_is": "The exact Snap/Bitmoji renderer recipe for Crid, the character in the desk overlay. Use it to render more poses and weight stages of the SAME avatar. It is not a license to design a new character.",
+  "_endpoint": "https://preview.bitmoji.com/avatar-builder-v3/preview/body?scale=2&<params>",
+  "_also_works": "Swap /preview/body for /preview/bust for a head-and-shoulders crop, or /preview/head for the face alone.",
+  "_derivation": "These values were recovered by sampling the shipped Crid renders against Snap's avatar asset database (skin, hair, moustache, brows, eyes, outfit). They reproduce the shipped renders faithfully. If the owner ever supplies his Bitmoji avatar id, that id is more authoritative than these numbers — prefer it, and update this file.",
+  "_rules": [
+    "rotation MUST be 0. Crid is drawn front-facing. rotation=7 (three-quarter) is what made earlier weight stages look like different people.",
+    "body: 0 = lean, 1 = average, 2 = short-and-heavy. body=2 is BANNED — it makes him short, and the owner has said he is never short.",
+    "Height and head size are fixed across stages. Only width and mass may change.",
+    "Render at 1050x1400 with the ink bottom at y=1325 and the body axis at x=560, then let scripts/build-body-ladder.py place it.",
+    "Never pass these parameters to an image-generation model. They belong to Snap's renderer and nowhere else."
+  ],
+  "params": {
+    "gender": 1,
+    "style": 5,
+    "rotation": 0,
+    "beard": 2212,
+    "brow": 1555,
+    "cheek_details": 1356,
+    "ear": 1423,
+    "eye": 1614,
+    "eyelash": -1,
+    "eye_details": 1352,
+    "face_lines": 1366,
+    "glasses": -1,
+    "hair": 1657,
+    "hat": -1,
+    "jaw": 1392,
+    "mouth": 2337,
+    "nose": 1482,
+    "beard_tone": "0x181b1a",
+    "blush_tone": 16754088,
+    "brow_tone": "0x181b1a",
+    "eyeshadow_tone": -1,
+    "hair_tone": "0x272b2a",
+    "hair_treatment_tone": "0x332b28",
+    "lipstick_tone": 16740668,
+    "pupil_tone": "0x5b341c",
+    "skin_tone": "0x935d37",
+    "face_proportion": 13,
+    "eye_spacing": 0,
+    "eye_size": 2,
+    "outfit": 990491
+  },
+  "body_stages": {
+    "0": "lean — narrow through the torso and limbs, same height",
+    "1": "average — the default build",
+    "2": "BANNED — short and heavy, makes him short"
+  },
+  "current_shipped_renders": [
+    "public/desk-assets/crid/body-000-r7.webp (leanest stage, the only one with a rig today)",
+    "public/desk-assets/crid/body-2-r7.webp (heaviest stage)"
+  ]
+}

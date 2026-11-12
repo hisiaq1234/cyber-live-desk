@@ -1,16 +1,23 @@
-> Reference for the 3D turn. Not a ladder frame, and not a new character.
+> Reference only. Read once. Do the pass below once. Then stop.
+> Do not re-run this file. Do not retry a picture that looks wrong. Report it and stop.
 > Read `docs/specs/body-ladder.md` first. Those rules still hold.
 
 # Crid 360 — folder reference
 
-The zip is `docs/reference/crid-360.zip`. Unpack it and perfect the folders.
-Do not serve this zip. Do not copy any angle into `public/desk-assets/crid/`.
+The zip is `docs/reference/crid-360.zip`. It is not served.
+Do not copy any angle into `public/desk-assets/crid/`.
 `rotation` other than 0 must never enter the body ladder.
+
+## Stop
+
+One pass. Eight angles, seven stages, one bake. Then stop.
+If Snap has no rotation, skip that angle. Do not invent a retry.
+If a bake misses the mesh, stop. Do not bake it again.
 
 ## What the zip is
 
-One turn of the owner, eight angles, pack removed, then the same turn
-scaled to each ladder stage. It is a stand-in, not a Snap render.
+One turn of the owner, pack removed, then that turn scaled per stage.
+It is a stand-in, not a Snap render.
 
 ```
 base/        the turn, pack removed, k = 1
@@ -33,14 +40,11 @@ Each folder has `angle-1.png` … `angle-8.png`, 1050×1400, black background.
 | angle-3, angle-5 | Rear three-quarter |
 | angle-4 | Back |
 
-## The one rule for the size
+## Size
 
-The head does not change. The height does not change. Every part that
-does change takes the **same** factor.
-
-The base is angle-8 of `base/`. Its chest, arms excluded, measured 200px.
-`k` is that stage's front chest divided by 200. Width and depth both get `k`.
-The head is not scaled. The height is not scaled.
+The head does not change. The height does not change.
+Every part that does change takes the same factor.
+`k` is that stage's chest divided by the base chest (200px on `base/angle-8`).
 
 | Folder | k |
 |---|---|
@@ -53,63 +57,21 @@ The head is not scaled. The height is not scaled.
 | body-11 | 1.13 |
 | body-2 | 1.28 |
 
-Re-measure from the real front (`body-<key>-r0`, chest against the head)
-before treating a number as final. If a real render disagrees with `k`,
-the render wins. Do not invent a second factor for depth.
+## One pass
 
-## What is wrong with the folders now
+Nano Banana, once per file. Edit the angle that is already in the zip.
+Use `body-<key>-r0` as the front reference. Do not redraw him.
 
-- `angle-4` (and parts of 3 and 5) has a hole where the upper back was.
-  The pack was the only pixels there. Nano Banana fills that from his own sides.
-- A strap stub can remain on the shoulder in the side views.
-- `body-*` is a horizontal stretch of `base/` from the chin down.
-  The neck steps, and the arms thicken by the same `k`. That is the
-  proportion, not a finished picture.
+- Pack and straps off.
+- Fill the hole in the back from his own sides.
+- Same head. Same height. Width and depth both take `k`.
 
-## What perfecting means
+Then bake those views once onto the unwrap already in `crid.glb`.
+Front, back, and the two sides paint. The other four only fill gaps.
+Black is not skin. Then stop.
 
-Replace each file with a real Snap render of this same avatar:
+## Do not
 
-- `bag=-1` (bare chest, no straps, no pack)
-- the stage's own `body=` (`3, 0, 4, 5, 1, 11, 2`)
-- the eight views above, in that order
-- the same framing as the ladder fronts: ink bottom on one shared line,
-  head the same size, height the same
-- the front of `body-<key>/angle-8.png` must match `body-<key>-r0`
-
-The recipe is `RECIPE` in `scripts/build-body-ladder.py` and
-`docs/crid-avatar-params.json`. Only the camera rotation changes per angle.
-If Snap cannot return a rotation, Nano Banana edits the angle that is already
-in the zip. It does not invent a new person.
-
-## Who makes the pictures
-
-Nano Banana is allowed to make the pictures and to fill the holes.
-Give it the real front (`body-<key>-r0`) and the matching angle from `base/`.
-
-- Remove the pack and the straps.
-- Fill the back from the sides of this same man.
-- The head stays the same head. The height stays the same height.
-- Width and depth both take that stage's `k`.
-
-The finished `angle-1` … `angle-8` are the color. Bake them onto the unwrap
-already in `crid.glb`. That bake is allowed. Black pixels are not skin.
-
-## What the 2D is for
-
-The perfected pictures are the color on the mesh. They are not a UV layout.
-
-`crid.glb` already has the unwrap. Keep it. Project the finished views onto it and bake:
-
-- angle-8 paints the front
-- angle-4 paints the back
-- angle-2 and angle-6 paint the sides
-- angle-1, 3, 5 and 7 only fill what the four views missed
-
-The black background is not part of the body. One bake per stage. The mesh
-being painted has to be that stage's build, or the picture slides off the surface.
-
-## What not to do
-
-- Do not scale bones to fake a stage. That bend already shipped once and was removed.
-- Do not put the pack back. The ladder fronts have no pack. The rig hides `bag` for the same reason.
+- Do not scale bones. That bend already shipped once and was removed.
+- Do not put the pack back.
+- Do not run this file again.

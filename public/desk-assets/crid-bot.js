@@ -27,6 +27,7 @@
    Feed it with observe(state) where state.bot.subs is the sub count this stream, or call setSubs(n). */
 import{RIGS}from"./crid/rig.mjs";
 import{initCrid3D}from"./crid-3d.js";
+import{createWorld}from"./physics.mjs";
 const NS="http://www.w3.org/2000/svg",XLINK="http://www.w3.org/1999/xlink",PAL={onyx:"#1F1736",screen:"#0F0B17",edge:"#3A1D9E",indigo:"#6531F8",indigoDk:"#3A1D9E",mint:"#86F6BC",bone:"#A98BFF",ink:"#F4F0FF",slate:"#2B2738",red:"#FF5B57",dead:"#5E5873"},
 DOZE_AFTER_MS=12e4,BODIES=["3","0","4","5","1","11","2"],ROT=0,ASSETS="./desk-assets/crid",AV=b=>`${ASSETS}/body-${b}-r${ROT}.webp`,
 SUB_STEPS=[0,4,8,12,16,20,24],STAGE_STRETCH=.03,
@@ -96,7 +97,11 @@ sideeye:[{hr:6},{hr:-4},{hr:0}],
 // up in two hands and set down, bits are a quick coin-flick shiver.
 gift:[{eyes:"happy",mouth:"grin",mL:"up",mR:"up",by:-4,hy:-2,hr:0},{by:-10,hy:-4,mL:"up",mR:"up",tr:6},{by:2,bs:.95,hy:2,mL:"up",mR:"up",tr:-6},{by:0,bs:1,hy:0,mL:"down",mR:"down",mouth:"smile",tr:0}],
 bits:[{hr:-4,hy:-2,tr:8,bs:1.03},{hr:5,hy:1,tr:-8,bs:.97},{hr:-2,hy:-1,tr:4},{hr:0,hy:0,tr:0,bs:1}],
-salute:[{hy:-4,mR:"up"},{hy:-2},{hy:0,mR:"down"}]};
+salute:[{hy:-4,mR:"up"},{hy:-2},{hy:0,mR:"down"}],
+// The bag beats (docs/specs/backpack.md). The __bag marker is picked up by the tick loop the
+// same way __cueEnd is: the frame plays as a pose and the marker does the prop's physics.
+dropbag:[{mR:"up",hy:-3,hr:-4,eyes:"open"},{mR:"down",hy:1,hr:3,tr:8,by:2},{__bag:"drop",eyes:"open",hy:0,hr:0,tr:0}],
+pickup:[{by:10,hy:4,bs:.92,eyes:"open"},{by:12,mR:"down",hr:2},{__bag:"wear",by:0,bs:1,hy:0,hr:0,tr:0}]};
 SEQ.sub=[...SEQ.cheer.slice(0,-1).map(f=>({...f,tag:"+SUB"})),...SEQ.pushup];
 // Everything he can be told to do in one word: every sequence, every micro-emotion, and "say" for
 // a line of text. The desk overlay and the server both hold this list (api/_desk-core.mjs BOT_CUES);
@@ -237,7 +242,46 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     walkDir:walk&&walk.to?(walk.tx-walk.x<0?-1:1):0,fx,lean:leanAt,reduced,
     talking:host.classList.contains("is-active"),grooving:host.classList.contains("music-playing"),mood}),hideFigure)
     .then(h=>{crid3d=h}).catch(err=>{try{console.warn("[crid-3d] not started:",err&&err.message||err)}catch{}});
-  // ---- the desk's furniture ---------------------------------------------------------------
+  // ---- the backpack: a prop with mass (docs/specs/backpack.md + physics.md) ---------------
+  // One world, one gravity, one floor — the same rules the spec gives every body. Worn, the bag
+  // rides his back as an SVG in his own palette (no bitmap, no image budget); dropped, it is a
+  // physics body that falls, bounces once and settles on the same floor line his feet use, and it
+  // stays exactly where it landed — that is the continuity a returning viewer reads.
+  const BAG_MASS=.5,world=createWorld();
+  const bagEl=document.createElement("div"); bagEl.id="crid-bag";
+  const bagSvg=el("svg",{viewBox:"0 0 64 78","aria-hidden":"true",focusable:"false"});
+  bagSvg.append(
+    el("path",{d:"M16 24 Q11 24 11 32 L11 60 Q11 69 20 69 L44 69 Q53 69 53 60 L53 32 Q53 24 48 24 Z",fill:PAL.slate,stroke:PAL.bone,"stroke-width":3,"stroke-linejoin":"round"}),
+    el("path",{d:"M16 24 Q32 36 48 24 L48 31 Q32 43 16 31 Z",fill:PAL.onyx,stroke:PAL.bone,"stroke-width":2.5,"stroke-linejoin":"round"}),
+    el("circle",{cx:32,cy:41,r:5,fill:"none",stroke:PAL.mint,"stroke-width":3}),
+    el("path",{d:"M21 14 L19 25 M43 14 L45 25",stroke:PAL.bone,"stroke-width":4,"stroke-linecap":"round"}));
+  bagSvg.style.cssText="width:100%;height:100%;display:block";
+  bagEl.append(bagSvg); bagEl.style.cssText="position:fixed;z-index:26;pointer-events:none";
+  root.append(bagEl);
+  const bag={worn:!0,body:null};
+  let pickupWalk=!1,pickupEnd=null,bucketThinkAt=Date.now()+rand(200000,380000),pickupThinkAt=0;
+  const bagWH=()=>{const w=host.offsetWidth||innerWidth*.175; return{w:w*.5,h:w*.5*78/64}};
+  const floorY=()=>{const r=host.getBoundingClientRect(); return r.bottom-r.height*.03};
+  // His horizontal speed, measured off the host's own movement — the toss a dropped bag gets is
+  // the speed he was actually walking at, not a guessed constant.
+  let lastCX=0,lastCT=0,hisVx=0;
+  const placeBag=()=>{
+    const{w,h}=bagWH(); bagEl.style.width=`${w}px`; bagEl.style.height=`${h}px`;
+    if(bag.worn){const r=host.getBoundingClientRect();
+      bagEl.style.left=`${r.left+r.width/2-w/2}px`; bagEl.style.top=`${r.top+r.height*.07}px`}
+    else if(bag.body){const b=bag.body;
+      bagEl.style.left=`${b.x-w/2}px`; bagEl.style.top=`${b.y-h/2}px`}
+    else bagEl.style.display="none";
+    if(bag.body){bag.body.floor=floorY(); bag.body.halfH=h/2}};
+  const releaseBag=()=>{if(bag.worn||bag.body)return; const r=host.getBoundingClientRect(),{h}=bagWH();
+    const b=world.add({x:r.left+r.width/2,y:r.top+r.height*.22,vx:hisVx,vy:-60,mass:1,drag:.4,restitution:reduced?0:.26,floor:floorY(),halfH:h/2});
+    bag.body=b; bag.worn=!1; bagEl.style.display=""};
+  const wearBag=()=>{if(bag.worn||!bag.body)return; world.remove(bag.body); bag.body=null; bag.worn=!0};
+  // The marker frames inside SEQ.dropbag / SEQ.pickup land here, the same place __cueEnd does.
+  const bagMark=(kind,frame)=>{if(kind==="drop")releaseBag(); else if(kind==="wear")wearBag()};
+  // Carrying is not free: his step shrinks and his gap lengthens by the mass ratio, so a lean
+  // Crid visibly works harder under the same bag than a heavy one does (physics.md §1).
+  const carrySlow=()=>bag.worn?build().heft/(build().heft+BAG_MASS):1;
   // The desk hands in its layer registry (layers.mjs) and this is the only way he learns where a
   // panel is. It is read at the moment he moves, never cached: the registry answers for a panel
   // that has been moved, hidden or removed, and a name it does not know comes back null — which
@@ -348,18 +392,20 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     if(walk.done){if(now<walk.done)return; const stay=walk.stay; walk=null;
       // A staged walk ends where it was sent: he stays at the panel he came for instead of
       // drifting home, and the lean he was walking towards is put on him here.
-      if(stay||pendingLean){if(pendingLean){const p=pendingLean; pendingLean=null; lean(p.name,p.side)} return}
+      if(stay||pendingLean){if(pendingLean){const p=pendingLean; pendingLean=null; lean(p.name,p.side)}
+        if(pickupWalk){pickupWalk=!1; const e=pickupEnd; pickupEnd=null; play(e!=null?[...SEQ.pickup,{__cueEnd:e}]:SEQ.pickup); lastActive=Date.now()}
+        return}
       goHome(); return}
     if(walk.to){ // mid-step: eased travel, then a beat with both feet down before the next one
       const e=EASE.smooth(clamp((now-walk.t0)/walk.dur,0,1));
       walk.x=walk.from.x+(walk.to.x-walk.from.x)*e; walk.y=walk.from.y+(walk.to.y-walk.from.y)*e;
-      if(now-walk.t0>=walk.dur){walk.from={x:walk.x,y:walk.y}; walk.to=null; walk.gap=now+rand(160,430)*build().slow*(reduced?1.6:1)}
+      if(now-walk.t0>=walk.dur){walk.from={x:walk.x,y:walk.y}; walk.to=null; walk.gap=now+rand(160,430)*build().slow/carrySlow()*(reduced?1.6:1)}
     } else if(now>=walk.gap){
       const dx=walk.tx-walk.x,dy=walk.ty-walk.y;
       if(Math.hypot(dx,dy)<walk.eps){walk.done=now+Math.round(rand(1900,2900)); return}
-      fx=dx<0?-1:1; const k=(.42+Math.random()*.26)/Math.sqrt(build().slow);   // no two steps cover the same ground
+      fx=dx<0?-1:1; const carry=carrySlow(),k=(.42+Math.random()*.26)/Math.sqrt(build().slow)*carry;   // no two steps cover the same ground; a carried bag shortens every one
       walk.from={x:walk.x,y:walk.y}; walk.to={x:walk.x+dx*k,y:walk.y+dy*k};
-      walk.t0=now; walk.dur=clamp(340+Math.hypot(dx,dy)*9,340,720)*build().slow;
+      walk.t0=now; walk.dur=clamp(340+Math.hypot(dx,dy)*9,340,720)*build().slow/carry;
     }
     host.style.left=`${walk.x}%`; host.style.top=`${walk.y}%`};
   // Home is the anchor he was placed at. Coming home is the one thing that ends a lean: he is a
@@ -367,6 +413,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // it. Nothing else may take it away — see setMode(), unlean() and resettle() for the three
   // things that are allowed to call this while he is leaning.
   const goHome=()=>{const roam=host.classList.contains("roam"); leanAt=null; pendingLean=null; lastDrawn="";
+    if(pickupWalk){pickupWalk=!1; const e=pickupEnd; pickupEnd=null; e!=null&&endCue(e,"aborted")}
     if(!walk&&!roam)return; walk=null; fx=1; gestureQ=[]; host.classList.remove("roam"); host.style.left=host.style.top=""; host.classList.add(...homeCls)};
   // Stopping a walk is not letting go of a panel. A job arriving mid-stride, or a wander coming to
   // its end, used to go through goHome() — the one thing that clears the lean — so a lean he had
@@ -374,6 +421,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // where he stands; the lean it was carrying is put on him there, and only unlean(), death or a
   // panel that left the frame release one.
   const stopWalk=()=>{if(!walk)return; walk=null; fx=1; gestureQ=[];
+    if(pickupWalk){pickupWalk=!1; const e=pickupEnd; pickupEnd=null; e!=null&&endCue(e,"aborted")}
     if(pendingLean){const p=pendingLean; pendingLean=null; lean(p.name,p.side)}};
   // A short shuffle around wherever he lives (home is re-read after every landing and on resize),
   // so the crawl reads as him pottering about rather than as a walk across the whole stream.
@@ -740,10 +788,16 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // Stillness is part of him, but a painted body with a 28s gap reads as a statue.
     const sec=mode==="doze"?(r<.4?rand(12,20):rand(7,12)):(r<.2?rand(8,12):r<.55?rand(5,8):rand(2.8,5));
     return sec*1000*(reduced?1.35:1)};
-  const tick=()=>{if(frozen)return; const now=Date.now(); tickN++; if(walk&&(jobs.length||running))stopWalk(); advanceJob(); advanceWalk(); maybeVisit(now);
+  const tick=()=>{if(frozen)return; const now=Date.now(); tickN++;
+    // The bag is a body in the same world as everything else: it integrates on the tick's own
+    // clock, and while it is in the air the loop runs at the fast cadence so the fall reads.
+    const tS=now/1000; world.step(Math.min(.25,tS-(tick.lastT||tS))); tick.lastT=tS;
+    {const r=host.getBoundingClientRect(),cx=r.left+r.width/2; hisVx=(cx-(tick.lastCX||cx))/Math.max(.05,tS-(tick.lastCT||tS)); tick.lastCX=cx; tick.lastCT=tS}
+    placeBag();
+    if(walk&&(jobs.length||running))stopWalk(); advanceJob(); advanceWalk(); maybeVisit(now); maybeBag(now);
     if(now>=trAt+trFor){ // the previous beat has finished travelling: choose the next one
       let frame=null; if(walk&&!walk.done&&!gestureQ.length)gestureQ.push(...SEQ.crawl);
-      if(gestureQ.length){const head=gestureQ[0]; if(head&&head.__cueEnd!=null){gestureQ.shift(); endCue(head.__cueEnd,"done")} else frame=gestureQ.shift()} else if(mode!=="dead"&&!dying){
+      if(gestureQ.length){const head=gestureQ[0]; if(head&&head.__cueEnd!=null){gestureQ.shift(); endCue(head.__cueEnd,"done")} else {frame=gestureQ.shift(); if(frame&&frame.__bag)bagMark(frame.__bag,frame)}} else if(mode!=="dead"&&!dying){
         // Against a panel, or inside a thought, he is not pottering about: the staged hold is the
         // performance, so nothing picks a wander for him until he lets go.
         if(!idleQ.length&&!walk&&!leanAt&&!pondering&&now>=waitUntil){const q=pickIdle();
@@ -756,7 +810,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // Dead/dying: render the pose (die sequence while dying, prone at rest when dead) but do not
     // run the rig/idle loop — the flat drawing carries the dead treatment and limbs stay still.
     render(advancePose(now));
-    const fast=!dying&&mode!=="dead"&&(walk||Date.now()<trAt+trFor);
+    const fast=!dying&&mode!=="dead"&&(walk||Date.now()<trAt+trFor||(bag.body&&!world.settled(bag.body)));
     timer=setTimeout(tick,fast?ANIM:(mode==="dead"?STEP*4:STEP))};
   // The reduced-motion cut of a sequence: the same beats, without the travel. Anything that moves
   // him across the frame (by, bs, pr) is dropped and what remains is clamped to a twitch, so the
@@ -807,10 +861,39 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // busy it waits its turn in the same queue the derived reactions use, and if that queue is full it
   // is dropped. Nothing here remounts him, clears the frame or teleports a walk, and a name he does
   // not know is ignored, so the desk can pass whatever state carries.
+  // The two bag cues (docs/specs/backpack.md). dropbag is the sequence plus the release marker;
+  // pickup walks him to where the bag actually lies before he bends for it — off-screen, he does
+  // not attempt it, and a walk that is called off reports the cue aborted, not done.
+  const bagDrop=end=>{if(!bag.worn){endCue(end,"failed"); return !1}
+    if(mode==="doze"){mode="on";lastActive=Date.now()}
+    if(running||jobs.length){if(pendingReact.length<3){pendingReact.push(end?{name:"dropbag",__cueEnd:end}:"dropbag"); return !0} endCue(end,"aborted"); return !1}
+    play(end?[...SEQ.dropbag,{__cueEnd:end}]:SEQ.dropbag); return !0};
+  const bagPickup=end=>{if(bag.worn||!bag.body){endCue(end,"failed"); return !1}
+    const r=bagEl.getBoundingClientRect();
+    if(r.right<0||r.left>innerWidth||r.bottom<0||r.top>innerHeight){endCue(end,"failed"); return !1}
+    const hr=host.getBoundingClientRect(),near=Math.hypot(r.left+r.width/2-(hr.left+hr.width/2),r.top-hr.top)<hr.width*1.4;
+    if(pickupWalk)return pickupEnd=end??pickupEnd,!0;   // already on his way: the newer ask takes the report
+    if(!near){
+      if(walk&&!walk.stay){pickupWalk=!1; const e=pickupEnd; pickupEnd=null; e!=null&&endCue(e,"aborted")}
+      pickupWalk=!0; pickupEnd=end;
+      const ok=startWalk(clamp((r.left+r.width/2)/innerWidth*100,2,98),clamp(hr.top/innerHeight*100,2,96),{loose:!0,eps:.6,stay:!0});
+      if(!ok){pickupWalk=!1; pickupEnd=null; endCue(end,"aborted"); return !1}
+      lastActive=Date.now(); return !0}
+    if(mode==="doze"){mode="on";lastActive=Date.now()}
+    play(end?[...SEQ.pickup,{__cueEnd:end}]:SEQ.pickup); return !0};
+  // Quiet-moment autonomy, same guards as the panel visits: he shrugs the bag off now and then on
+  // a long quiet stretch, and goes back for it later — the prop's position is the story a viewer
+  // who was away comes back to.
+  const maybeBag=now=>{
+    if(mode!=="on"||dying||reduced||walk||leanAt||pendingLean||pondering||idleQ.length||gestureQ.length||running||jobs.length)return;
+    if(bag.worn){if(now>=bucketThinkAt){bucketThinkAt=now+rand(200000,420000); if(Math.random()<.3)bagDrop(null)}}
+    else if(bag.body&&world.settled(bag.body)&&now>=pickupThinkAt){pickupThinkAt=now+rand(60000,180000); if(Math.random()<.4)bagPickup(null)}};
   const cue=(name,{text="",onEnd}={})=>{
     if(typeof name!=="string"||!name||mode==="dead"||dying)return false;
     const end=cueEndFor(onEnd);
     if(name==="say"){const line=String(text||"").trim().slice(0,140); if(!line){endCue(end,"failed"); return false} const ms=clamp(line.length*65,2e3,6e3); say(line,ms); if(end)setTimeout(()=>endCue(end,"done"),ms+450); return true}
+    if(name==="dropbag")return bagDrop(end);
+    if(name==="pickup")return bagPickup(end);
     if(FEEL[name])return feel(name,{onEnd:end?cueEndWith(end,"done"):undefined});
     if(!SEQ[name]){endCue(end,"failed"); return false}
     if(mode==="doze"){mode="on";lastActive=Date.now()}
@@ -850,7 +933,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const mo=typeof MutationObserver=="function"?new MutationObserver(watch):null; mo==null||mo.observe(host,{attributes:!0,attributeFilter:["class"]});
   // Boot him on the way in (the desk default), place him clear of the lower third, and keep the
   // placement honest across resizes and strip content changes.
-  applySubs(0,!1); power(); place(); render(advancePose(Date.now())); timer=setTimeout(tick,STEP);
+  applySubs(0,!1); power(); place(); placeBag(); render(advancePose(Date.now())); timer=setTimeout(tick,STEP);
   let placeFrame=0,stripWatch=null;
   const replace=()=>{home=null; if(placeFrame)return; placeFrame=(typeof requestAnimationFrame=="function"?requestAnimationFrame:setTimeout)(()=>{placeFrame=0; place(); resettle()},0)};
   if(typeof addEventListener=="function")addEventListener("resize",replace);

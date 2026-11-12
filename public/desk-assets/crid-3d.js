@@ -27,6 +27,10 @@ export async function initCrid3D(host,getState,onReady,onFail){
   try{
     const q=typeof location=="object"?new URLSearchParams(location.search):null;
     if(q&&(q.get("crid3d")==="off"||q.get("bot3d")==="off"))return null;
+    // ?limbo=1 — silhouette staging: the same rig, the same bones, the same motion, but the
+    // baked colour is crushed to near-black and a fog gradient sits behind him, so the figure
+    // reads as one dark shape against haze. A skin over the character, never a second one.
+    const limbo=!!(q&&(q.get("limbo")==="1"||q.get("crid")==="silhouette"));
     if(typeof document=="undefined"||!host)return null;
     const probe=document.createElement("canvas");
     if(!probe.getContext||!(probe.getContext("webgl2")||probe.getContext("webgl")))return null;
@@ -37,6 +41,9 @@ export async function initCrid3D(host,getState,onReady,onFail){
     canvas.className="crid3d";canvas.setAttribute("aria-hidden","true");
     canvas.style.cssText="position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none";
     host.insertBefore(canvas,host.firstChild);
+    if(limbo){const fog=document.createElement("div");
+      fog.style.cssText="position:absolute;inset:-14%;pointer-events:none;z-index:0;background:radial-gradient(ellipse 62% 58% at 50% 60%,rgba(198,206,224,0) 30%,rgba(198,206,224,.34) 66%,rgba(206,212,228,.55) 100%)";
+      host.insertBefore(fog,canvas)}
 
     const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true,powerPreference:"low-power"});
     renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));
@@ -69,7 +76,7 @@ export async function initCrid3D(host,getState,onReady,onFail){
       const name=m.name||"";
       const thin=/bag|eyelash|hair|facialhair|brow|earring/i.test(name);
       return new THREE.MeshBasicMaterial({
-        name,map:m.map,color:0xffffff,
+        name,map:m.map,color:limbo?0x0d0a16:0xffffff,
         transparent:m.transparent,opacity:m.opacity,alphaTest:m.alphaTest,
         side:thin?THREE.DoubleSide:m.side,depthWrite:m.depthWrite
       });

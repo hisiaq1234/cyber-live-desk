@@ -156,38 +156,46 @@ export async function initCrid3D(host,getState,onReady,onFail){
       turn.rotation.z=st.lean?st.lean.angle*Math.PI/180*.55:0;
 
       const by=(p.by||0)/100,bs=clamp(p.bs||1,.8,1.15);
-      model.position.y=-feetY-by*.9*s+(walking?Math.abs(Math.sin(TAU*u))*.02*s:0);
+      model.position.y=-feetY-by*.9*s+(walking?Math.abs(Math.sin(TAU*u))*.035*s:Math.sin(t*1.55)*.012*s);
       model.scale.set(s*(1+.05*(1-bs)),s*bs,s*(1+.05*(1-bs)));
 
-      const br=Math.sin(t*1.7),w1=Math.sin(t*.9),w2=Math.sin(t*4.1),calm=reduced?.45:1;
-      const still=(walking?0:1),droop=mode==="doze"?.42:mode==="dead"?.6:dying?.35:0;
-      const swing=walking?1:still*.12;              // idle arms/legs keep a whisper of motion
+      const br=Math.sin(t*1.55),w1=Math.sin(t*.62),calm=reduced?.4:1;
+      const life=(mode==="on"&&!dying?1:.22)*calm;
+      const still=(walking?0:1)*life,droop=mode==="doze"?.42:mode==="dead"?.6:dying?.35:0;
+      const swing=walking?1:still*.55;
+
+      // Standing idle is a person, not a statue: breath in the chest, weight moving
+      // from foot to foot, the head looking off the same clock. Amplitudes are large
+      // enough to read at desk size. The GLB has no clips; this is the motion.
+      const shift=Math.sin(t*.5);                         // hip to hip, about 12s
+      const look=Math.sin(t*.33),look2=Math.sin(t*.19+1.4);
 
       // Legs: local +Y is forward (toward the face). Knees still fold on +Y.
-      if(has("thighL"))rot(J.thighL,0,gait*.5*walking+still*w1*.015,0);
-      if(has("shinL"))rot(J.shinL,0,(kL*.75+still*.04)*calm,0);
-      if(has("footL"))rot(J.footL,0,(wL-kL)*.22,0);
-      if(has("thighR"))rot(J.thighR,0,-gait*.5*walking-still*w1*.015,0);
-      if(has("shinR"))rot(J.shinR,0,-(kR*.75+still*.04)*calm,0);
-      if(has("footR"))rot(J.footR,0,-(wR-kR)*.22,0);
+      // Idle settles onto the weighted foot instead of locking both legs straight.
+      if(has("thighL"))rot(J.thighL,0,gait*.55*walking+still*(shift*.04),0);
+      if(has("shinL"))rot(J.shinL,0,(kL*.85+still*Math.max(0,shift)*.12)*calm,0);
+      if(has("footL"))rot(J.footL,0,(wL-kL)*.22+still*shift*.03,0);
+      if(has("thighR"))rot(J.thighR,0,-gait*.55*walking-still*(shift*.04),0);
+      if(has("shinR"))rot(J.shinR,0,-(kR*.85+still*Math.max(0,-shift)*.12)*calm,0);
+      if(has("footR"))rot(J.footR,0,-(wR-kR)*.22-still*shift*.03,0);
 
-      // Arms: swing counter to the same-side leg on local X.
-      if(has("armL"))rot(J.armL,gait*.38*swing+still*Math.sin(t*.8)*.02,0,RELAX.armL.z+still*w1*.015);
-      if(has("foreL"))rot(J.foreL,RELAX.foreL.x+still*Math.sin(t*.8+1)*.03+gait*.12*swing,0,0);
-      if(has("armR"))rot(J.armR,-gait*.38*swing-still*Math.sin(t*.8+1)*.02,0,RELAX.armR.z-still*w1*.015);
-      if(has("foreR"))rot(J.foreR,RELAX.foreR.x-still*Math.sin(t*.8+2)*.03-gait*.12*swing,0,0);
+      // Arms hang and drift against the weight. They do not swing as one piece.
+      if(has("armL"))rot(J.armL,gait*.45*swing+still*(Math.sin(t*.7)*.1+shift*.05),0,RELAX.armL.z+still*w1*.04);
+      if(has("foreL"))rot(J.foreL,RELAX.foreL.x+still*Math.sin(t*.7+.8)*.08+gait*.16*swing,0,0);
+      if(has("armR"))rot(J.armR,-gait*.45*swing-still*(Math.sin(t*.7+1.2)*.1-shift*.05),0,RELAX.armR.z-still*w1*.04);
+      if(has("foreR"))rot(J.foreR,RELAX.foreR.x-still*Math.sin(t*.7+2)*.08-gait*.16*swing,0,0);
 
-      // Torso: breath, weight shift, pose sway; pr pitches him forward for crawl/push-up.
-      if(has("spine2"))rot(J.spine2,(.02*br-pr*.55+(p.tr||0)*.004)*calm,(w2*.01)*calm,
-        (w1*.045+p.hr*.004+ (grooving?.05*Math.sin(t*3):0))*calm);
-      if(has("spine3"))rot(J.spine3,(.015*br+.01*w2-pr*.2)*calm,0,w1*.025*calm);
-      if(has("pelvis"))rot(J.pelvis,w2*.02*calm,0,w1*.025*calm);
+      // Torso: breath lifts the chest, the pelvis carries the weight shift.
+      if(has("spine2"))rot(J.spine2,(.07*br-pr*.55+(p.tr||0)*.004)*life,(look*.05)*life,
+        (shift*.09+p.hr*.004+(grooving?.08*Math.sin(t*3):0))*life);
+      if(has("spine3"))rot(J.spine3,(.05*br-pr*.2)*life,look*.04*life,shift*.04*life);
+      if(has("pelvis"))rot(J.pelvis,br*.015*life,0,shift*.1*life);
 
-      // Head/neck: gaze params scaled down; doze/dead droop forward (negative local Y = down).
+      // Head follows the shift late, and looks off-axis so he is not staring through the lens.
       const gx=(p.gx||0)/60,gy=(p.gy||0)/60;
-      if(has("neck1"))rot(J.neck1,-droop*.5-gy*.3,clamp(gx,-.5,.5)*.5,0);
-      if(has("neck2"))rot(J.neck2,-droop*.4,0,0);
-      if(has("head"))rot(J.head,-droop*.55-gy*.3+br*.01,clamp(gx,-.6,.6)*.6+Math.sin(t*.5)*.05*calm,w1*.015*calm);
+      if(has("neck1"))rot(J.neck1,-droop*.5-gy*.3+look2*.06*life,clamp(gx,-.5,.5)*.5+look*.08*life,shift*.03*life);
+      if(has("neck2"))rot(J.neck2,-droop*.4+br*.02*life,look*.05*life,0);
+      if(has("head"))rot(J.head,-droop*.55-gy*.3+br*.025*life,clamp(gx,-.6,.6)*.6+look*.16*life,shift*.04*life);
 
       // Face: jaw while "talking", scheduled blink, doze/dead hold eyes shut, mood shapes.
       const talking=!!st.talking;

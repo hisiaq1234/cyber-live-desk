@@ -95,7 +95,7 @@ of a Kai Cenat or Speed desktop stream, but happening in the real world.
 - He **ranks and recognises** them. Games, competitions, achievements. When chat beats him at
   something, he acknowledges it — ranks them, rates them, gives them something that tells them they
   are higher than they were yesterday.
-- That is the FOMO, and it has to be honest: a real rank, a real record, a real reason to come back
+- That is the pull, and it has to be honest: a real rank, a real record, a real reason to come back
   tomorrow.
 
 ---

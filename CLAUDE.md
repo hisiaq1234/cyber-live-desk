@@ -39,10 +39,11 @@ his weight changes is **width and mass only**:
 
 - **Height is fixed.** Top of head and soles of feet sit at the same y on every stage of the ladder.
 - **Head size is fixed.** No stage has a smaller or larger head than another.
-- **Weight = width.** A heavier stage is wider through the torso, hips, arms and legs, at the same
-  height, in the same pose, wearing the same outfit.
-- **Snap's `body=2` is short-and-heavy — it makes him short. Do not use it.** Only `body=0` (lean)
-  and `body=1` (average) are acceptable as ladder stages, and only if they hold the same height.
+- **Weight = width and mass.** A heavier stage carries more through the torso, hips, arms and legs,
+  at the same height, in the same pose, wearing nothing.
+- **Snap's renderer gives exactly seven distinct front-facing builds** — `body=3,0,4,5,1,11,2`,
+  lean -> heavy; every other value duplicates one of them. All seven are measured to the same ink
+  height and head top (`ladder.json`), so none of them is short.
 - Never scale the whole sprite down to fit a layout. Fix the layout.
 
 ### No cloth
@@ -107,11 +108,9 @@ first, because that is where thin lines, small faces and floating props die.
 
 The owner's current arc, in order. Do not skip ahead; each step is the foundation of the next.
 
-1. **Body ladder, rebuilt from one render.** Three real Crid builds from Snap's renderer at
-   `rotation=0` — lean / average / heavier — same pose, same outfit, same height, width only.
-   Spec: `docs/specs/body-ladder.md`. Build with `scripts/build-body-ladder.py`, then re-cut the rig
-   with `scripts/build-crid-rig.py` **from the same front render**, so limbs and flat drawing are
-   the same drawing.
+1. ~~**Body ladder, rebuilt from one render.**~~ **Done:** seven real builds from Snap's renderer
+   at `rotation=0` — `body=3,0,4,5,1,11,2`, lean -> heavy — same pose, same height, width and mass
+   only. Built by `scripts/build-body-ladder.py`; measured into `ladder.json`.
 2. **Rig on every stage.** Today `public/desk-assets/crid/rig.json` is cut from the lanky body only,
    so walk / crawl / climb / push-up swap in a different person's limbs. Every stage needs a rig cut
    from itself.

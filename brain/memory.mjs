@@ -2,7 +2,7 @@
  *
  * Four kinds of thing are kept, all in RAM, per session:
  *   chat    — the recent conversation (ring, last 200)
- *   moments — notable live events, the honest FOMO record ("what happened while you were gone")
+ *   moments — notable live events, the honest record ("what happened while you were gone")
  *   actions — Crid's OWN past actions and the moment each belonged to, with timestamps
  *   topics  — token frequency, so a repeated subject is detectable rather than invisible
  *
@@ -58,7 +58,7 @@ export class SessionMemory {
     return entry;
   }
 
-  /** A notable event (sub / gift / bits / raid) becomes a moment: the FOMO record. */
+  /** A notable event (sub / gift / bits / raid) becomes a moment: the record. */
   recordNotable(evt) {
     this.notable.push(evt);
     if (this.notable.length > this.maxChat) this.notable.shift();

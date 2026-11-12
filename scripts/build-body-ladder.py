@@ -9,9 +9,12 @@ change therefore swapped the pose, the head size and the silhouette — it read 
 not the same man heavier.
 
 Snap's renderer takes a `body` parameter and returns the same avatar in the same front-facing pose at
-genuinely different builds, so the ladder is now three real builds, not seven warps of one drawing:
+genuinely different builds, so the ladder is seven real builds, not warps of one drawing. The owner
+explored body=0..12 against the endpoint: 4/6/7/8/9/10/12 all return the same picture as body=4, so
+the distinct builds are these seven, ordered lean -> heavy by measured ink:
 
-    body=0  lean      body=1  average      body=2  heavy (belly, thicker limbs, same head)
+    body=3  leanest    body=0  lean    body=4  light    body=5  average
+    body=1  full       body=11 heavy   body=2  heaviest (belly, thicker limbs, same head)
 
 Everything about the pose is identical across the three because it is one render: the head top, the
 feet, the stance and the base body are the same pixels. Only the build changes. Anything the desk
@@ -19,8 +22,9 @@ wants between them is the renderer's own sub-step stretch, never a new drawing.
 
 WHERE THE FRAMES COME FROM
 --------------------------
-`--fetch` asks preview.bitmoji.com/avatar-builder-v3/preview/body at scale=3, rotation=0, for body=0,
-1 and 2, and writes the masters to views/body-<n>-r0.png (1050x1400 PNG, the API's own size). The face
+`--fetch` asks preview.bitmoji.com/avatar-builder-v3/preview/body at scale=3, rotation=0, for the
+seven distinct builds, and writes the masters to views/body-<n>-r0.png (1050x1400 PNG, the API's own
+size). The face
 is the one the desk already ships — the parameters in fetch-crid-views.mjs, with the two gold hoops —
 because crid-ladder-spec.md's recipe renders a different man: no earrings, a solid handlebar moustache
 instead of the split one, a rounder hair line and heavy blush. There is no `outfit` parameter at all:
@@ -31,7 +35,7 @@ rejected with HTTP 400, so the parameter is simply omitted.
 FRAMING (what crid-bot.js assumes: INK_BOTTOM, FIG_X, FIG_Y)
 -----------------------------------------------------------
 Snap already returns the figure at 1050x1400 with the ink bottom on y=1322 and the mid-torso on
-x≈527.5, identically for all three bodies, so the framing is a pure translation: +3px down puts the
+x≈527.5, identically for all seven bodies, so the framing is a pure translation: +3px down puts the
 ink bottom on y=1325, +32px right puts the mid-torso on x=560. One shared shift, taken from the lean
 frame, so the head lands on the same pixels in every stage and the face cannot jump when the build
 changes.
@@ -39,7 +43,7 @@ changes.
 Needs Pillow (not a runtime dependency — this is a one-off asset tool):
   python3 -m pip install pillow
 
-  python3 scripts/build-body-ladder.py --fetch    # download the three masters from Snap
+  python3 scripts/build-body-ladder.py --fetch    # download the seven masters from Snap
   python3 scripts/build-body-ladder.py            # frame + measure: frames, ladder.json
   python3 scripts/build-body-ladder.py --measure  # print the ink box of every shipped frame
   python3 scripts/build-body-ladder.py --sheet OUT.png   # comparison sheet at 336px and 150px
@@ -63,9 +67,10 @@ AXIS = 560            # torso axis, the x crid-bot.js maps onto the sprite centr
 ALPHA_MIN = 8
 QUALITY = 88          # webp quality: a 1050x1400 frame still has to be light to load on air
 
-BODIES = [0, 1, 2]    # lean, average, heavy
-SUB_STEPS = [0, 8, 16]
-BODY_NAMES = {0: "lean", 1: "average", 2: "heavy"}
+BODIES = [3, 0, 4, 5, 1, 11, 2]   # leanest -> heaviest, the seven distinct builds
+SUB_STEPS = [0, 4, 8, 12, 16, 20, 24]
+BODY_NAMES = {3: "leanest", 0: "lean", 4: "light", 5: "average",
+              1: "full", 11: "heavy", 2: "heaviest"}
 
 # The Snap recipe. The face is the one the desk ships (fetch-crid-views.mjs). No `outfit` — the
 # owner's rule is no cloth, and `outfit=-1` answers 400; the clothing qualifiers that go with an
@@ -181,11 +186,17 @@ def build_all():
               f"x {got['x0']}..{got['x1']}  cx {got['cx']}  top {got['y0']}  "
               f"bottom {got['bottom']}  {p.name}  {p.stat().st_size / 1024:.0f} KB")
 
-    # Movement follows the build: the wider he is, the slower and heavier he moves. Derived from the
-    # widths measured here, so the numbers the renderer uses are the numbers the frames have.
-    span = widths[-1] - widths[0]
+    # Movement follows the build: the more mass he carries, the slower and heavier he moves.
+    # The builds differ in mass more than in silhouette width — only the heaviest frame is
+    # measurably wider — so the ramp runs on ink area, the number that actually tracks it.
+    areas = []
     for s in stages:
-        t = (s["ink"]["w"] - widths[0]) / span
+        a = Image.open(CRID / s["file"]).convert("RGBA").getchannel("A")
+        areas.append(sum(a.histogram()[ALPHA_MIN + 1:]))
+        s["area"] = areas[-1]
+    span = areas[-1] - areas[0]
+    for s, area in zip(stages, areas):
+        t = (area - areas[0]) / span
         s["slow"] = round(1 + 0.45 * t, 3)
         s["heft"] = round(0.86 + 0.59 * t, 3)
 
@@ -215,7 +226,7 @@ def measure():
 
 
 def sheet(out_path):
-    """The three stages at the two sizes he is actually judged at: 336px on a 1920 stream, and the
+    """The seven stages at the two sizes he is actually judged at: 336px on a 1920 stream, and the
     150px phone width. If a limb disappears at 150px the silhouette is wrong."""
     sizes = [336, 150]
     pad, label_h, gap = 24, 54, 26
@@ -242,7 +253,7 @@ def sheet(out_path):
     except OSError:
         font = bold = small = ImageFont.load_default()
 
-    d.text((pad, pad - 4), "Crid body ladder — one Snap render at rotation 0, three builds",
+    d.text((pad, pad - 4), "Crid body ladder — one Snap render at rotation 0, seven builds",
            fill=(244, 240, 255, 255), font=bold)
     y = pad + 26
     for w, tiles in rows:

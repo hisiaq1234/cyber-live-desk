@@ -122,7 +122,7 @@ export class InitiativeEngine {
       evt.prior = prior ? { name: prior.name, first: prior.first, last: prior.last, count: prior.count } : null;
       this.memory.recordChat(e);
     } else {
-      // notable events become moments — the honest FOMO record — and carry their id
+      // notable events become moments — the honest record — and carry their id
       // so the action Crid takes can be tied back to the moment it belongs to.
       const moment = this.memory.recordNotable(e);
       evt.momentId = moment.id;
@@ -694,7 +694,7 @@ export const QUIET_RULES = [
       return {
         rule: rule.id,
         priority: rule.priority,
-        why: `${count} real moments during a ${fmtMins(silence)} lull — honest FOMO, nothing invented`,
+        why: `${count} real moments during a ${fmtMins(silence)} lull — honest record, nothing invented`,
         commands: [
           memCmd("since-left", `${count} moments while you were gone`, {
             moments: moments.map((m) => ({ label: m.label, ago: ctx.memory.ago(m.ts, ctx.now) })),

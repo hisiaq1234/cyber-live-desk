@@ -42,7 +42,7 @@ The owner has said it plainly — *he is never short*. So:
   Two honest stages beat three where one is a different person.
 - Anything between stages is a small (±4 %) warp of the neighbouring render, never a new drawing.
 
-## Exact source recipe (front-facing, one outfit)
+## Exact source recipe (front-facing, no clothes)
 
 `https://preview.bitmoji.com/avatar-builder-v3/preview/body?scale=3&gender=1&style=5&rotation=0`
 plus:
@@ -50,7 +50,12 @@ plus:
 face_lines=1366 glasses=-1 hair=1657 hat=-1 jaw=1392 mouth=2337 nose=1482
 beard_tone=0x181b1a blush_tone=16754088 brow_tone=0x181b1a eyeshadow_tone=-1 hair_tone=0x272b2a
 hair_treatment_tone=0x332b28 lipstick_tone=16740668 pupil_tone=0x5b341c skin_tone=0x935d37
-face_proportion=13 eye_spacing=0 eye_size=2 outfit=990491 body=<0|1|2>`
+face_proportion=13 eye_spacing=0 eye_size=2 body=<0|1>`
+
+**No `outfit` parameter.** The owner's direction is *no cloth*: he renders as the base body, with no
+camo cargos, no tee, no straps and no shoes. Omit it entirely — `outfit=-1` is rejected with HTTP 400,
+and the old camo outfit id `990491` must not be passed any more. Send the `*_tone` values as decimal
+integers; writing them as hex strings in the URL also gets you a 400 with an empty body.
 
 The same recipe is machine-readable in `docs/crid-avatar-params.json`.
 

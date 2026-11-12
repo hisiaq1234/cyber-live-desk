@@ -1010,7 +1010,23 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     const d=snap.drives;
     if(!d)return;
     being=createBeing({now:Date.now(),targets:deskTargets,...beingOpts,
-      drives:beingOffline({energy:+d.energy,boredom:+d.boredom,attention:+d.attention},dtMs)});
+      drives:beingOffline({energy:+d.energy,boredom:+d.boredom,attention:+d.attention},dtMs),
+      ...(Number.isFinite(snap.floorX)?{lastX:snap.floorX}:{})});
+    // floorX is where he was standing when the page was last alive: 0..1 across the same
+    // clock-to-strip band getBeing() measures. The brain's copy was seeded above; here his
+    // body goes there too — a page load is not a walk, so he is placed, not sent strolling.
+    // roam is the free-positioning class startWalk() also uses, and the height he had is kept
+    // by re-reading his own rect, the same convention a staged walk's y uses. Done before the
+    // bag restore below so a dropped bag's floor line is measured off where he actually is.
+    if(Number.isFinite(snap.floorX)&&!walk&&!leanAt&&!pendingLean){
+      const lo=minCenterX(),hi=Math.min(92,maxCenterX());
+      if(hi>lo){
+        const cx=clamp(lo+(hi-lo)*clamp(snap.floorX,0,1),1.5,98.5),
+          r=pct(host.getBoundingClientRect());
+        host.classList.remove(...homeCls); host.classList.add("roam");
+        host.style.left=`${cx}%`; host.style.top=`${r.y}%`; home=null;
+      }
+    }
     // The dropped bag is the one physical trace worth resurrecting: it lies exactly where it
     // fell, on the same floor line, until he decides to pick it up again. Restoring it is a
     // plain physics body at rest — placeBag() puts the element on it from the next tick.

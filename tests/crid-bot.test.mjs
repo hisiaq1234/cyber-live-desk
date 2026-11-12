@@ -406,3 +406,46 @@ test("a dropped bag is restored where it fell, and getBeing reports it back", as
   assert.ok(snap.bag.y >= 0 && snap.bag.y <= 1, `the bag y stays normalized, got ${snap.bag.y}`);
   bot.destroy();
 });
+
+test("a saved floorX puts him back where he was standing on load", async () => {
+  // Phase D restore: floorX is 0..1 across the clock-to-strip band getBeing() writes. With no
+  // plates in the fake DOM, minCenterX() falls back to 8 and maxCenterX() is
+  // (1920 - 336/2 - 10)/1920*100 = 90.729… (host.offsetWidth is 0 → innerWidth*.175).
+  const root = installDom();
+  const bot = createCridBot({ root, step: 12, position: "bc" });
+  const savedAt = Date.now();
+  bot.observe({ bot: { on: true, being: { v: 1, savedAt,
+    drives: { energy: 50, boredom: 50, attention: 50 },
+    floorX: 0.25, bag: { worn: true } } } });
+  const lo = 8, hi = Math.min(92, (1920 - (1920 * 0.175) / 2 - 10) / 1920 * 100),
+    expect = lo + (hi - lo) * 0.25;
+  assert.ok(bot.el.classList.contains("roam"), "he is placed on the floor band, not left on his home anchor");
+  assert.ok(Math.abs(parseFloat(bot.el.style.left) - expect) < 0.05,
+    `floorX 0.25 maps to ${expect.toFixed(2)}%, got ${bot.el.style.left}`);
+  bot.destroy();
+});
+
+test("a snapshot without floorX leaves him exactly where boot put him", async () => {
+  const root = installDom();
+  const bot = createCridBot({ root, step: 12, position: "bc" });
+  const savedAt = Date.now();
+  bot.observe({ bot: { on: true, being: { v: 1, savedAt,
+    drives: { energy: 50, boredom: 50, attention: 50 },
+    bag: { worn: true } } } });
+  assert.ok(!bot.el.classList.contains("roam"), "no floorX, no placement — old behaviour");
+  assert.ok(!bot.el.style.left, "his home anchor is untouched");
+  bot.destroy();
+});
+
+test("an out-of-range floorX clamps to the ends of the floor band", async () => {
+  const root = installDom();
+  const bot = createCridBot({ root, step: 12, position: "bc" });
+  const savedAt = Date.now();
+  bot.observe({ bot: { on: true, being: { v: 1, savedAt,
+    drives: { energy: 50, boredom: 50, attention: 50 },
+    floorX: 4, bag: { worn: true } } } });
+  const hi = Math.min(92, (1920 - (1920 * 0.175) / 2 - 10) / 1920 * 100);
+  assert.ok(Math.abs(parseFloat(bot.el.style.left) - hi) < 0.05,
+    `floorX 4 clamps to the strip end ${hi.toFixed(2)}%, got ${bot.el.style.left}`);
+  bot.destroy();
+});

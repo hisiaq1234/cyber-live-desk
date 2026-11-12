@@ -16,6 +16,8 @@ import { createCridAudioSync } from "./crid-audio.js";
      swae=0 | 1                (force the snapshot-safe style off / on)
      theme=cyber|creative|torn-paper   (default cyber; the theme CSS is ./cyber-theme.js)
      scene=pip                 pip.w=10–60 pip.h=10–60 (% of viewport)
+     bg=0                      (removes the room behind the desk — navy sky, grid, horizon glow
+                                and floor line — and leaves the transparent page OBS keys out)
      bot=0 | bl|bc|br          bot.x=0–100 bot.y=0–100  (CRID mascot; 0 restores the sound orb; default bc, the centre column)
      bot.scale=0.4–2.5         (mascot size multiplier on top of the theme's broadcast size; default 1)
      clock=0 | 1               (bottom-left clock plate; on by default)
@@ -36,6 +38,7 @@ import { createLayerRegistry } from "./layers.mjs";
 import { createLogo, LOGO_POSITIONS, LOGO_MARKS } from "./logo.js";
 import { CYBER_CSS } from "./cyber-theme.js";
 import { youtubeEmbedUrl } from "./youtube-embed.js";
+import { createScene, SCENE_CSS } from "./scene.js";
 
 (() => {
   "use strict";
@@ -927,7 +930,7 @@ html.swae #desk .letters{background:#0b0d12f5}
 
   // ---------- mount ----------
   const style = document.createElement("style");
-  style.textContent = CSS + CYBER_CSS + LETTERS_CSS;
+  style.textContent = CSS + CYBER_CSS + LETTERS_CSS + SCENE_CSS;
   document.head.append(style);
 
   const slot = h("div", "slot");
@@ -998,6 +1001,14 @@ html.swae #desk .letters{background:#0b0d12f5}
     // operator can shrink or grow him from the browser source URL without a code change.
     scale: num("bot.scale", 1, 0.4, 2.5),
   });
+  // The room behind the desk. The page ships with a transparent body so the same /desk file can be
+  // loaded straight into OBS and keyed out, which in a browser left the cards on the browser's own
+  // white canvas. This draws the room inside the page instead, and prepends it so it paints before
+  // every panel. ?bg=0 drops it and gives back the transparent page an OBS source needs.
+  // It is the cyber theme's room only: the other two themes are paper, not a dark set.
+  const SCENE_OFF = ["0", "off", "false"].includes(String(P.get("bg") || "").toLowerCase());
+  if (theme === "cyber" && !SCENE_OFF) document.body.prepend(createScene({ bot }));
+
   // The cue channel: one gesture, feeling or line the desk has been told to perform. It is read
   // off the same poll as everything else and drained once per stamp (see cue.mjs), then handed to
   // CRID as a cue — queued behind whatever he is already doing, never stacked on it.

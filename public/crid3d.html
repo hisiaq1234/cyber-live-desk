@@ -130,6 +130,16 @@ const STAGE=/view=portrait/.test(location.search)?false:true;
 const VIEW_H=STAGE?3.6:2.05;           // world units top-to-bottom, model is ~1.7 tall
 const camTarget=new THREE.Vector3(0,STAGE?.95:.86,0);
 
+// --- mass: which build he is, from ?stage=<ladder key> (physics.md §The world) ---
+// The same seven keys the 2D ladder and the desk rig use. Mass, not girth, is what the
+// struggle maths reads: lean Crid fights the bag and the lip harder than heavy Crid does.
+const STAGE_MASS={"3":.80,"0":.92,"4":.95,"5":1.05,"1":1.10,"11":1.20,"2":1.30};
+const stageParam=new URLSearchParams(location.search).get("stage");
+const mass=STAGE_MASS[stageParam]||1;
+// ?slip=1 forces the slip roll to fail on purpose — the struggle is checkable without
+// waiting for the dice, same as ?cue= is for the clips.
+const forceSlip=/[?&]slip=1/.test(location.search);
+
 const turn=new THREE.Group(); scene.add(turn);      // camera orbit lives here
 const body=new THREE.Group(); turn.add(body);       // root motion lives here (he changes where he is)
 const loader=new GLTFLoader();
@@ -437,7 +447,8 @@ window.CRID={cue,clip:playClip,state:()=>({clip:clipName,idle:true,bag:!!(bagPiv
   stage:()=>({state:stage.state,layer:stage.layer,surface:stage.surface&&stage.surface.name,
     x:+walkX.toFixed(3),feetY:+stage.groundY.toFixed(3),roll:+stage.roll.toFixed(3),
     topY:+stage.topY.toFixed(3),trace:stage.trace,reason:stage.reason,abandoned:stage.abandoned,
-    walking:stage.walking,offer:layerTargets(),layers:layers.snapshot()}),
+    walking:stage.walking,mass,bag:bagOn(),slip:+slipChance().toFixed(3),stumble:+stage.stumble.toFixed(2),
+    offer:layerTargets(),layers:layers.snapshot()}),
   // a read-out of where the rig actually is, so the idle can be checked without eyes
   probe:()=>{const p=n=>{const b=bones[n];return b?b.getWorldPosition(new THREE.Vector3()).toArray().map(v=>+v.toFixed(4)):null};
     return {head:p("C_head_bind_JNT"),chest:p("C_spine0003_bind_JNT"),handL:p("L_hand0001_bind_JNT"),hip:p("C_pelvis0001_bind_JNT"),
@@ -495,6 +506,9 @@ loader.load("./desk-assets/crid3d/crid.glb",g=>{
   // a cue can also arrive in the URL, for testing the clips one at a time
   const q=new URLSearchParams(location.search);
   if(q.get("cue")) setTimeout(()=>cue(q.get("cue"),"url"),400);
+  // ?climb=1 sends him at the lowest reachable panel on load — the struggle, on demand
+  if(q.get("climb")) setTimeout(()=>{const l=(layerTargets().climb||[])[0];
+    if(l)begin({key:"climb",layer:l,phase:"start"})},900);
   if(q.get("yaw")) yaw=Number(q.get("yaw"))||yaw;
   document.getElementById("state").textContent="idle · nobody is driving him";
 },undefined,e=>{document.getElementById("state").textContent="load failed: "+e.message});
@@ -603,12 +617,21 @@ const stage={
   state:"floor", key:null, layer:null, side:"right", t:0,
   targetX:0, groundY:0, roll:0, pitch:0, topY:0, lipX:0, seatY:0,
   fromX:0, fromY:0, fromRoll:0, fromPitch:0, surface:null, walking:false, hold:0,
-  abandoned:false, trace:"floor", reason:""
+  abandoned:false, trace:"floor", reason:"",
+  slipFromX:0, slipFromY:0, slipRolled:!1, stumble:0
 };
-const TRANSIENT=["approach","reach","pull","crouch","drop","settle","lean-in","push-off","hop","hop-down"];
+const TRANSIENT=["approach","reach","pull","crouch","drop","settle","lean-in","push-off","hop","hop-down","slip","recover"];
 let lastSurfaceCheck=0;
 
 function go(state){ stage.state=state; stage.t=0; }
+
+// physics.md §2 — a climb is an attempt with a cost. The bag is a drag on a lean man:
+// the lighter he is and the more he is carrying, the more the lip can beat him, and
+// heavy Crid does not slip at all. Rolled once per pull, when his weight commits.
+const bagOn=()=>!!(bagPivot&&bagPivot.visible);
+function slipChance(){
+  return bagOn()?clamp((1.10-mass)*.9,0,.38):clamp((1.02-mass)*.35,0,.12);
+}
 
 function endStage(){
   if(!stage.abandoned && stage.key) stage.trace=stage.key+" · done";
@@ -651,7 +674,7 @@ function begin(intent){
   stage.key=intent.key; stage.layer=intent.layer; stage.side=s.side;
   stage.topY=s.top; stage.targetX=s.x; stage.fromX=s.x; stage.fromY=0;
   stage.lipX=s.side==="right"?s.r-lip:s.l+lip;
-  stage.abandoned=false; stage.reason="";
+  stage.abandoned=false; stage.reason=""; stage.slipRolled=false; stage.stumble=0;
   go("approach");
   return true;
 }
@@ -724,6 +747,12 @@ function stageStep(dt,intent,nowMs){
       break;
     }
     case "pull": {                               // the feet leave the floor and land on the top
+      // Committed a third of the way up, the lip gets one verdict. A slip is a state,
+      // not a glitch: he slides back down and pays a recovery beat before the trace moves on.
+      if(!stage.slipRolled&&stage.t>=0.22){stage.slipRolled=true;
+        if(forceSlip||Math.random()<slipChance()){
+          stage.slipFromX=walkX; stage.slipFromY=stage.groundY;
+          stage.trace="climb · slipping"; go("slip"); break}}
       const e=ease(stage.t/0.75);
       stage.groundY=stage.topY*e;
       walkX=stage.fromX+(stage.lipX-stage.fromX)*e;
@@ -734,6 +763,20 @@ function stageStep(dt,intent,nowMs){
       }
       break;
     }
+    case "slip": {                               // hands lose the lip: slide back down the face
+      const e=ease(stage.t/0.8);
+      stage.groundY=stage.slipFromY*(1-e);
+      walkX=stage.slipFromX+(stage.fromX-stage.slipFromX)*e;
+      if(stage.t>=0.8){stage.groundY=0;walkX=stage.fromX;stage.surface=null;go("recover")}
+      break;
+    }
+    case "recover":                              // the scramble: a beat on the floor, then done
+      stage.walking=false;
+      if(stage.t>=1.0){
+        stage.abandoned=true; stage.reason="slip";
+        stage.trace="climb · abandoned (slip)";
+        being.interrupt("slip"); stage.surface=null; endStage()}
+      break;
     case "top": {                                // standing on it, drifting along the top
       stage.groundY=stage.topY;
       const b=boxOf(stage.layer);
@@ -852,6 +895,16 @@ function tick(now){
 
   // --- root motion: the stage owns the target, the walk owns the travelling --
   stageStep(dt,intent,now);
+
+  // physics.md §3 — a bag swinging on its lag can take his feet out from under him.
+  // The lighter he is, the less swing it takes to stagger him; heavy Crid barely rocks.
+  // It is an impulse he recovers from, not a state: a beat of flail, then the floor is his.
+  if(bagOn()&&stage.state==="floor"&&stage.stumble<=0){
+    const swing=Math.abs(S.bag.v)+Math.abs(S.bagX.v);
+    if(swing>.55*mass)stage.stumble=.7;
+  }
+  if(stage.stumble>0)stage.stumble=Math.max(0,stage.stumble-dt);
+
   const energy=plan.drives.energy;
   const speed=0.42*(energy>70?1.06:energy<40?0.90:1)*(stage.groundY>0.02?0.7:1);   // §9.2
   const walking=stage.walking&&Math.abs(stage.targetX-walkX)>0.015;
@@ -927,6 +980,18 @@ function tick(now){
     C.armFwdL+=0.30*u; C.armFwdR+=0.30*u;
     C.kneeL+=Math.sin(s*1.9)*0.10*u; C.kneeR+=Math.sin(s*1.9+1.2)*0.10*u;   // the legs swing
   }
+  // the struggle beats (physics.md §2): a slip scrabbles, a stumble flails, a recover crouches
+  if(stage.state==="slip"){const u=clamp(stage.t/.8,0,1);
+    C.legFwdL+=Math.sin(stage.t*22)*.3*u; C.legFwdR-=Math.sin(stage.t*22)*.3*u;
+    C.kneeL+=.5*u; C.kneeR+=.5*u; C.leanFwd+=.22*u;
+    C.armLiftL+=1.2*u; C.armLiftR+=1.2*u; C.headPitch+=.2*u;}
+  if(stage.state==="recover"){const u=clamp(stage.t/1,0,1);
+    C.kneeL+=.55*u; C.kneeR+=.55*u; C.leanFwd+=.18*u;
+    C.armLiftL+=.4*u; C.armLiftR+=.4*u;}
+  if(stage.stumble>0){const u=stage.stumble/.7;
+    C.leanFwd+=.20*u; C.rootY-=.035*u; C.headPitch+=.18*u;
+    C.armLiftL+=.9*u; C.armLiftR+=.9*u; C.elbowL+=.7*u; C.elbowR+=.7*u;
+    C.kneeL+=.35*u; C.kneeR+=.35*u;}
 
   applyChannels(C);
   applyAcc();
@@ -974,6 +1039,8 @@ function tick(now){
   if(stageEl) stageEl.textContent=
     "stage: "+stage.state+(stage.layer?" · "+stage.layer:"")+
     " · feet y "+stage.groundY.toFixed(2)+
+    " · mass "+mass.toFixed(2)+
+    (bagOn()?" · bag":" · no bag")+
     (stage.roll?" · lean "+stage.roll.toFixed(2):"")+
     " · trace: "+stage.trace;
 }

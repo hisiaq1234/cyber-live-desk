@@ -36,12 +36,12 @@ function rigVisible(el){
     if(n.attrs&&n.attrs.class==="rig") vis=n.attrs.display; (n.children||[]).forEach(walk); }; walk(el); return vis;
 }
 
-test("the rig is mounted and visible at rest, not only mid-stride (living idle, base body 000)", async () => {
+test("the rig is mounted and visible at rest, not only mid-stride (living idle, lean stage 3)", async () => {
   const bot=createCridBot({root:dom(),step:12,position:"bc"});
   bot.observe({bot:{on:true}});
   await sleep(60);
   assert.equal(rigVisible(bot.el),"", "the rig group must be displayed while he is standing still");
-  assert.equal(bot.stage.key,"0", "lean body stage is the only articulated rig");
+  assert.equal(bot.stage.key,"3", "the lean stage is the only articulated rig");
   bot.destroy();
 });
 

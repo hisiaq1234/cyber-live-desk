@@ -7,3 +7,7 @@ node_modules/
 # Local scratch: staged deliverable copies and agent caches
 .work/
 .manus/
+
+# Local env files and Python cache
+.env*.local
+__pycache__/

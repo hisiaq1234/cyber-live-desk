@@ -9,9 +9,12 @@ change therefore swapped the pose, the head size and the silhouette — it read 
 not the same man heavier.
 
 Snap's renderer takes a `body` parameter and returns the same avatar in the same front-facing pose at
-genuinely different builds, so the ladder is now three real builds, not seven warps of one drawing:
+genuinely different builds, so the ladder is seven real builds, not warps of one drawing. The owner
+explored body=0..12 against the endpoint: 4/6/7/8/9/10/12 all return the same picture as body=4, so
+the distinct builds are these seven, ordered lean -> heavy by measured ink:
 
-    body=0  lean      body=1  average      body=2  heavy (belly, thicker limbs, same head)
+    body=3  leanest    body=0  lean    body=4  light    body=5  average
+    body=1  full       body=11 heavy   body=2  heaviest (belly, thicker limbs, same head)
 
 Everything about the pose is identical across the three because it is one render: the head top, the
 feet, the stance and the base body are the same pixels. Only the build changes. Anything the desk
@@ -19,27 +22,25 @@ wants between them is the renderer's own sub-step stretch, never a new drawing.
 
 WHERE THE FRAMES COME FROM
 --------------------------
-`--fetch` asks preview.bitmoji.com/avatar-builder-v3/preview/body at scale=3, rotation=0, for body=0,
-1 and 2, and writes the masters to views/body-<n>-r0.png (1050x1400 PNG, the API's own size). The face
-is the one the desk already ships — the parameters in fetch-crid-views.mjs, with the two gold hoops —
-because crid-ladder-spec.md's recipe renders a different man: no earrings, a solid handlebar moustache
-instead of the split one, a rounder hair line and heavy blush. There is no `outfit` parameter at all:
-the owner's rule is *no cloth*, so he renders as Snap's base body — no camo cargos, no backpack
-straps and no shoes, only the renderer's own plain base layer over bare feet. `outfit=-1` is
-rejected with HTTP 400, so the parameter is simply omitted.
+`--fetch` asks preview.bitmoji.com/bm-preview/v3/avatar/body — the endpoint the owner's own
+avatar URL uses (scripts/fetch-crid-views.mjs in the CRID archive) — at scale=2, rotation=0,
+for the seven distinct builds, masters downscaled to 1050x1400. The face is the one the desk
+ships: the RECIPE constant below is that avatar URL verbatim with `body` left free and the
+backpack removed (`bag=-1`) — the bag is a prop he carries, not part of his render. He wears
+Snap's minimum: a bare chest, the camo trousers, socks and shoes from the recipe. Snap has no
+nude render — its floor is this under-layer, and it is the same on every stage.
 
 FRAMING (what crid-bot.js assumes: INK_BOTTOM, FIG_X, FIG_Y)
 -----------------------------------------------------------
-Snap already returns the figure at 1050x1400 with the ink bottom on y=1322 and the mid-torso on
-x≈527.5, identically for all three bodies, so the framing is a pure translation: +3px down puts the
-ink bottom on y=1325, +32px right puts the mid-torso on x=560. One shared shift, taken from the lean
-frame, so the head lands on the same pixels in every stage and the face cannot jump when the build
-changes.
+Snap already returns the figure at 1050x1400 with the ink bottom near y=1319 and the mid-torso
+near x≈526, identically for all seven bodies, so the framing is a pure translation onto
+GROUND=1325 / AXIS=560. One shared shift, taken from the lean frame, so the head lands on the
+same pixels in every stage and the face cannot jump when the build changes.
 
 Needs Pillow (not a runtime dependency — this is a one-off asset tool):
   python3 -m pip install pillow
 
-  python3 scripts/build-body-ladder.py --fetch    # download the three masters from Snap
+  python3 scripts/build-body-ladder.py --fetch    # download the seven masters from Snap
   python3 scripts/build-body-ladder.py            # frame + measure: frames, ladder.json
   python3 scripts/build-body-ladder.py --measure  # print the ink box of every shipped frame
   python3 scripts/build-body-ladder.py --sheet OUT.png   # comparison sheet at 336px and 150px
@@ -63,25 +64,38 @@ AXIS = 560            # torso axis, the x crid-bot.js maps onto the sprite centr
 ALPHA_MIN = 8
 QUALITY = 88          # webp quality: a 1050x1400 frame still has to be light to load on air
 
-BODIES = [0, 1, 2]    # lean, average, heavy
-SUB_STEPS = [0, 8, 16]
-BODY_NAMES = {0: "lean", 1: "average", 2: "heavy"}
+BODIES = [3, 0, 4, 5, 1, 11, 2]   # leanest -> heaviest, the seven distinct builds
+SUB_STEPS = [0, 4, 8, 12, 16, 20, 24]
+BODY_NAMES = {3: "leanest", 0: "lean", 4: "light", 5: "average",
+              1: "full", 11: "heavy", 2: "heaviest"}
 
-# The Snap recipe. The face is the one the desk ships (fetch-crid-views.mjs). No `outfit` — the
-# owner's rule is no cloth, and `outfit=-1` answers 400; the clothing qualifiers that go with an
-# outfit (clothing_type / is_tucked / ua / breast) are gone with it. Tones are decimal integers:
-# the endpoint also answers 400 to 0x… values.
-API = "https://preview.bitmoji.com/avatar-builder-v3/preview/body"
+# The Snap recipe — the owner's own avatar URL (fetch-crid-views.mjs in the CRID archive), with
+# `body` filled per stage by query() and the backpack taken off (`bag=-1`, its tones dropped with
+# it): the bag is a prop, not clothing. Everything else is verbatim — trousers, socks, shoes,
+# the gold hoops, the whole face. Tones are decimal integers: the endpoint answers 400 to 0x…
+# values. `scale` is overridden per request in query() — the fetch is a 2100x2800 master.
+API = "https://preview.bitmoji.com/bm-preview/v3/avatar/body"
 RECIPE = (
-    "scale=3 gender=1 style=5 rotation=0 "
-    "beard=8696 brow=1538 cheek_details=-1 ear=1424 eye=1626 eyelash=-1 eye_details=-1 "
-    "face_lines=-1 glasses=-1 hair=1657 hat=-1 jaw=1396 mouth=2338 nose=1449 "
+    "scale=2 gender=1 style=5 rotation=0 bag=-1 "
+    "beard=8696 body=0 bottom=10001984 "
+    "bottom_tone1=0 bottom_tone10=0 bottom_tone2=0 bottom_tone3=0 bottom_tone4=0 "
+    "bottom_tone5=0 bottom_tone6=0 bottom_tone7=0 bottom_tone8=0 bottom_tone9=0 "
+    "breast=0 brow=1538 brow_tone=1579802 cheek_details=-1 clothing_type=1 ear=1424 "
     "earringL_lobe1=5 earringL_lobe1_tone1=16763909 earringL_lobe1_tone2=16763909 "
     "earringL_lobe1_tone3=16763909 earringL_lobe1_tone4=16763909 "
     "earringR_lobe1=5 earringR_lobe1_tone1=16763909 earringR_lobe1_tone2=16763909 "
     "earringR_lobe1_tone3=16763909 earringR_lobe1_tone4=16763909 "
-    "face_proportion=10 eye_spacing=0 eye_size=0 "
-    "brow_tone=1579802 hair_tone=2039326 pupil_tone=5977116 skin_tone=8080170"
+    "eye=1626 eyelash=-1 eye_details=-1 eye_size=0 eye_spacing=0 face_lines=-1 "
+    "face_proportion=10 footwear=866 "
+    "footwear_tone1=16448250 footwear_tone10=16448250 footwear_tone2=16448250 "
+    "footwear_tone3=16448250 footwear_tone4=16448250 footwear_tone5=16448250 "
+    "footwear_tone6=16448250 footwear_tone7=16448250 footwear_tone8=16448250 "
+    "footwear_tone9=16448250 glasses=-1 hair=1657 hair_tone=2039326 hat=-1 "
+    "hat_tone1=10626095 hat_tone2=10626095 hat_tone3=10626095 hat_tone4=10626095 "
+    "hat_tone5=10626095 hat_tone6=10626095 hat_tone7=10626095 hat_tone8=10626095 "
+    "hat_tone9=10626095 is_tucked=0 jaw=1396 mouth=2338 nose=1449 "
+    "pupil_tone=5977116 skin_tone=8080170 sock=295 "
+    "sock_tone1=1907997 sock_tone2=8158331 sock_tone3=15132132 sock_tone4=1907997 ua=2"
 )
 
 
@@ -135,8 +149,11 @@ def fetch():
             ctype = r.headers.get("content-type")
         if not ctype.startswith("image"):
             raise SystemExit(f"body={body}: the API answered {ctype!r}, not an image")
+        im = Image.open(__import__("io").BytesIO(data)).convert("RGBA")
+        if im.size != (FRAME_W, FRAME_H):   # the scale=2 master is 2100x2800: downscale it
+            im = im.resize((FRAME_W, FRAME_H), Image.LANCZOS)
         p = VIEWS / f"body-{body}-r0.png"
-        p.write_bytes(data)
+        im.save(p)
         print(f"body={body}  {ctype}  {len(data) / 1024:.0f} KB  -> {p.relative_to(ROOT)}")
 
 
@@ -181,11 +198,17 @@ def build_all():
               f"x {got['x0']}..{got['x1']}  cx {got['cx']}  top {got['y0']}  "
               f"bottom {got['bottom']}  {p.name}  {p.stat().st_size / 1024:.0f} KB")
 
-    # Movement follows the build: the wider he is, the slower and heavier he moves. Derived from the
-    # widths measured here, so the numbers the renderer uses are the numbers the frames have.
-    span = widths[-1] - widths[0]
+    # Movement follows the build: the more mass he carries, the slower and heavier he moves.
+    # The builds differ in mass more than in silhouette width — only the heaviest frame is
+    # measurably wider — so the ramp runs on ink area, the number that actually tracks it.
+    areas = []
     for s in stages:
-        t = (s["ink"]["w"] - widths[0]) / span
+        a = Image.open(CRID / s["file"]).convert("RGBA").getchannel("A")
+        areas.append(sum(a.histogram()[ALPHA_MIN + 1:]))
+        s["area"] = areas[-1]
+    span = areas[-1] - areas[0]
+    for s, area in zip(stages, areas):
+        t = (area - areas[0]) / span
         s["slow"] = round(1 + 0.45 * t, 3)
         s["heft"] = round(0.86 + 0.59 * t, 3)
 
@@ -215,7 +238,7 @@ def measure():
 
 
 def sheet(out_path):
-    """The three stages at the two sizes he is actually judged at: 336px on a 1920 stream, and the
+    """The seven stages at the two sizes he is actually judged at: 336px on a 1920 stream, and the
     150px phone width. If a limb disappears at 150px the silhouette is wrong."""
     sizes = [336, 150]
     pad, label_h, gap = 24, 54, 26
@@ -242,7 +265,7 @@ def sheet(out_path):
     except OSError:
         font = bold = small = ImageFont.load_default()
 
-    d.text((pad, pad - 4), "Crid body ladder — one Snap render at rotation 0, three builds",
+    d.text((pad, pad - 4), "Crid body ladder — one Snap render at rotation 0, seven builds",
            fill=(244, 240, 255, 255), font=bold)
     y = pad + 26
     for w, tiles in rows:

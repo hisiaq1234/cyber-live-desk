@@ -39,21 +39,24 @@ his weight changes is **width and mass only**:
 
 - **Height is fixed.** Top of head and soles of feet sit at the same y on every stage of the ladder.
 - **Head size is fixed.** No stage has a smaller or larger head than another.
-- **Weight = width.** A heavier stage is wider through the torso, hips, arms and legs, at the same
-  height, in the same pose, wearing the same outfit.
-- **Snap's `body=2` is short-and-heavy — it makes him short. Do not use it.** Only `body=0` (lean)
-  and `body=1` (average) are acceptable as ladder stages, and only if they hold the same height.
+- **Weight = width and mass.** A heavier stage carries more through the torso, hips, arms and legs,
+  at the same height, in the same pose, wearing nothing.
+- **Snap's renderer gives exactly seven distinct front-facing builds** — `body=3,0,4,5,1,11,2`,
+  lean -> heavy; every other value duplicates one of them. All seven are measured to the same ink
+  height and head top (`ladder.json`), so none of them is short.
 - Never scale the whole sprite down to fit a layout. Fix the layout.
 
-### No cloth
+### Bare chest, his own kit
 
-**Crid wears no clothes.** The owner's direction, in as many words. He renders as the **base body**:
-no camo cargos, no tee, no backpack straps, no shoes. Omit the `outfit` parameter when rendering him.
+**Crid's torso is bare and he wears his own trousers, socks and shoes** — the owner's avatar
+recipe verbatim (`bm-preview/v3/avatar/body`, the URL in `fetch-crid-views.mjs`), with the
+backpack removed (`bag=-1`) because the bag is a prop he carries, not clothing. Bare chest means
+bare chest: no shirt, no straps, no second outline over his body.
 
-This is not a style choice to revisit — it is what makes his body readable. The old outfit (baggy
-camo cargos plus yellow backpack straps over a bare chest) read as *a second body* at small sizes,
-which is exactly the confusion the ladder is trying to remove. A prop he carries — the backpack —
-is a prop, drawn separately in his palette; it is not clothing and it is not part of his render.
+Snap's renderer has **no nude render** — its floor is a white undershirt and briefs, which is
+what the old `avatar-builder-v3` ladder shipped and why he read as "a white top." That endpoint
+is wrong for him; `bm-preview` with his real outfit params is the identity of record. Do not
+revert to it.
 
 ### One pose, always
 
@@ -107,14 +110,13 @@ first, because that is where thin lines, small faces and floating props die.
 
 The owner's current arc, in order. Do not skip ahead; each step is the foundation of the next.
 
-1. **Body ladder, rebuilt from one render.** Three real Crid builds from Snap's renderer at
-   `rotation=0` — lean / average / heavier — same pose, same outfit, same height, width only.
-   Spec: `docs/specs/body-ladder.md`. Build with `scripts/build-body-ladder.py`, then re-cut the rig
-   with `scripts/build-crid-rig.py` **from the same front render**, so limbs and flat drawing are
-   the same drawing.
-2. **Rig on every stage.** Today `public/desk-assets/crid/rig.json` is cut from the lanky body only,
-   so walk / crawl / climb / push-up swap in a different person's limbs. Every stage needs a rig cut
-   from itself.
+1. ~~**Body ladder, rebuilt from one render.**~~ **Done:** seven real builds from Snap's renderer
+   at `rotation=0` — `body=3,0,4,5,1,11,2`, lean -> heavy — same pose, same height, width and mass
+   only. Built by `scripts/build-body-ladder.py`; measured into `ladder.json`.
+2. ~~**Rig on every stage.**~~ **Done:** `scripts/build-crid-rig.py --all` cuts all seven stages
+   from their own frames into `public/desk-assets/crid/rigs/<key>/` (anatomy measured per body,
+   no shared pixel constants); `crid-bot.js` re-points one set of piece images at the active
+   stage's crops and pivots on every body swap, so limbs always match the body he wears.
 3. **The backpack.** Crid carries a bag he drops and picks up during the stream. Spec:
    `docs/specs/backpack.md`. SVG in `crid-bot.js`, in his palette, no image budget, must read at
    150 px.

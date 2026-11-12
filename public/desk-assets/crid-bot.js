@@ -5,43 +5,48 @@
    Sprite: ./desk-assets/crid/body-<body>-r0.webp — the 1050x1400 render Snapchat's preview API
    gives for this avatar at rotation 0, shipped at that size. He is drawn 340 CSS px wide by
    default and up to 850 at ?bot.scale=2.5, on a screen that may be retina, so a frame is never
-   smaller than what the display asks for. Bodies lean -> heavy: 0, 1, 2. Each
+   smaller than what the display asks for. Bodies lean -> heavy: 3, 0, 4, 5, 1, 11, 2. Each
    frame is a COMPLETE drawing with its own painted face, so he is drawn as one layer. The
    eyes-<state>/mouth-<state> frames were never registered to these bodies (a different scale and
    position, squeezed into a 44x22 box over a face that already has eyes) and produced a second
-   ghost face; they are unused until a real registered rig is built. Emotion therefore comes from a
+   ghost face; those unregistered frames have been removed. Emotion therefore comes from a
    body swap + a motion beat + a hold — see FEEL.
-   BODY LADDER: three frames, and they are three builds of ONE render — Snap's own body=0/1/2 at
-   rotation 0, fetched and framed by scripts/build-body-ladder.py. The pose, the outfit and the head
-   are therefore the same pixels in all three and only the build changes: 477x1191 px of ink lean,
-   592x1191 heavy. (Snap's body=0 and body=1 are within 3px of each other, so the step you can see is
-   average -> heavy; nothing between stages is a different drawing, it is the sub-step stretch
-   below.) All three keep one framing: ink bottom on y=1325 and the mid-torso on x=560, so a swap is
-   a change of build, never a jump sideways or off the floor. ladder.json next to the frames holds
-   the measured box of each stage.
+   BODY LADDER: seven frames, and they are seven builds of ONE render — the distinct builds Snap's
+   own body= parameter gives at rotation 0 (3/0/4/5/1/11/2 lean -> heavy; every other value returns
+   one of these same pictures), fetched and framed by scripts/build-body-ladder.py. The pose, the
+   base body and the head are therefore the same pixels in all seven and only the build changes:
+   480x1190 px of ink leanest, 592x1191 heaviest. The six lighter builds differ mostly in mass —
+   Snap gives them nearly the same silhouette width — so the stage order is proven on ink area in
+   ladder.json, not on width. All seven keep one framing: ink bottom on y=1325 and the mid-torso on
+   x=560, so a swap is a change of build, never a jump sideways or off the floor. ladder.json next
+   to the frames holds the measured box of each stage.
    Growth: every sub moves him up a notch. SUB_STEPS is where each stage takes over, and between
    stages he widens a little (STAGE_STRETCH) so every single sub is visible. The size is worked out
    from the sub total each time, so an overlay reload mid-stream restores it. The build also drives
    how he moves — see BODY_LADDER.slow and .heft, used by the walk, the gait and the gesture weight.
    Feed it with observe(state) where state.bot.subs is the sub count this stream, or call setSubs(n). */
-import{RIG}from"./crid/rig.mjs";
+import{RIGS}from"./crid/rig.mjs";
 const NS="http://www.w3.org/2000/svg",XLINK="http://www.w3.org/1999/xlink",PAL={onyx:"#1F1736",screen:"#0F0B17",edge:"#3A1D9E",indigo:"#6531F8",indigoDk:"#3A1D9E",mint:"#86F6BC",bone:"#A98BFF",ink:"#F4F0FF",slate:"#2B2738",red:"#FF5B57",dead:"#5E5873"},
-DOZE_AFTER_MS=12e4,BODIES=["0","1","2"],ROT=0,ASSETS="./desk-assets/crid",AV=b=>`${ASSETS}/body-${b}-r${ROT}.webp`,
-SUB_STEPS=[0,8,16],STAGE_STRETCH=.03,
+DOZE_AFTER_MS=12e4,BODIES=["3","0","4","5","1","11","2"],ROT=0,ASSETS="./desk-assets/crid",AV=b=>`${ASSETS}/body-${b}-r${ROT}.webp`,
+SUB_STEPS=[0,4,8,12,16,20,24],STAGE_STRETCH=.03,
 // The ladder, in BODIES order: the measured ink box of each frame (w x h) and what that build does
 // to his movement. slow stretches every step he takes, heft is his weight in a gesture — a heavy
 // stage lifts less and lands harder, a lanky one is springy. Both are written by
 // scripts/build-body-ladder.py from the frames it just measured, and a test keeps this table honest
 // against public/desk-assets/crid/ladder.json.
 BODY_LADDER=[
-  {key:"0",w:483,h:1190,slow:1,heft:.86},
-  {key:"1",w:485,h:1190,slow:1.008,heft:.871},
-  {key:"2",w:592,h:1190,slow:1.45,heft:1.45}],
+  {key:"3",w:477,h:1190,slow:1,heft:.86},
+  {key:"0",w:479,h:1190,slow:1.123,heft:1.022},
+  {key:"4",w:479,h:1190,slow:1.156,heft:1.064},
+  {key:"5",w:482,h:1190,slow:1.176,heft:1.091},
+  {key:"1",w:481,h:1190,slow:1.224,heft:1.154},
+  {key:"11",w:483,h:1190,slow:1.339,heft:1.304},
+  {key:"2",w:593,h:1190,slow:1.45,heft:1.45}],
 stageOf=i=>BODY_LADDER[Math.min(BODY_LADDER.length-1,Math.max(0,i|0))],
 // The eight micro-emotions from brain/micro-emotions.mjs. A painted face cannot be swapped, so a
 // feeling is a whole drawing that changes and is moved well: a different body, one of the gesture
 // sequences, and how long he stays in that body before his own weight takes it back. No two triples
-// are the same. The bodies are the three builds the ladder has (0 lean, 1 average, 2 heavy) and he
+// are the same. The bodies are the builds the ladder has (3 leanest, 2 heaviest) and he
 // only ever borrows one next to his own, so a feeling changes his stance, never his size.
 FEEL={curious:{body:"1",seq:"peek",hold:1500},delighted:{body:"0",seq:"hop",hold:1300},
   smug:{body:"1",seq:"sideeye",hold:1900},flustered:{body:"2",seq:"wince",hold:1200},
@@ -111,18 +116,26 @@ function draw(){
     el("circle",{cx:70,cy:56,r:21,fill:PAL.slate,stroke:PAL.ink,"stroke-width":5}),
     el("circle",{cx:63,cy:54,r:2.8,fill:PAL.mint}),el("circle",{cx:77,cy:54,r:2.8,fill:PAL.mint}));
   // ---- the cut-out rig -------------------------------------------------------------------
-  // body-0-r0.webp is one flat drawing, so a walk could only slide it across the desk — his
-  // legs never stepped and his arms never swung. scripts/build-crid-rig.py cuts that same render
-  // into ten pieces (head, torso, upper arm / forearm+hand and thigh / shin+foot per side) and
-  // measures the shoulder, elbow, hip and knee of each. Nothing is redrawn: every piece is a crop
-  // of the shipped drawing, and the script proves they reassemble into it pixel for pixel.
+  // Each body-*-r0.webp is one flat drawing, so a walk could only slide it across the desk — his
+  // legs never stepped and his arms never swung. scripts/build-crid-rig.py cuts every stage's own
+  // render into ten pieces (head, torso, upper arm / forearm+hand and thigh / shin+foot per side)
+  // and measures the shoulder, elbow, hip and knee of each. Nothing is redrawn: every piece is a
+  // crop of the shipped drawing, and the script proves they reassemble into it pixel for pixel.
   // Each joint is a group that turns about its own pivot, nested so a forearm carries the
   // shoulder it hangs from and a shin carries its thigh. The group is placed in the render's own
   // 1050x1400 space and scaled into the box the flat drawing used, so a rigged frame lands
   // exactly where the flat one did.
+  // Every stage has its own rig cut from its own render (rigs/<stage>/), so the limbs he moves
+  // are always the same build as the body he is wearing. The ten piece <image>s are shared; a
+  // stage swap re-points them at that stage's crops and pivots.
+  let rigStage="3";
+  const rigNow=()=>RIGS[rigStage]||RIGS["3"],rigImgs={};
+  const syncRig=()=>{const t=rigNow(); for(const n in rigImgs){const b=t.pieces[n],im=rigImgs[n];
+    im.setAttribute("x",b.x); im.setAttribute("y",b.y); im.setAttribute("width",b.w); im.setAttribute("height",b.h);
+    im.setAttribute("href",b.src); im.setAttributeNS(XLINK,"href",b.src)}};
   const rigJ={},rigG=el("g",{class:"rig",display:"none"}),
-    piece=n=>{const b=RIG.pieces[n],im=el("image",{class:`rig-${n}`,x:b.x,y:b.y,width:b.w,height:b.h,preserveAspectRatio:"none"});
-      im.setAttribute("href",b.src); im.setAttributeNS(XLINK,"href",b.src); return im},
+    piece=n=>{const b=rigNow().pieces[n],im=el("image",{class:`rig-${n}`,x:b.x,y:b.y,width:b.w,height:b.h,preserveAspectRatio:"none"});
+      im.setAttribute("href",b.src); im.setAttributeNS(XLINK,"href",b.src); rigImgs[n]=im; return im},
     joint=(n,...k)=>{const g=el("g",{class:`joint-${n}`});for(const c of k)g.append(c); rigJ[n]=g; return g};
   // The chest, the head and the arms hang off a group of their own, so the body can rise and lean
   // over the foot that is carrying him while the legs below stay where the floor is. The legs are
@@ -139,7 +152,7 @@ function draw(){
     joint("hip-l",joint("knee-l",piece("shin-l")),piece("thigh-l")),
     joint("hip-r",joint("knee-r",piece("shin-r")),piece("thigh-r")),
     rigUpper);
-  rigG.setAttribute("transform",`translate(${FIG_X} ${FIG_Y}) scale(${FIG_W/RIG.source.w})`);
+  rigG.setAttribute("transform",`translate(${FIG_X} ${FIG_Y}) scale(${FIG_W/rigNow().source.w})`);
   const figG=el("g",{class:"fig"},avatarBase,rigG,ph),bodyG=el("g",{class:"body"},figG);
   const ticket=el("g",{class:"ticket",opacity:0});
   const tkFill=[el("path",{d:"M100 4H138V22H100Z",fill:PAL.red,class:"ticket-fill"}),el("path",{d:"M108 22L106 31L118 22Z",fill:PAL.red,class:"ticket-fill"})];
@@ -147,7 +160,8 @@ function draw(){
   ticketText.textContent="";
   ticket.append(el("path",{d:"M100 4H138V22H100ZM108 22L106 31L118 22Z",...sticker,"stroke-width":6}),...tkFill,ticketText);
   svg.append(bodyG,ticket);
-  return{svg,parts:{ticket,ticketText,tkFill,bodyG,figG,avatarBase,rigG,rigJ,rigUpper,ph}};
+  return{svg,parts:{ticket,ticketText,tkFill,bodyG,figG,avatarBase,rigG,rigJ,rigUpper,ph,
+    rigNow,setRigStage:k=>{rigStage=k;syncRig()}}};
 }
 const CSS=`
 /* He is drawn at broadcast size: ~17.5vw is a full torso-and-head read on a 1080p stream, and the
@@ -244,7 +258,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // Staging: the lean he is holding, the lean he is walking towards, and the held wondering pose.
   leanAt=null,pendingLean=null,pondering=!1;
   const jobs=[]; let running=null; const flights=new WeakMap;
-  const paintBody=()=>{const src=AV(BODIES[bodyI]); parts.avatarBase.setAttribute("href",src); parts.avatarBase.setAttributeNS(XLINK,"href",src)};
+  const paintBody=()=>{const src=AV(BODIES[bodyI]); parts.avatarBase.setAttribute("href",src); parts.avatarBase.setAttributeNS(XLINK,"href",src); parts.setRigStage(BODIES[bodyI])};
   const setBody=i=>{if(i===bodyI)return; bodyI=clamp(i,0,BODIES.length-1); paintBody()};
   // The build he is in right now — the walk, the gait and the gesture weight all read it, so the
   // body is not just a picture that changes: a heavy Crid plods and slams, a lanky one trots.
@@ -549,7 +563,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // the whole gait reads as a body walking out of its own skin.
     if(on!==rigOn){rigOn=on; parts.rigG.setAttribute("display",on?"":"none"); parts.avatarBase.setAttribute("display",on?"none":"")}
     if(!on)return;
-    const set=(j,deg,dx=0,dy=0)=>{const q=RIG.pivot[j]; parts.rigJ[j].setAttribute("transform",
+    const set=(j,deg,dx=0,dy=0)=>{const q=parts.rigNow().pivot[j]; parts.rigJ[j].setAttribute("transform",
       `translate(${dx.toFixed(2)} ${dy.toFixed(2)}) rotate(${deg.toFixed(2)} ${q.x} ${q.y})`)};
     if(kind==="walk"){
       const tL=(u*2)%1,tR=(u*2+.5)%1,          // the left leg steps first, the right on the second half
@@ -572,16 +586,23 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // person, not a walking cycle. Motions are out of phase so they read as organic, not metronomic.
     // The amplitudes are set against the walk's own constants above: everything here lives in the
     // render's 1050px space and reaches the screen at ~0.19x, so a hold any gentler than this reads
-    // as a frozen sprite — the "log of wood" the rig was built to fix.
-    const w=Math.sin(2*Math.PI*u), w2=Math.sin(2*Math.PI*u+.9), w3=Math.sin(4*Math.PI*u+.4);
-    const sway=w*9, bob=(.5+.5*w2)*9, twist=w*5;
-    const hipShift=w*2.6, load=.5+.5*w; // weight biased to one side, easing back
+    // as a frozen sprite — the "log of wood" the rig was built to fix. Two clocks drive it: the
+    // ~5.2s weight-shift cycle from rigPhase, plus slower drifts off the wall clock so the hold
+    // never lines up into a visible loop. Under reduced motion the same beats play smaller.
+    const now=Date.now(),calm=reduced?.45:1,
+      w=Math.sin(2*Math.PI*u), w2=Math.sin(2*Math.PI*u+.9), w3=Math.sin(4*Math.PI*u+.4),
+      d1=Math.sin(now/1000*2*Math.PI/14.3), d2=Math.sin(now/1000*2*Math.PI/9.7+1.3);
+    const sway=(w*16+d1*7)*calm, bob=((.5+.5*w2)*13+Math.max(0,d2)*4)*calm,
+      twist=(w*7+d1*2.5)*calm;
+    const hipShift=(w*4+d1*1.6)*calm, load=clamp(.5+.5*(w*.8+d1*.4),0,1);
     // The loaded knee softens as the weight arrives — both stay planted, neither lifts.
-    set("hip-l",hipShift,0,0); set("knee-l",-1.5*load);
-    set("hip-r",hipShift,0,0); set("knee-r",-1.5*(1-load));
-    set("shoulder-l",-w*5.5,0,-twist); set("elbow-l",-w3*2.8);
-    set("shoulder-r",-w*3.8,0,twist); set("elbow-r",w3*2.2);
-    parts.rigUpper.setAttribute("transform",`translate(${sway.toFixed(2)} ${(-bob).toFixed(2)}) rotate(${(w*1.2).toFixed(2)} ${RIG.pivot["shoulder-l"].x} ${RIG.pivot["shoulder-l"].y})`);
+    set("hip-l",hipShift,0,0); set("knee-l",-2.2*load*calm);
+    set("hip-r",hipShift,0,0); set("knee-r",-2.2*(1-load)*calm);
+    // The arms never mirror: one swings with the shift, the other trails it, and the elbows fold
+    // unevenly so the hands stay alive without either arm leaving his side.
+    set("shoulder-l",-(w*8+d1*3)*calm,0,-twist); set("elbow-l",(-w3*4.5-d2*2)*calm);
+    set("shoulder-r",-(w*5.5-d1*2)*calm,0,twist*.8); set("elbow-r",(w3*3.5+d2*1.5)*calm);
+    parts.rigUpper.setAttribute("transform",`translate(${sway.toFixed(2)} ${(-bob).toFixed(2)}) rotate(${((w*1.8+d1*.8)*calm).toFixed(2)} ${parts.rigNow().pivot["shoulder-l"].x} ${parts.rigNow().pivot["shoulder-l"].y})`);
   };
   // The rig's own clock. Mid-stride it is the step's progress so feet land with the travel;
   // standing still it is a slower cycle for an idle weight shift (not a walk).
@@ -602,12 +623,12 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // second pivot rule.
     const plank=Math.abs(Math.sin(p.pr*Math.PI/180)),L=(p.hr*.8+p.pr)*p.fx,k=1-.16*plank,shift=plank*60*p.fx;
     const baked=leanAt&&p.fx===1&&plank===0?bakeLean(leanAt.angle):null;
-    // The rig is cut for the lean stage only (scripts/build-crid-rig.py cuts body-0-r0.webp), so
+    // The rig is cut for the lean stage only (scripts/build-crid-rig.py cuts body-3-r0.webp), so
     // it is drawn only for that stage when not leaning and not dead/dying. Dead/dying always fall back to the flat drawing so
     // the rendered character shows the dead-state treatment and the limbs stop moving. At rest the
     // rig is a living idle (subtle weight/posture/arm shifts), distinct from an actual walk.
     const stepping=!!(walk&&walk.to), alive=mode!=="dead"&&!dying;
-    const rigStep=!!(alive&&!leanAt&&BODIES[bodyI]==="0"),
+    const rigStep=!!(alive&&!leanAt),
       rigU=rigStep?rigPhase():0,
       rigKind=stepping?"walk":"idle",
       sig=JSON.stringify(p)+bodyI+(leanAt?leanAt.angle:0)+(pondering?1:0)+(baked?"b":"")+(rigStep?":"+rigKind+":"+Math.round(rigU*100):":flat:"+(dying?"d":"")+mode);
@@ -674,7 +695,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // cut back further: hr rotates the WHOLE figure about a pivot at his feet, which is the
     // lollipop sway — a rigid board pivoting on a stick. The rig already shifts his weight the
     // way a body does, so the pose layer only has to breathe and settle.
-    if(!frozen&&mode!=="dead"){const po=postureAt(now),rigIdle=mode!=="dead"&&!dying&&!leanAt&&BODIES[bodyI]==="0"&&!(walk&&walk.to),k=(leanAt?.3:1)*(rigIdle?.22:1); q.hr+=po.hr*k; q.tr+=po.tr*k; q.hy+=po.hy*k}
+    if(!frozen&&mode!=="dead"){const po=postureAt(now),rigIdle=mode!=="dead"&&!dying&&!leanAt&&!(walk&&walk.to),k=(leanAt?.3:1)*(rigIdle?.22:1); q.hr+=po.hr*k; q.tr+=po.tr*k; q.hy+=po.hy*k}
     // The wondering pose: weight on one leg, head tilted, held. It is a slow sway rather than a
     // still, because a perfectly still body reads as a paused image.
     if(pondering){const w=Math.sin((now-BOOT)/1000*1.35); q.hr+=7.6+w*1.2; q.tr+=3.8+w*1.6; q.hy+=1.5; q.bs*=.994}

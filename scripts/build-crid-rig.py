@@ -3,7 +3,7 @@
 
 WHAT THIS DOES
 --------------
-public/desk-assets/crid/body-0-r0.webp is one flat drawing: head, torso, two arms and two
+public/desk-assets/crid/body-3-r0.webp is one flat drawing: head, torso, two arms and two
 legs painted into a single 1050x1400 picture. A walk can only translate that picture, so his
 legs never step and his arms never swing. This script slices the same pixels into ten pieces —
 head, torso, upper arm / forearm+hand per side, thigh / shin+foot per side — and writes the
@@ -63,20 +63,19 @@ from PIL import Image, ImageChops
 
 ROOT = Path(__file__).resolve().parent.parent
 CRID = ROOT / "public" / "desk-assets" / "crid"
-SOURCE = CRID / "body-0-r0.webp"
-OUT = CRID / "rig"
+# One rig per ladder stage: --body N cuts rigs/N/ from body-N-r0.webp. The anatomy
+# landmarks are measured off each render, but the arm/hand widths and the x windows
+# used to find runs are per-body too — a heavy build's arm is thicker and sits
+# wider, so the constants below are derived in measure(), never assumed.
+BODIES = [3, 0, 4, 5, 1, 11, 2]   # leanest -> heaviest, same order as the ladder
+BODY = 3
+SOURCE = CRID / f"body-{BODY}-r0.webp"
+OUT = CRID / "rigs" / str(BODY)
 
 # --- the render's own framing (crid-bot.js: INK_BOTTOM / FIG_X / FIG_W / FIG_Y) --------------
 W, H = 1050, 1400
 INK_BOTTOM = 1325
 
-# --- tunables, all in render pixels ---------------------------------------------------------
-# The arm's painted width. The left arm touches the torso for a few rows near the
-# shoulder, so each row's arm is the outer ARM_W pixels of its outermost run rather than the
-# whole run. The hand is wider and its fingers stand apart, so below the wrist the band is wider
-# still — a narrower one would leave the separated fingers behind in the torso.
-ARM_W = 27
-HAND_W = 46
 # How far every piece reaches past its cut, in render px. The joint that opens widest is the knee:
 # the shin turns 8 degrees about a pivot sitting on the cut, and the far side of the cut is ~40px
 # from it, so that edge lifts 40*sin(8) = 5.6px. OVERLAP clears that, with room for the fringe a
@@ -98,6 +97,9 @@ RIG_ANGLES = {"hip-l": 5, "hip-r": 5, "knee-l": 8, "knee-r": 8,
 NECK_DROP = 17
 # The knee, as a fraction of the way from the crotch down to the ankle.
 KNEE_FRAC = 0.48
+# Shoulder joint as an offset below the narrowest neck row — the same on every stage because
+# all seven are the same render; only the build (width/mass) differs.
+SHOULDER_OFF = 155
 
 
 def alpha(img):
@@ -148,83 +150,80 @@ def measure(img):
         raise SystemExit("could not find the neck: the head and shoulders never narrow to one run")
     head_cut = neck_y + NECK_DROP
 
-    # --- the arms: the outermost run of each row, clipped to the arm's own width -------------
-    # The shoulder is the first row where the ink splits into three: a torso with an arm either
-    # side of it. Above that the arms are painted into the body and there is nothing to cut.
-    shoulder_y = None
-    for y in range(head_cut, int(H * .55)):
-        r = [q for q in runs(a, y) if q[1] - q[0] >= 8]
-        if len(r) >= 3:
-            shoulder_y = y
-            break
-    if shoulder_y is None:
-        raise SystemExit("could not find the shoulders: the arms never separate from the torso")
+    AXIS = 560   # every stage is framed so the mid-torso sits on x=560 (build-body-ladder.py)
 
-    def raw_band(y):
-        """(leftmost, rightmost) run on row y, before the arm is clipped out of it."""
-        r = [q for q in runs(a, y) if q[1] - q[0] >= 6]
-        if not r:
-            return None, None
-        left = r[0] if r[0][0] < 470 else None
-        right = r[-1] if r[-1][1] > 640 else None
-        return left, right
+    def row_runs(y, min_w=6):
+        return [q for q in runs(a, y) if q[1] - q[0] + 1 >= min_w]
 
-    def arm_band(y, wrist=None):
-        """(left arm run, right arm run) on row y, or (None, None) where there is no arm."""
-        left, right = raw_band(y)
-        w = HAND_W if wrist is not None and y >= wrist else ARM_W
-        if left and left[1] - left[0] + 1 > w:
-            left = (left[0], left[0] + w - 1)
-        if right and right[1] - right[0] + 1 > w:
-            right = (right[1] - w + 1, right[1])
-        return left, right
+    def clusters(y, gap=25):
+        """The row's runs merged into silhouette clusters: runs separated by more than `gap`
+        transparent pixels are different objects (arm vs torso, leg vs leg)."""
+        out = []
+        for q in row_runs(y):
+            if out and q[0] - out[-1][1] <= gap:
+                out[-1] = (out[-1][0], q[1])
+            else:
+                out.append(q)
+        return out
 
-    # The hand ends where the outer band stops reaching out past the torso's own edge. The band
-    # has to stay narrow as well: below him the foot also reaches past x=460, and a foot is not a
-    # hand.
-    hand_bottom = shoulder_y
-    for y in range(shoulder_y, int(H * .75)):
-        l, r = raw_band(y)
-        if (l and l[0] < 460 and l[1] - l[0] + 1 <= ARM_W) or (r and r[1] > 680 and r[1] - r[0] + 1 <= ARM_W):
-            hand_bottom = y
-
-    def band_centre(y, side):
-        l, r = arm_band(y)
-        b = l if side == "l" else r
-        if not b:
+    def body_edges(y):
+        """(left, right) of the body mass on row y: the cluster nearest the axis, or the two
+        clusters straddling it once the legs split. Arm/hand clusters sit outside this."""
+        cs = clusters(y)
+        if not cs:
             return None
-        return (b[0] + b[1]) / 2
-
-    shoulder = {}
-    for side in ("l", "r"):
-        # The arm's axis two rows into the cut, carried up to the top of the humerus.
-        c = band_centre(shoulder_y + 4, side)
-        shoulder[side] = (round(c, 1), shoulder_y - 3)
-    # The wrist is where the forearm stops widening into the hand; the elbow sits half way
-    # between the shoulder and it, on the arm's own axis.
-    wrist_y = shoulder_y + round((hand_bottom - shoulder_y) * .72)
-    elbow = {}
-    for side in ("l", "r"):
-        ey = shoulder_y + round((wrist_y - shoulder_y) * .5)
-        elbow[side] = (round(band_centre(ey, side), 1), ey)
+        # the cluster containing the axis, else the pair of clusters nearest it
+        for c in cs:
+            if c[0] <= AXIS <= c[1]:
+                return c
+        # below the crotch the axis falls in the gap between the legs: take the innermost pair
+        left = [c for c in cs if c[1] < AXIS]
+        right = [c for c in cs if c[0] > AXIS]
+        if left and right:
+            l, r = max(left, key=lambda c: c[1]), min(right, key=lambda c: c[0])
+            return (l[0], r[1])
+        return min(cs, key=lambda c: abs((c[0] + c[1]) / 2 - AXIS))
 
     # --- the legs: the crotch is the first row where the body splits in two ------------------
+    # The legs are the adjacent pair of RUNS whose gap sits nearest the axis — hands and feet
+    # make runs too, but their gaps are never the ones around x=560.
+    def leg_runs(y):
+        """(left leg run, right leg run) on row y, or None. The pair whose gap midpoint is
+        closest to the axis wins; both must be leg-sized and the gap must be a real split."""
+        r = row_runs(y, min_w=15)
+        best = None
+        for i in range(len(r) - 1):
+            l, rr = r[i], r[i + 1]
+            if l[1] - l[0] + 1 < 25 or rr[1] - rr[0] + 1 < 25:
+                continue
+            gap = rr[0] - l[1]
+            # the leg split is a narrow gap around the axis; a hand beside the torso leaves
+            # a wider one, and its inner edge never comes near x=560
+            if gap < 2 or gap > 45 or l[1] > AXIS + 30 or rr[0] < AXIS - 30:
+                continue
+            mid = (l[1] + rr[0]) / 2
+            d = abs(mid - AXIS)
+            if best is None or d < best[0]:
+                best = (d, l, rr)
+        return (best[1], best[2]) if best else None
+
     crotch_y, legs = None, None
-    for y in range(int(H * .58), int(H * .75)):
-        r = [q for q in runs(a, y, x0=460, x1=670) if q[1] - q[0] >= 20]
-        if len(r) == 2:
-            crotch_y, legs = y, r
+    for y in range(int(H * .55), int(H * .78)):
+        lr = leg_runs(y)
+        if lr and leg_runs(y + 1) and leg_runs(y + 2):
+            crotch_y, legs = y, lr
             break
     if crotch_y is None:
         raise SystemExit("could not find the crotch: the legs never separate")
-    # The ankle: the narrowest row of each leg in the bottom of the figure, where the calf tapers
-    # into the bare foot. With no cloth on him there is no shoe and no denim edge to read, so the
-    # landmark is the silhouette's own waist instead of a colour change.
+
+    # The ankle: the narrowest point of each leg in the bottom of the figure, where the calf
+    # tapers into the bare foot. With no cloth on him there is no shoe and no denim edge to
+    # read, so the landmark is the silhouette's own waist instead of a colour change.
     ankle_y, ankle_w = None, 10 ** 9
     for y in range(crotch_y + round((INK_BOTTOM - crotch_y) * .55), INK_BOTTOM):
-        r = [q for q in runs(a, y, x0=460, x1=670) if q[1] - q[0] >= 6]
-        if len(r) == 2:
-            w = max(q[1] - q[0] + 1 for q in r)
+        lr = leg_runs(y)
+        if lr:
+            w = max(q[1] - q[0] + 1 for q in lr)
             if w < ankle_w:
                 ankle_y, ankle_w = y, w
     if ankle_y is None:
@@ -235,16 +234,113 @@ def measure(img):
         q = legs[i]
         hip[side] = (round((q[0] + q[1]) / 2, 1), crotch_y - 6)
         ky = crotch_y + round((ankle_y - crotch_y) * KNEE_FRAC)
-        r = [t for t in runs(a, ky, x0=460, x1=670) if t[1] - t[0] >= 20]
-        k = r[i] if len(r) > i else q
+        lr = leg_runs(ky)
+        k = lr[i] if lr else q
         knee[side] = (round((k[0] + k[1]) / 2, 1), ky)
+
+    # --- the arms: measured off THIS body's silhouette, not assumed -------------------------
+    # All seven stages are the same render at different builds, so the shoulder sits the same
+    # distance below the narrowest neck row on every one of them — the deltoid cap is simply
+    # fused into the torso silhouette longer on the heavy builds, which is why "first separate
+    # run" cannot find it there.
+    shoulder_y = neck_y + SHOULDER_OFF
+    hand_bottom = crotch_y - 6     # his hands hang to hip level; below that is feet, not hands
+
+    # Per-row arm extent: outer = the silhouette edge on that side. inner = where the arm meets
+    # the body: measured directly on rows where the arm is its own cluster, and on fused rows
+    # taken as outer + T(y), the arm's thickness interpolated from the rows where it separates
+    # (thicker near the deltoid, so rows above the first measurement get a deliberate margin).
+    arm_prof = {}
+    for side in ("l", "r"):
+        meas = {}       # y -> (outer, inner) where the arm is a separate cluster
+        thick = {}      # y -> arm thickness on those rows
+        for y in range(shoulder_y, hand_bottom + 1):
+            allr = row_runs(y)
+            if not allr:
+                continue
+            be = body_edges(y)
+            if be is None:
+                continue
+            outer = allr[0][0] if side == "l" else allr[-1][1]
+            if side == "l":
+                side_cs = [c for c in clusters(y) if c[1] < be[0] - 2]
+            else:
+                side_cs = [c for c in clusters(y) if c[0] > be[1] + 2]
+            if side_cs:
+                inner = max(c[1] for c in side_cs) if side == "l" else min(c[0] for c in side_cs)
+                cap = be[0] + 14 if side == "l" else be[1] - 14
+                inner = min(inner, cap) if side == "l" else max(inner, cap)
+                meas[y] = (min(outer, inner), max(outer, inner))
+                thick[y] = abs(inner - outer)
+        ys = sorted(meas)
+
+        def thickness(y):
+            """Arm thickness at row y: measured where possible, interpolated across fused
+            rows, padded near the deltoid, and — when a build fuses arm to body everywhere —
+            estimated as a share of that row's body width, the way the deltoid actually scales."""
+            if y in thick:
+                return thick[y]
+            if ys:
+                below = [v for v in ys if v <= y]
+                above = [v for v in ys if v >= y]
+                if below and above:
+                    y0, y1 = max(below), min(above)
+                    t0, t1 = thick[y0], thick[y1]
+                    t = 0 if y1 == y0 else (y - y0) / (y1 - y0)
+                    return t0 + (t1 - t0) * t
+                # beyond the measured span: the deltoid end gets the widest measured value
+                return thick[ys[0] if not below else ys[-1]] * (1.15 if not below else 1.0)
+            be = body_edges(y)
+            if be is None:
+                return None
+            return min(95, max(30, round((be[1] - be[0]) * 0.22)))
+
+        prof = {}
+        for y in range(shoulder_y, hand_bottom + 1):
+            allr = row_runs(y)
+            if not allr:
+                continue
+            outer = allr[0][0] if side == "l" else allr[-1][1]
+            if y in meas:
+                prof[y] = meas[y]
+                continue
+            t = thickness(y)
+            if t is None:
+                continue
+            inner = outer + t if side == "l" else outer - t
+            prof[y] = (min(outer, inner), max(outer, inner))
+        arm_prof[side] = prof
+
+    def arm_centre(y, side):
+        p = arm_prof[side].get(y)
+        if not p:
+            return None
+        return (p[0] + p[1]) / 2
+
+    shoulder = {}
+    for side in ("l", "r"):
+        c = arm_centre(shoulder_y + 4, side)
+        if c is None:
+            raise SystemExit(f"no arm profile for {side} at the shoulder")
+        shoulder[side] = (round(c, 1), shoulder_y - 3)
+    # The wrist is where the forearm stops widening into the hand; the elbow sits half way
+    # between the shoulder and it, on the arm's own axis.
+    wrist_y = shoulder_y + round((hand_bottom - shoulder_y) * .72)
+    elbow = {}
+    for side in ("l", "r"):
+        ey = shoulder_y + round((wrist_y - shoulder_y) * .5)
+        c = arm_centre(ey, side)
+        if c is None:
+            c = shoulder[side][0]
+        elbow[side] = (round(c, 1), ey)
 
     return {
         "source": {"w": W, "h": H, "inkBottom": INK_BOTTOM, "box": list(box)},
         "neck": {"y": head_cut, "narrowest": neck_y},
         "shoulder": shoulder, "elbow": elbow, "wristY": wrist_y, "handBottom": hand_bottom,
         "shoulderY": shoulder_y, "hip": hip, "knee": knee,
-        "crotchY": crotch_y, "ankleY": ankle_y, "ankleW": ankle_w, "armW": ARM_W,
+        "crotchY": crotch_y, "ankleY": ankle_y, "ankleW": ankle_w,
+        "armProf": arm_prof,
     }
 
 
@@ -267,36 +363,19 @@ def build(img, m):
     ink = lambda x, y: a[x, y] > 0
 
     # --- arms ---------------------------------------------------------------------------
+    # The arm's extent on every row was measured in measure(): outer is always the silhouette
+    # edge on that side, inner is where the arm meets the body — measured directly where the
+    # arm is its own cluster, interpolated across the rows where a heavy build fuses it to the
+    # torso. No pixel-width constant survives here: each body brings its own numbers.
     arm = {}
     for side in ("l", "r"):
-        def in_arm(x, y, side=side):
+        prof = m["armProf"][side]
+
+        def in_arm(x, y, prof=prof):
             if y < m["shoulderY"] or y > m["handBottom"]:
                 return False
-            r = [q for q in runs(a, y) if q[1] - q[0] >= 6]
-            if not r:
-                return False
-            w = HAND_W if y >= m["wristY"] else ARM_W
-            b = r[0] if side == "l" else r[-1]
-            if side == "l" and b[0] >= 470:
-                return False
-            if side == "r" and b[1] <= 640:
-                return False
-            if y >= m["wristY"]:
-                # The hand's silhouette can split into several runs — a finger notch leaves a
-                # gap of a pixel or two, and the row then holds more than the one outer run.
-                # Claim every run inside HAND_W of the outer edge: a run dropped here falls
-                # through to the torso or the thigh and stays behind when the arm swings,
-                # which is the ghost hand the overlay shows mid-stride.
-                edge = r[0][0] if side == "l" else r[-1][1]
-                for b in (r if side == "l" else r[::-1]):
-                    if (b[0] - edge if side == "l" else edge - b[1]) > w:
-                        break
-                    if b[0] <= x <= b[1] and (x <= edge + w if side == "l" else x >= edge - w):
-                        return True
-                return False
-            if b[1] - b[0] + 1 > w:
-                b = (b[0], b[0] + w - 1) if side == "l" else (b[1] - w + 1, b[1])
-            return b[0] <= x <= b[1]
+            p = prof.get(y)
+            return bool(p) and p[0] <= x <= p[1]
         arm[side] = in_arm
 
     # --- legs ---------------------------------------------------------------------------
@@ -468,7 +547,7 @@ def rig_table(m, pieces):
             "knee-l": j(m["knee"]["l"]), "knee-r": j(m["knee"]["r"]),
         },
         "pieces": {n: {"x": b[0], "y": b[1], "w": b[2] - b[0], "h": b[3] - b[1],
-                       "src": f"./desk-assets/crid/rig/{n}.png"} for n, (_, b) in pieces.items()},
+                       "src": f"./desk-assets/crid/rigs/{BODY}/{n}.png"} for n, (_, b) in pieces.items()},
     }
 
 
@@ -476,13 +555,13 @@ def write(img, m, pieces, table):
     OUT.mkdir(parents=True, exist_ok=True)
     for name, (piece, box) in pieces.items():
         piece.save(OUT / f"{name}.png", optimize=True)
-    (CRID / "rig.json").write_text(json.dumps(table, indent=2) + "\n")
+    (OUT / "rig.json").write_text(json.dumps(table, indent=2) + "\n")
     (CRID / "rig.mjs").write_text(
         "// GENERATED by scripts/build-crid-rig.py — do not edit by hand.\n"
-        "// Crid's base render cut into limbs: where each piece sits in the 1050x1400 frame and the\n"
-        "// joint it turns about. body-0-r0.webp is the only stage with a rig; every other body\n"
-        "// in the ladder is still the flat drawing.\n"
-        f"export const RIG={json.dumps(table, separators=(',', ':'))};\n")
+        "// Every ladder stage's render cut into limbs: where each piece sits in the 1050x1400\n"
+        "// frame and the joint it turns about. rigs/<key>/ holds the pieces, this holds the\n"
+        "// tables, keyed the same way BODY_LADDER keys its stages.\n"
+        f"export const RIGS={json.dumps(RIGS, separators=(',', ':'))};\n")
 
 
 def stack(pieces, order):
@@ -612,7 +691,14 @@ def poses(table, pieces, out):
     print(f"wrote {out}")
 
 
-def main(argv):
+RIGS = {}
+
+
+def run(body, argv):
+    global BODY, SOURCE, OUT
+    BODY = body
+    SOURCE = CRID / f"body-{body}-r0.webp"
+    OUT = CRID / "rigs" / str(body)
     if not SOURCE.exists():
         raise SystemExit(f"missing {SOURCE}")
     img = Image.open(SOURCE).convert("RGBA")
@@ -627,10 +713,18 @@ def main(argv):
     pieces = cut(pieces)
     table = rig_table(m, pieces)
     check(img, pieces, band, m, table)
+    RIGS[str(body)] = table
     write(img, m, pieces, table)
-    print(f"wrote {len(pieces)} pieces to {OUT.relative_to(ROOT)} and rig.json / rig.mjs")
+    print(f"wrote {len(pieces)} pieces to {OUT.relative_to(ROOT)}")
     if "--poses" in argv:
         poses(table, pieces, argv[argv.index("--poses") + 1])
+    return 0
+
+
+def main(argv):
+    bodies = BODIES if "--all" in argv else [int(argv[argv.index("--body") + 1]) if "--body" in argv else BODY]
+    for body in bodies:
+        run(body, argv)
     return 0
 
 

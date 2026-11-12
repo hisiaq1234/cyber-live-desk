@@ -3,6 +3,12 @@
 
 # Crid on the live desk — visual diagnosis (2026-11-12)
 
+> **Status update (later):** T1 shipped (`scene.js`, `?bg=0` keeps OBS transparent). T2 is half
+> done — the ladder is now seven rotation-0 builds of one render (`body=3,0,4,5,1,11,2`, see
+> `body-ladder.md`) and the rig is re-cut from `body-3-r0.webp`, but only the lean stage is
+> articulated; heavier stages still draw flat. The stale quote in item 3 refers to the old
+> rotation-7 ladder, since replaced.
+
 Inspected: `https://cyber-live-desk.vercel.app/desk` at 1920×1080 in a browser, the live DOM,
 the live `crid-bot.js` against `origin/main`, and every sprite in `public/desk-assets/crid/`.
 Screenshots: `screenshots/live-desk-now.png`, `screenshots/crid-assets-sheet.png`.

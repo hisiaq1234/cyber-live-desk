@@ -3,6 +3,8 @@
 A running record of what is live, what is in flight, and what is waiting on the owner.
 Written for the owner and for whoever picks the work up next. Updated as work lands.
 
+**CRID's own status, tests and next build order: [`docs/CRID-STATUS.md`](docs/CRID-STATUS.md).**
+
 _Last updated: 2026-11-11._
 
 ## Live and verified on the real deployment
@@ -29,7 +31,7 @@ Two things worth knowing:
 **Crid rig at rest + brand overlay mount** (branch `fix/crid-rig-rest-brand`, unmerged). Targeted fixes for two gaps on `main` (`ee25427`):
 
 - **Rig at rest:** `public/desk-assets/crid-bot.js` only animated the cut-out rig while a step was travelling (`walk && walk.to`, base body `000`), showing the flat drawing between steps/at rest. Now the rig runs at rest for base body `000` when not leaning, at reduced amplitude on a slow idle cycle (walk uses full step amplitude/phase); render dirty-signature includes phase/amp so idle animation advances. Rig still only applies to base stage `000` and not while leaning; other body stages remain flat drawings.
-- **Brand overlay:** `public/desk-assets/overlay-brand.js` (`/desk?overlay=brand|variant=brand|brand=1`) rendered only the jumbotron/feed and did not mount CRID. Now mounts `createCridBot` on `document.body` (outside skew/scale), moves scale to the jumbotron card, preserves existing feed/poll/jumbotron options, honors `?bot*` params, and observes desk state when provided.
+- **Brand overlay:** `public/desk-assets/overlay-brand.js` (`/desk?overlay=brand|variant=brand|brand=1`) is a skin over `overlay.js` and mounts no CRID of its own — it adopts the single one the main renderer creates (`window.DeskOverlay.crid`), so brand mode has one `#crid-bot` (fixed on `fix/brand-single-crid`; see `docs/CRID-STATUS.md`).
 - **Tests:** added `tests/crid-rig-rest.test.mjs` (rig visible at rest, joints move). Fixed `tests/crid-bot.test.mjs` sprite-size scan to ignore directories (e.g. `public/desk-assets/crid/rig/`) so it inspects real sprite files only.
 - **Verification:** targeted tests/syntax checks pass locally (see branch diff/test run); full suite and actual browser-overlay verification (`/desk`, `/desk?overlay=brand`, walk/lean/gestures/non-`000` stages, `?bot=0`) still required before merge.
 

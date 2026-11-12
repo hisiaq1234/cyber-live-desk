@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Crid 3D — matched to his 2D art</title>
+<title>Crid 3D — matched to his 2D art, alive on his own</title>
 <style>
   html,body{margin:0;height:100%;background:#fff;overflow:hidden}
   #c{position:fixed;inset:0;display:block;cursor:grab}
@@ -11,6 +11,7 @@
   #hud{position:fixed;left:14px;top:12px;color:#26212f;font:13px/1.5 ui-monospace,Menlo,monospace;
        user-select:none;pointer-events:none}
   #hud b{color:#5b4a8a}
+  #state{color:#8a7fb0}
 </style>
 <script type="importmap">
 {"imports":{"three":"./desk-assets/vendor/three/three.module.js",
@@ -19,10 +20,10 @@
 </head>
 <body>
 <canvas id="c"></canvas>
-<div id="hud"><b>CRID 3D</b> — shot like the 2D art<br>drag to orbit · double-click = turntable<br><span id="bones">loading…</span></div>
+<div id="hud"><b>CRID 3D</b> — shot like the 2D art, moving on his own<br>drag to orbit · double-click = turntable<br><span id="bones">loading…</span><br><span id="state">starting…</span></div>
 <script>
-addEventListener("error",e=>{const el=document.getElementById("bones");if(el)el.textContent="error: "+(e.message||e.type)});
-addEventListener("unhandledrejection",e=>{const el=document.getElementById("bones");if(el)el.textContent="reject: "+(e.reason&&e.reason.message||e.reason)});
+addEventListener("error",e=>{const el=document.getElementById("state");if(el)el.textContent="error: "+(e.message||e.type)});
+addEventListener("unhandledrejection",e=>{const el=document.getElementById("state");if(el)el.textContent="reject: "+(e.reason&&e.reason.message||e.reason)});
 </script>
 <script type="module">
 import * as THREE from "three";
@@ -46,9 +47,11 @@ const cam=new THREE.OrthographicCamera(-1,1,1,-1,.1,60);
 const VIEW_H=2.05;           // world units top-to-bottom, model is ~1.7 tall
 const camTarget=new THREE.Vector3(0,.86,0);
 
-const turn=new THREE.Group(); scene.add(turn);
+const turn=new THREE.Group(); scene.add(turn);      // camera orbit lives here
+const body=new THREE.Group(); turn.add(body);       // root motion lives here (he changes where he is)
 const loader=new GLTFLoader();
-let model=null,bones={};
+let model=null,bagPivot=null,bagLag=null,bagAxes=null;
+const bones={};
 
 // --- pose: the GLB ships T-posed, the art stands with his arms down ----------
 const _v=new THREE.Vector3();
@@ -86,14 +89,260 @@ function turnHead(rad){
   n.updateMatrixWorld(true);
 }
 
-const base=new Map();  // posed rotations the idle breathes around, never overwrites
-const freeze=()=>{ if(!model) return; base.clear(); Object.values(bones).forEach(b=>base.set(b,b.quaternion.clone())); };
+// --- rest state: every pose below is a delta on this, never a rewrite of it ---
+const base=new Map();        // local quaternions of the posed standing frame
+const restPQ=new Map();      // parent world orientation, for world-axis rotations
+const restWQ=new Map();
+const freeze=()=>{
+  if(!model) return;
+  base.clear(); restPQ.clear(); restWQ.clear();
+  Object.values(bones).forEach(b=>{
+    base.set(b,b.quaternion.clone());
+    restPQ.set(b,(b.parent||b).getWorldQuaternion(new THREE.Quaternion()));
+    restWQ.set(b,b.getWorldQuaternion(new THREE.Quaternion()));
+  });
+};
+
+// --- the backpack ----------------------------------------------------------
+// The bag ships skinned mostly to C_spine0003 but with stray weights on the
+// clavicles and stomach, so it smeared across the back. Rigid-skin it to the
+// upper spine instead: same bone, one weight, no smear. It is on him by
+// default — it is his identity — and only leaves when he drops it.
+function attachBag(g){
+  let skinned=null;
+  g.scene.traverse(o=>{ if(o.isSkinnedMesh&&/outfit_bag/i.test(o.name)) skinned=o; });
+  if(!skinned) return;
+  const bone=bones["C_spine0003_bind_JNT"];
+  const skel=skinned.skeleton;
+  const i=bone?skel.bones.indexOf(bone):-1;
+  if(i<0) return;
+  const ibm=skel.boneInverses[i].clone();          // bind matrix of that bone
+  const geo=skinned.geometry.clone();
+  geo.deleteAttribute("skinIndex"); geo.deleteAttribute("skinWeight");
+  const mesh=new THREE.Mesh(geo,skinned.material);
+  mesh.frustumCulled=false;
+  const pivot=new THREE.Group(); pivot.matrixAutoUpdate=false; pivot.matrix.copy(ibm);
+  const lag=new THREE.Group(); pivot.add(lag); lag.add(mesh);
+  bone.add(pivot);
+  if(skinned.parent) skinned.parent.remove(skinned);
+  bagPivot=pivot; bagLag=lag;
+  // lag swings the bag about the axes of the bone it hangs from
+  const q=restWQ.get(bone).clone().invert();
+  bagAxes={
+    x:new THREE.Vector3(1,0,0).applyQuaternion(q).normalize(),
+    z:new THREE.Vector3(0,0,1).applyQuaternion(q).normalize()
+  };
+}
+
+// --- channel -> bone ------------------------------------------------------
+// One vocabulary of semantic channels, applied as world-axis rotations on the
+// rig's own bones. Missing bones are skipped, never invented.
+const acc=new Map();
+const add=(n,x,y,z)=>{
+  if(!x&&!y&&!z) return;
+  const a=acc.get(n); if(a){a[0]+=x;a[1]+=y;a[2]+=z} else acc.set(n,[x,y,z]);
+};
+const _R=new THREE.Quaternion(),_E=new THREE.Euler(),_D=new THREE.Quaternion();
+function applyAcc(){
+  acc.forEach((a,n)=>{
+    const b=bones[n]; if(!b||!base.has(b)) return;
+    _R.setFromEuler(_E.set(a[0],a[1],a[2],"XYZ"));
+    const P=restPQ.get(b);
+    _D.copy(P).invert().multiply(_R).multiply(P);   // world-axis rotation in the parent's frame
+    b.quaternion.copy(base.get(b)).premultiply(_D);
+  });
+  acc.clear();
+}
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+let legLen=.72;
+
+function applyChannels(c){
+  const g=n=>c[n]||0;
+  // torso: lean and twist distributed up the spine, so the top trails the base
+  const lf=g("leanFwd"), ls=g("leanSide"), tw=g("twist");
+  add("C_pelvis0001_bind_JNT",-lf*.10,tw*.25,-ls*.10);
+  add("C_spine0001_bind_JNT",-lf*.25,tw*.25,-ls*.25);
+  add("C_spine0002_bind_JNT",-lf*.35,tw*.30,-ls*.35);
+  add("C_spine0003_bind_JNT",-lf*.30,tw*.20,-ls*.30);
+  // head leads, neck follows: they do not arrive together
+  add("C_neck0001_bind_JNT",-g("headPitch")*.30,g("headYaw")*.35,-g("headTilt")*.30);
+  add("C_head_bind_JNT",-g("headPitch")*.70,g("headYaw")*.65,-g("headTilt")*.70);
+  // eyes go to the thing before the head does
+  add("L_eye_bind_JNT",0,g("eyeYaw")*.5,0); add("R_eye_bind_JNT",0,g("eyeYaw")*.5,0);
+  // shoulders
+  add("L_clavicle_bind_JNT",0,0,g("shrugL")); add("R_clavicle_bind_JNT",0,0,-g("shrugR"));
+  // arms: lift is about world Z, forward about world X, mirrored per side
+  add("L_armUpper0001_bind_JNT",-g("armFwdL"),0,g("armLiftL"));
+  add("R_armUpper0001_bind_JNT",-g("armFwdR"),0,-g("armLiftR"));
+  add("L_armLower0001_bind_JNT",-g("elbowL"),0,0);
+  add("R_armLower0001_bind_JNT",-g("elbowR"),0,0);
+  // legs: a step swings the leg forward, a knee bends back
+  add("L_legUpper0001_bind_JNT",-g("legFwdL"),0,g("legSideL"));
+  add("R_legUpper0001_bind_JNT",-g("legFwdR"),0,g("legSideR"));
+  add("L_legLower0001_bind_JNT",g("kneeL"),0,0);
+  add("R_legLower0001_bind_JNT",g("kneeR"),0,0);
+  add("L_foot0001_bind_JNT",-g("ankleL")*.5,0,0);
+  add("R_foot0001_bind_JNT",-g("ankleR")*.5,0,0);
+}
+
+// --- keys, tracks, springs ------------------------------------------------
+function evalKeys(keys,t){
+  let i=0; while(i<keys.length-1&&keys[i+1][0]<=t) i++;
+  if(i>=keys.length-1) return keys[keys.length-1][1];
+  const a=keys[i],b=keys[i+1];
+  const u=clamp((t-a[0])/Math.max(1e-4,b[0]-a[0]),0,1);
+  return a[1]+(b[1]-a[1])*(u*u*(3-2*u));      // fast in, fast out, no linear drift
+}
+function spring(v){ return {v,target:v,vel:0}; }
+function stepSpring(s,dt,k,d){
+  const n=Math.max(1,Math.ceil(dt/0.008)), h=dt/n;
+  for(let i=0;i<n;i++){
+    const a=(s.target-s.v)*k-s.vel*d;
+    s.vel+=a*h; s.v+=s.vel*h;
+  }
+  return s.v;
+}
+const rnd=(a,b)=>a+Math.random()*(b-a);
+
+// --- the idle: bursts of movement on top of a slow, never-repeating base ---
+const S={
+  hip:spring(0), lean:spring(0), breath:spring(0), headYaw:spring(0), headPitch:spring(0),
+  headTilt:spring(0), armL:spring(0), armR:spring(0), elbowL:spring(0), elbowR:spring(0),
+  kneeL:spring(0), kneeR:spring(0), rootX:spring(0), rootYaw:spring(0), bag:spring(0), bagX:spring(0)
+};
+let side=1, sideTimer=rnd(2.5,5), lookTimer=rnd(1.4,3.2), rootTimer=rnd(4,8);
+let breathPhase=Math.random(), breathPer=rnd(2.6,4.2), breathAmp=rnd(.5,1.3), breathPuff=0;
+const blink={t:rnd(1.5,4),on:0};
+
+// short authored bursts the idle throws out on its own
+const IDLE_BURSTS=[
+  {dur:1.05,k:{headYaw:[[0,0],[.13,.52],[.45,.46],[.62,-.05],[.85,.02],[1.05,0]],
+               headTilt:[[0,0],[.16,.12],[.5,.09],[.9,0]],leanFwd:[[0,0],[.2,.04],[.7,.01],[1.05,0]]}},
+  {dur:.95,k:{headYaw:[[0,0],[.12,-.55],[.4,-.5],[.58,.06],[.8,0]],
+              eyeYaw:[[0,0],[.06,-.3],[.4,-.28],[.6,0]],leanSide:[[0,0],[.18,-.05],[.6,-.01],[.95,0]]}},
+  {dur:1.15,k:{headPitch:[[0,0],[.14,.28],[.5,.24],[.72,-.04],[1.15,0]],
+               headYaw:[[0,0],[.3,.12],[.8,0]],shrugL:[[0,0],[.2,.09],[.6,.05],[1.15,0]]}},
+  {dur:1.25,k:{armLiftL:[[0,0],[.16,.42],[.42,.38],[.62,.05],[1.25,0]],
+               elbowL:[[0,0],[.2,1.15],[.55,1.0],[.8,.1],[1.25,0]],
+               headYaw:[[0,0],[.2,-.3],[.7,-.22],[1.25,0]],
+               leanSide:[[0,0],[.25,.04],[.8,0]]}},      // scratch the back of his head
+  {dur:.85,k:{rootY:[[0,0],[.1,-.035],[.22,0],[.34,-.03],[.46,0],[.6,-.022],[.72,0],[.85,0]],
+              kneeL:[[0,0],[.12,.06],[.3,0],[.5,.05],[.7,0]],kneeR:[[0,0],[.12,.06],[.3,0],[.5,.05],[.7,0]]}}, // heels
+  {dur:1.1,k:{shrugL:[[0,0],[.15,.13],[.5,.1],[.75,0]],shrugR:[[0,0],[.15,.13],[.5,.1],[.75,0]],
+              headPitch:[[0,0],[.2,.1],[.6,.06],[1.1,0]],leanFwd:[[0,0],[.2,.03],[.8,0]]}},
+  {dur:1.3,k:{legFwdL:[[0,0],[.22,.22],[.6,.05],[1.3,0]],kneeL:[[0,0],[.25,.35],[.62,.05],[1.3,0]],
+              rootY:[[0,0],[.3,.012],[.7,0],[1.3,0]],leanSide:[[0,0],[.3,-.06],[.9,0]]}},  // scuff a foot
+  {dur:1.0,k:{headYaw:[[0,0],[.18,.7],[.55,.62],[.75,.1],[1.0,0]],
+              twist:[[0,0],[.25,.16],[.7,.1],[1.0,0]],leanFwd:[[0,0],[.25,.05],[1.0,0]]}}
+];
+
+// --- the authored clips the brain can ask for -----------------------------
+const CLIPS={
+  fidget:{dur:1.1,idle:.35,k:{headYaw:[[0,0],[.12,-.55],[.42,-.48],[.6,.08],[.85,.02],[1.1,0]],
+      headTilt:[[0,0],[.14,.16],[.5,.12],[.9,0]],shrugL:[[0,0],[.2,.1],[.55,.06],[1.1,0]]}},
+  bounce:{dur:1.35,idle:.2,k:{
+      rootY:[[0,0],[.1,-.05],[.2,.09],[.3,-.06],[.4,.07],[.5,-.05],[.6,.04],[.72,-.03],[.9,0],[1.35,0]],
+      kneeL:[[0,0],[.1,.16],[.22,0],[.32,.14],[.44,0],[.56,.1],[.7,0],[1.35,0]],
+      kneeR:[[0,0],[.1,.16],[.22,0],[.32,.14],[.44,0],[.56,.1],[.7,0],[1.35,0]],
+      armLiftL:[[0,0],[.15,.3],[.45,.2],[.8,0]],armLiftR:[[0,0],[.15,.3],[.45,.2],[.8,0]],
+      headPitch:[[0,0],[.2,.08],[.6,.04],[1.35,0]]}},
+  "look-around":{dur:1.8,idle:.4,k:{
+      headYaw:[[0,0],[.25,-.85],[.75,-.8],[1.0,.7],[1.45,.6],[1.8,0]],
+      eyeYaw:[[0,0],[.08,-.5],[.3,-.45],[.85,.45],[1.2,.4],[1.6,0]],
+      twist:[[0,0],[.3,-.12],[1.05,.1],[1.8,0]],headTilt:[[0,0],[.3,.1],[1.1,-.08],[1.8,0]]}},
+  stretch:{dur:2.1,idle:.15,k:{
+      armLiftL:[[0,0],[.35,2.45],[1.3,2.4],[1.7,.15],[2.1,0]],
+      armLiftR:[[0,0],[.38,2.45],[1.32,2.4],[1.72,.15],[2.1,0]],
+      elbowL:[[0,0],[.4,.25],[1.2,.2],[1.6,0]],elbowR:[[0,0],[.4,.25],[1.2,.2],[1.6,0]],
+      leanFwd:[[0,0],[.5,-.14],[1.2,-.12],[1.7,.05],[2.1,0]],
+      headPitch:[[0,0],[.5,.22],[1.2,.2],[1.7,0]],
+      kneeL:[[0,0],[.45,.1],[1.3,.08],[1.9,0]],kneeR:[[0,0],[.45,.1],[1.3,.08],[1.9,0]]}},
+  "hop-up":{dur:1.5,idle:.1,k:{
+      rootY:[[0,0],[.18,-.09],[.3,.13],[.62,.12],[.78,-.07],[.95,0],[1.5,0]],
+      kneeL:[[0,0],[.18,.5],[.3,.02],[.7,.08],[.8,.45],[1.0,0],[1.5,0]],
+      kneeR:[[0,0],[.18,.5],[.3,.02],[.7,.08],[.8,.45],[1.0,0],[1.5,0]],
+      armLiftL:[[0,0],[.18,-.05],[.32,1.9],[.66,1.7],[.85,.1],[1.5,0]],
+      armLiftR:[[0,0],[.18,-.05],[.32,1.9],[.66,1.7],[.85,.1],[1.5,0]],
+      leanFwd:[[0,0],[.18,.12],[.35,-.05],[.8,.1],[1.2,0]]}},
+  sit:{dur:1.8,idle:.05,k:{
+      rootY:[[0,0],[.5,-.34],[1.2,-.35],[1.8,-.34]],
+      kneeL:[[0,0],[.5,1.45],[1.3,1.45],[1.8,1.45]],kneeR:[[0,0],[.5,1.45],[1.3,1.45],[1.8,1.45]],
+      legFwdL:[[0,0],[.5,1.25],[1.3,1.25],[1.8,1.25]],legFwdR:[[0,0],[.5,1.25],[1.3,1.25],[1.8,1.25]],
+      leanFwd:[[0,0],[.35,.16],[.6,-.06],[1.3,0]],armFwdL:[[0,0],[.5,.35],[1.3,.3],[1.8,.3]],
+      armFwdR:[[0,0],[.5,.35],[1.3,.3],[1.8,.3]]}},
+  hang:{dur:1.9,idle:.05,k:{
+      armLiftL:[[0,0],[.4,2.4],[1.4,2.4],[1.9,2.2]],armLiftR:[[0,0],[.4,2.4],[1.4,2.4],[1.9,2.2]],
+      leanFwd:[[0,0],[.4,.1],[1.4,.1],[1.9,.08]],
+      rootY:[[0,0],[.4,.06],[.9,.02],[1.3,.05],[1.9,.04]],
+      kneeL:[[0,0],[.5,.2],[.9,.1],[1.3,.22],[1.6,.12]],kneeR:[[0,0],[.6,.15],[1.0,.24],[1.4,.1]],
+      legFwdL:[[0,0],[.6,.15],[1.2,.05],[1.9,0]],legFwdR:[[0,0],[.7,.12],[1.3,.04],[1.9,0]]}},
+  "lie-back":{dur:2.6,idle:.02,k:{
+      rootPitch:[[0,0],[.6,1.05],[1.7,1.05],[2.3,.12],[2.6,0]],
+      rootY:[[0,0],[.6,.16],[1.7,.16],[2.3,.04],[2.6,0]],
+      kneeL:[[0,0],[.6,.35],[1.7,.3],[2.3,.1],[2.6,0]],
+      kneeR:[[0,0],[.62,.3],[1.7,.28],[2.3,.1],[2.6,0]],
+      armLiftL:[[0,0],[.6,.5],[1.7,.45],[2.3,.1],[2.6,0]],
+      armLiftR:[[0,0],[.62,.45],[1.7,.42],[2.3,.1],[2.6,0]],
+      headPitch:[[0,0],[.7,.15],[1.7,.12],[2.3,0]]}}
+};
+
+const tracks=[];
+let clipName=null;
+function playClip(name){
+  const def=CLIPS[String(name||"").toLowerCase()];
+  if(!def) return false;                       // unknown names are ignored, never thrown
+  tracks.length=0;                             // one big clip at a time, never stacked
+  tracks.push({def,t:0,big:true});
+  clipName=String(name).toLowerCase();
+  return true;
+}
+function playBurst(){
+  const def=IDLE_BURSTS[(Math.random()*IDLE_BURSTS.length)|0];
+  tracks.push({def,t:0,big:false});
+}
+
+// --- the bag can be dropped, and only then does it leave him --------------
+function dropBag(drop){ if(bagPivot) bagPivot.visible=!drop; }
+
+// --- the cue channel: the same state.bot.cue the desk already polls --------
+const CUES={
+  fidget:()=>playClip("fidget"), bounce:()=>playClip("bounce"),
+  look:()=>playClip("look-around"), "look-around":()=>playClip("look-around"),
+  stretch:()=>playClip("stretch"), hop:()=>playClip("hop-up"), "hop-up":()=>playClip("hop-up"),
+  sit:()=>playClip("sit"), hang:()=>playClip("hang"), "lie-back":()=>playClip("lie-back"),
+  dropbag:()=>dropBag(true), wearbag:()=>dropBag(false)
+};
+let lastCue=null;
+function cue(name,at){
+  const sig=at==null?String(name):String(at);
+  if(sig===lastCue) return false;
+  lastCue=sig;
+  const fn=CUES[String(name||"").toLowerCase()];
+  if(!fn) return false;
+  fn(); return true;
+}
+window.CRID={cue,clip:playClip,state:()=>({clip:clipName,idle:true,bag:!!(bagPivot&&bagPivot.visible)}),
+  // a read-out of where the rig actually is, so the idle can be checked without eyes
+  probe:()=>{const p=n=>{const b=bones[n];return b?b.getWorldPosition(new THREE.Vector3()).toArray().map(v=>+v.toFixed(4)):null};
+    return {head:p("C_head_bind_JNT"),handL:p("L_hand0001_bind_JNT"),hip:p("C_pelvis0001_bind_JNT"),root:+body.position.x.toFixed(4),clip:clipName}}};
+addEventListener("message",e=>{const d=e.data;if(d&&d.type==="crid-cue")cue(d.name,d.at)});
+// the desk state the overlay already reads; absent route -> stop asking
+let polling=true;
+async function pollDesk(){
+  if(!polling) return;
+  try{
+    const r=await fetch("/api/desk/state",{cache:"no-store"});
+    if(!r.ok){polling=false;return}
+    const s=await r.json(); const c=s&&s.bot&&s.bot.cue;
+    if(c&&c.name) cue(c.name,c.at!=null?c.at:c.name);
+  }catch(e){polling=false}
+}
+setInterval(pollDesk,1500);
 
 loader.load("./desk-assets/crid3d/crid.glb",g=>{
   model=g.scene;
   model.traverse(o=>{
     if(o.isBone) bones[o.name]=o;
-    if(/outfit_bag/i.test(o.name)) o.visible=false;   // the bag geometry is not in the 2D frame
     // the art's face is relaxed, not wide-eyed: use the rig's own lid shapes
     if(o.isMesh&&o.morphTargetDictionary&&o.morphTargetInfluences){
       ["face_shapes.ai_eyeUpperClose_25_L","face_shapes.ai_eyeUpperClose_25_R"].forEach(k=>{
@@ -101,8 +350,7 @@ loader.load("./desk-assets/crid3d/crid.glb",g=>{
       });
     }
   });
-  const names=Object.keys(bones);
-  document.getElementById("bones").textContent=names.length+" bones · orthographic · flat key";
+  document.getElementById("bones").textContent=Object.keys(bones).length+" bones · orthographic · flat key";
   model.updateMatrixWorld(true);
   armsDown();
   turnHead(.26);
@@ -113,13 +361,25 @@ loader.load("./desk-assets/crid3d/crid.glb",g=>{
   const s=(Number.isFinite(h)&&h>1e-3)?1.7/h:1;
   model.scale.setScalar(s);
   model.position.y=-box.min.y*s;
-  turn.add(model);
+  body.add(model);
   model.updateMatrixWorld(true);
   freeze();
-},undefined,e=>{document.getElementById("bones").textContent="load failed: "+e.message});
+  // how long his legs are, so a hip shift can keep the feet where they are
+  const hip=bones["C_pelvis0001_bind_JNT"], foot=bones["L_foot0001_bind_JNT"];
+  if(hip&&foot){
+    const a=hip.getWorldPosition(new THREE.Vector3()), b=foot.getWorldPosition(new THREE.Vector3());
+    const l=Math.abs(a.y-b.y); if(l>.2) legLen=l;
+  }
+  attachBag(g);
+  // a cue can also arrive in the URL, for testing the clips one at a time
+  const q=new URLSearchParams(location.search);
+  if(q.get("cue")) setTimeout(()=>cue(q.get("cue"),"url"),400);
+  if(q.get("yaw")) yaw=Number(q.get("yaw"))||yaw;
+  document.getElementById("state").textContent="idle · nobody is driving him";
+},undefined,e=>{document.getElementById("state").textContent="load failed: "+e.message});
 
 // camera orbit (drag) + turntable, parked on the art's angle by default
-let yaw=-.42,pitch=.03,auto=false;
+let yaw=0,pitch=.03,auto=false;
 const pointers=new Map();
 canvas.addEventListener("pointerdown",e=>{pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});canvas.setPointerCapture(e.pointerId);auto=false});
 canvas.addEventListener("pointermove",e=>{const p=pointers.get(e.pointerId);if(!p)return;
@@ -134,34 +394,114 @@ const resize=()=>{const w=innerWidth,h=innerHeight;renderer.setSize(w,h,false);
   cam.left=-half*a;cam.right=half*a;cam.top=half;cam.bottom=-half;cam.updateProjectionMatrix()};
 addEventListener("resize",resize);resize();
 
-// living idle on the real skeleton — weight shift, breathing, small arm drift.
-// Bone names come from Snap's rig; missing names are skipped, never invented.
-const B=n=>bones[n];
-const idleQ=new THREE.Quaternion(), idleE=new THREE.Euler();
-const add=(n,x,y,z)=>{const j=B(n);if(!j||!base.has(j))return;
-  idleQ.setFromEuler(idleE.set(x||0,y||0,z||0));j.quaternion.copy(base.get(j)).multiply(idleQ)};
-const tick=t=>{
+// --- the loop -------------------------------------------------------------
+const C={};
+const clearC=()=>{for(const k in C) C[k]=0};
+const CH=["leanFwd","leanSide","twist","headYaw","headPitch","headTilt","eyeYaw","shrugL","shrugR",
+  "armLiftL","armLiftR","armFwdL","armFwdR","elbowL","elbowR","legFwdL","legFwdR","legSideL","legSideR",
+  "kneeL","kneeR","ankleL","ankleR"];
+let last=performance.now(), bagVel=0, lastRootX=0;
+const stateEl=document.getElementById("state");
+
+function tick(now){
   requestAnimationFrame(tick);
-  const s=t/1000;
-  if(model){
-    if(auto)yaw+=.0035;
-    turn.rotation.y=yaw; turn.rotation.x=0;
-    const w=Math.sin(s*.9),b=Math.sin(s*1.7),d=Math.sin(s*.37+1.2);
-    add("C_spine0002_bind_JNT",w*.02,0,w*.008);          // weight sway through the spine
-    add("C_spine0003_bind_JNT",b*.012,0,0);              // breath
-    add("L_armUpper0001_bind_JNT",0,0,Math.sin(s*.8)*.05+d*.03);
-    add("R_armUpper0001_bind_JNT",0,0,-Math.sin(s*.8+1)*.05-d*.03);
-    add("L_armLower0001_bind_JNT",.05+Math.abs(b)*.02,0,0);
-    add("R_armLower0001_bind_JNT",.05+Math.abs(b)*.02,0,0);
-    add("C_neck0001_bind_JNT",w*.012,b*.008,0);          // head follows the shift
-    add("C_head_bind_JNT",d*.02,Math.sin(s*.5)*.03,0);
+  const dt=Math.min(.05,(now-last)/1000)||.016; last=now;
+  const s=now/1000;
+
+  // --- the slow, never-repeating base -------------------------------------
+  breathPhase+=dt/breathPer;
+  if(breathPhase>=1){ breathPhase-=1; breathPer=rnd(2.4,4.6); breathAmp=rnd(.45,1.35); }
+  const br=breathPhase<.42?Math.sin(breathPhase/.42*Math.PI/2):Math.cos((breathPhase-.42)/.58*Math.PI/2);
+  breathPuff=br*breathAmp;
+
+  sideTimer-=dt;
+  if(sideTimer<=0){ side=-side; sideTimer=rnd(2.2,5); S.hip.target=side*rnd(.016,.038); S.headTilt.target=side*rnd(.03,.09); }
+  lookTimer-=dt;
+  if(lookTimer<=0){ S.headYaw.target=rnd(-.6,.6); S.headPitch.target=rnd(-.16,.2); lookTimer=rnd(1.1,3); }
+  rootTimer-=dt;
+  if(rootTimer<=0){ S.rootX.target=rnd(-.14,.14); S.rootYaw.target=rnd(-.26,.26); rootTimer=rnd(3.5,7.5); }
+
+  // small bursts, at their own randomised intervals — never on a frame loop
+  if(tracks.length<2&&Math.random()<dt*rnd(1,1.7)) playBurst();
+
+  stepSpring(S.hip,dt,90,14); stepSpring(S.breath,dt,120,18);
+  stepSpring(S.headYaw,dt,75,13); stepSpring(S.headPitch,dt,60,14); stepSpring(S.headTilt,dt,45,12);
+  stepSpring(S.rootX,dt,26,10); stepSpring(S.rootYaw,dt,30,11);
+  stepSpring(S.kneeL,dt,60,13); stepSpring(S.kneeR,dt,60,13);
+
+  // --- gather the pose ----------------------------------------------------
+  clearC();
+  const iw=tracks.reduce((w,tr)=>tr.big?Math.min(w,tr.def.idle??.3):w,1);
+  C.breath=0;
+  C.leanFwd=iw*(breathPuff*.055);
+  C.leanSide=iw*(S.hip.v*2.2);
+  C.twist=iw*(S.hip.v*1.6);
+  C.headYaw=iw*(S.headYaw.v+S.hip.v*2.6);
+  C.headPitch=iw*(S.headPitch.v-breathPuff*.012);
+  C.headTilt=iw*(S.headTilt.v-S.hip.v*1.4);
+  C.eyeYaw=iw*(S.headYaw.v*.8);
+  C.armLiftL=iw*(.05+S.hip.v*1.6+Math.sin(s*.7)*.02);
+  C.armLiftR=iw*(.05-S.hip.v*1.6+Math.sin(s*.7+2.1)*.02);
+  C.elbowL=iw*(.06+Math.abs(breathPuff)*.03); C.elbowR=iw*(.06+Math.abs(breathPuff)*.03);
+  C.kneeL=iw*(.02-Math.min(0,S.hip.v)*2); C.kneeR=iw*(.02+Math.max(0,S.hip.v)*2);
+  C.rootY=0; C.rootX=clamp(S.rootX.v+S.hip.v*2.5,-.14,.14); C.rootYaw=S.rootYaw.v+S.hip.v*.6; C.rootPitch=0;
+
+  // --- tracks: authored clips and idle bursts -----------------------------
+  let bigW=0,bigIdle=1;
+  for(let i=tracks.length-1;i>=0;i--){
+    const tr=tracks[i]; tr.t+=dt;
+    const d=tr.def, w=Math.min(1,tr.t/.12)*Math.min(1,Math.max(0,(d.dur-tr.t)/.18));
+    for(const ch in d.k) C[ch]=(C[ch]||0)+evalKeys(d.k[ch],tr.t)*w;
+    if(tr.big){ bigW=Math.max(bigW,w); bigIdle=Math.min(bigIdle,d.idle??.3); }
+    if(tr.t>d.dur){ tracks.splice(i,1); if(tr.big&&i===0) clipName=null; }
   }
+  if(!tracks.some(t=>t.big)) clipName=null;
+
+  // --- plant the feet: the hip moves, the feet stay ------------------------
+  const shift=clamp(C.rootX, -.2,.2);
+  const legAngle=Math.asin(clamp(shift/legLen,-.5,.5));
+  C.legSideL=(C.legSideL||0)-legAngle; C.legSideR=(C.legSideR||0)-legAngle;
+
+  applyChannels(C);
+  applyAcc();
+
+  // --- root motion: he changes where he is ---------------------------------
+  body.position.x=C.rootX;
+  body.position.y=C.rootY;
+  body.rotation.set(C.rootPitch||0,C.rootYaw||0,0);
+
+  // --- secondary motion: the bag lags behind him and settles after ---------
+  if(bagLag){
+    const vx=(body.position.x-lastRootX)/dt; lastRootX=body.position.x;
+    S.bag.target=clamp(-vx*.16,-.28,.28);
+    S.bagX.target=clamp(-(C.rootPitch||0)*.25,-.2,.2)+breathPuff*.004;
+    stepSpring(S.bag,dt,55,7.5); stepSpring(S.bagX,dt,45,7);
+    const qz=new THREE.Quaternion().setFromAxisAngle(bagAxes.z,S.bag.v);
+    const qx=new THREE.Quaternion().setFromAxisAngle(bagAxes.x,S.bagX.v);
+    bagLag.quaternion.copy(qz).multiply(qx);
+  }
+
+  // --- blink, because a face that never blinks is a statue ------------------
+  blink.t-=dt;
+  if(blink.t<=0){ blink.on=1; blink.t=rnd(2.2,6.5); }
+  if(blink.on>0) blink.on=Math.max(0,blink.on-dt*7);
+  const lid=.35+blink.on*.65;
+  if(model) model.traverse(o=>{
+    if(o.isMesh&&o.morphTargetDictionary&&o.morphTargetInfluences){
+      ["face_shapes.ai_eyeUpperClose_25_L","face_shapes.ai_eyeUpperClose_25_R"].forEach(k=>{
+        const i=o.morphTargetDictionary[k]; if(i!==undefined) o.morphTargetInfluences[i]=lid;
+      });
+    }
+  });
+
+  if(auto)yaw+=.0035;
   const r=4.2;
   cam.position.set(Math.sin(yaw)*Math.cos(pitch)*r,camTarget.y+Math.sin(pitch)*r,Math.cos(yaw)*Math.cos(pitch)*r);
   cam.lookAt(camTarget);
+  if(stateEl) stateEl.textContent=(clipName?"clip: "+clipName:"idle · nobody is driving him")+(bagPivot&&bagPivot.visible?" · bag on":" · bag off");
   renderer.render(scene,cam);
-};
-tick(0);
+}
+requestAnimationFrame(tick);
 </script>
 </body>
 </html>

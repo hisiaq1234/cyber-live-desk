@@ -79,7 +79,25 @@ Replace each file with a real Snap render of this same avatar:
 
 The recipe is `RECIPE` in `scripts/build-body-ladder.py` and
 `docs/crid-avatar-params.json`. Only the camera rotation changes per angle.
-If Snap cannot return a rotation, leave the hole. Do not generate a body.
+If Snap cannot return a rotation, Nano Banana edits the angle that is already
+in the zip. It does not invent a new person.
+
+## Who makes the pictures
+
+Nano Banana makes the pictures. A projection script does not. One was run
+against this GLB and the color missed the surface, so it was thrown out.
+Do not write another.
+
+For each stage, give Nano Banana the real front (`body-<key>-r0`) and the
+matching angle from `base/`. It edits. It does not redraw him.
+
+- Remove the pack and the straps.
+- Fill the back only from the sides of this same man. No new body.
+- The head stays the same head. The height stays the same height.
+- Width and depth both take that stage's `k`, and nothing else changes.
+
+The finished `angle-1` … `angle-8` are the color. Bake those onto the unwrap
+already in `crid.glb`. Black pixels are not skin.
 
 ## What the 2D is for
 

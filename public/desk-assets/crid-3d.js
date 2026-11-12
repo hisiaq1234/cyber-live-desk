@@ -80,6 +80,21 @@ export async function initCrid3D(host,getState,onReady,onFail){
       else o.material=dress(o.material);
     });
 
+    // The GLB is a heavier build than the leanest Bitmoji (ladder stage "3").
+    // Measured against that drawing: its chest is 0.70 of the head, this mesh is 0.97.
+    // Girth only — local X on these bones is length, and the spec says he is never shortened.
+    // The head shares the spine's axes, so it is scaled back. Arms inherit the spine's
+    // width as length (they point sideways), so that length is restored on the upper arm.
+    const girth=(name,x=1,y=1,z=1)=>{const b=bones[name];if(!b)return;b.scale.x*=x;b.scale.y*=y;b.scale.z*=z};
+    const W=.76,D=.88;
+    girth("C_spine0001_bind_JNT",1,W,D);
+    girth("C_head_bind_JNT",1,1/W,1/D);
+    girth("L_armUpper0001_bind_JNT",1/W,.8,.8);
+    girth("R_armUpper0001_bind_JNT",1/W,.8,.8);
+    girth("C_pelvis0001_bind_JNT",1,W,D);
+    girth("L_legUpper0001_bind_JNT",1,.88,.88);
+    girth("R_legUpper0001_bind_JNT",1,.88,.88);
+
     // Fit: bounds come from the SKELETON joints, not the skinned-mesh bbox — morph targets and
     // bind-pose geometry can report a degenerate box that flings the model off-camera.
     model.updateMatrixWorld(!0);

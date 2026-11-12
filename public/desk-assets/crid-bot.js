@@ -199,7 +199,7 @@ html.low-power #crid-bot svg,html.swae #crid-bot svg{filter:none}
 // The ladder is exported so a test can hold it to the measurement in ladder.json; nothing in the
 // overlay has to import it to use it.
 export{BODY_LADDER};
-export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="bc",x=null,y=null,step=null,scale=1,layers=null}={}){
+export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="bc",x=null,y=null,step=null,scale=1,layers=null,visitIn=null}={}){
   if(!document.getElementById("crid-bot-css")){const st=document.createElement("style");st.id="crid-bot-css",st.textContent=CSS,document.head.append(st)}
   const STEP=step!=null?step:swae?220:lowPower?260:140,
   // Movement is sampled finer than the sequencing tick, so an eased beat is drawn as a movement
@@ -486,6 +486,35 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // posture held still is what reads as thinking. Usable standing and leaning; it composes with
   // the lean rather than replacing it.
   const ponder=(on=!0)=>{if(mode==="dead"||dying)return !1; pondering=!!on; lastDrawn=""; return !0};
+  // ---- out and about -----------------------------------------------------------------------
+  // Every so often, when the desk is quiet and he is not already busy, he takes the walk to one
+  // of the panels and leans on it for a spell — sometimes falling into a ponder about what is
+  // on it — then lets go and drifts home. The registry is the same layer list the desk measures,
+  // so a name that is not on screen is never picked, and a panel that leaves mid-lean is let go
+  // by the same resettle that looks after a commanded lean. This is what keeps him a guest on
+  // the furniture instead of a sprite pinned to one spot of it.
+  const VISIT_LAYERS=["card","clock","map","ticker","dock","logo","chat","headlines"];
+  let visitAt=Date.now()+(visitIn??rand(28000,48000)),visit=null,visitPondered=!1;
+  const maybeVisit=now=>{
+    if(!getLayer||mode==="dead"||dying||reduced)return;
+    if(visit){
+      if(leanAt){                                // arrived: hold for a spell, then let go
+        if(!visit.until)visit.until=now+rand(9000,17000);
+        if(!visitPondered&&Math.random()<.45){ponder(!0);visitPondered=!0}
+        if(now>=visit.until){
+          // Only let go of the panel he chose: a lean somebody else put on him is theirs to
+          // end, so a visit that lost its panel simply retires instead of pushing him off it.
+          if(leanAt.layer===visit.name){ponder(!1);unlean()}
+          else ponder(!1);
+          visitPondered=!1;visit=null;visitAt=now+rand(42000,95000)}
+      }else if(!pendingLean&&!walk){visit=null;visitAt=now+rand(20000,40000)}
+      return}
+    if(mode!=="on"||now<visitAt||walk||leanAt||pendingLean||pondering||idleQ.length||gestureQ.length||running||jobs.length)return;
+    const names=VISIT_LAYERS.filter(n=>{const b=layerOf(n);return b&&b.w>10&&b.h>10});
+    if(!names.length){visitAt=now+rand(20000,40000);return}
+    const name=names[Math.floor(Math.random()*names.length)],side=Math.random()<.5?"left":"right";
+    if(lean(name,side)){visit={name,until:0};visitPondered=!1;lastActive=Date.now()}
+    else{pendingLean=null;visitAt=now+rand(15000,32000)}};
   // ---- the stride -------------------------------------------------------------------------
   // A walk is not two legs turning opposite ways. That is a wide-legged stance: both feet stay on
   // the floor and both legs leave the vertical at once, so he reads as standing spread rather than
@@ -678,7 +707,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // Stillness is part of him, but a painted body with a 28s gap reads as a statue.
     const sec=mode==="doze"?(r<.4?rand(12,20):rand(7,12)):(r<.2?rand(8,12):r<.55?rand(5,8):rand(2.8,5));
     return sec*1000*(reduced?1.35:1)};
-  const tick=()=>{if(frozen)return; const now=Date.now(); tickN++; if(walk&&(jobs.length||running))stopWalk(); advanceJob(); advanceWalk();
+  const tick=()=>{if(frozen)return; const now=Date.now(); tickN++; if(walk&&(jobs.length||running))stopWalk(); advanceJob(); advanceWalk(); maybeVisit(now);
     if(now>=trAt+trFor){ // the previous beat has finished travelling: choose the next one
       let frame=null; if(walk&&!walk.done&&!gestureQ.length)gestureQ.push(...SEQ.crawl);
       if(gestureQ.length)frame=gestureQ.shift(); else if(mode!=="dead"&&!dying){

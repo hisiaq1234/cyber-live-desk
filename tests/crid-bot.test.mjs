@@ -224,3 +224,17 @@ test("the mascot is drawn at broadcast size and can be scaled from the URL", asy
     new URL("../public/desk-assets/overlay.js", import.meta.url), "utf8"));
   assert.match(overlay, /num\("bot\.scale", 1, 0\.4, 2\.5\)/, "?bot.scale= must be wired from the overlay");
 });
+
+test("he goes to find a panel on his own when the desk is quiet", async () => {
+  // The desk hands him the layer registry; with nobody asking him to do anything he still walks
+  // to a panel and leans — the difference between a mascot and a widget pinned to a corner.
+  const root = installDom();
+  const box = { x: 200, y: 50, w: 300, h: 250, edge: { left: 200, right: 500, top: 50, bottom: 300 }, z: 1 };
+  const layers = { layer: () => box };
+  const bot = createCridBot({ root, step: 12, position: "bc", layers, visitIn: 60 });
+  bot.observe({ bot: { on: true } });
+  let roamed = false;
+  for (let i = 0; i < 60 && !roamed; i++) { await sleep(100); roamed = bot.el.classList.contains("roam"); }
+  assert.ok(roamed, "within a few seconds of waking he should be on his way to a panel");
+  bot.destroy();
+});

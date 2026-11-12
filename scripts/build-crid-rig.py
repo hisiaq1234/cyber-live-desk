@@ -270,12 +270,25 @@ def build(img, m):
             r = [q for q in runs(a, y) if q[1] - q[0] >= 6]
             if not r:
                 return False
+            w = HAND_W if y >= m["wristY"] else ARM_W
             b = r[0] if side == "l" else r[-1]
             if side == "l" and b[0] >= 470:
                 return False
             if side == "r" and b[1] <= 640:
                 return False
-            w = HAND_W if y >= m["wristY"] else ARM_W
+            if y >= m["wristY"]:
+                # The hand's silhouette can split into several runs — a finger notch leaves a
+                # gap of a pixel or two, and the row then holds more than the one outer run.
+                # Claim every run inside HAND_W of the outer edge: a run dropped here falls
+                # through to the torso or the thigh and stays behind when the arm swings,
+                # which is the ghost hand the overlay shows mid-stride.
+                edge = r[0][0] if side == "l" else r[-1][1]
+                for b in (r if side == "l" else r[::-1]):
+                    if (b[0] - edge if side == "l" else edge - b[1]) > w:
+                        break
+                    if b[0] <= x <= b[1] and (x <= edge + w if side == "l" else x >= edge - w):
+                        return True
+                return False
             if b[1] - b[0] + 1 > w:
                 b = (b[0], b[0] + w - 1) if side == "l" else (b[1] - w + 1, b[1])
             return b[0] <= x <= b[1]

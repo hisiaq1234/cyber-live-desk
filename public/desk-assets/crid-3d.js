@@ -101,6 +101,34 @@ export async function initCrid3D(host,getState,onReady,onFail){
     model.scale.setScalar(s);
     const feetY=y0*s;
     model.position.y=-feetY;
+
+    // ---- the body ladder, inside the mesh ----------------------------------------------
+    // One GLB is one build; the seven stages are that same body at a girth factor k
+    // (docs/specs/crid-360.md). Bones are not scaled — that bent him — so the bind-pose
+    // vertices of the body and kit meshes are displaced instead: x/z offsets from the
+    // body axis grow by k, masked by height so feet, legs and the head keep their own
+    // measure while chest, waist, belly and arms all take the same concurrent change.
+    // y is never touched: height and head size are fixed on every stage.
+    const STAGE_K={"3":.82,"0":.95,"4":.95,"5":1.10,"1":1.03,"11":1.13,"2":1.28};
+    const girth=[];
+    root.traverse(o=>{
+      if(!o.isMesh||!o.geometry)return;
+      if(/head|eye|hair|brow|mouth|earring|lash|bag/i.test(o.name||""))return;
+      const pos=o.geometry.attributes.position; if(!pos||!pos.count)return;
+      const n=pos.count,orig=new Float32Array(n*3),w=new Float32Array(n);
+      let cx=0,cz=0;
+      for(let i=0;i<n;i++){const x=pos.getX(i),y=pos.getY(i),z=pos.getZ(i),j=i*3;
+        orig[j]=x;orig[j+1]=y;orig[j+2]=z;cx+=x;cz+=z}
+      cx/=n;cz/=n;
+      for(let i=0;i<n;i++){const t=clamp((orig[i*3+1]-y0)/(y1-y0||1),0,1);
+        // shins/feet carry half the change, torso and arms the full k, the neck tapers off
+        w[i]=t<.14?.45:t<.24?.45+(t-.14)/.10*.55:t<.8?1:t<.92?1-(t-.8)/.12*.6:.4}
+      girth.push({pos,orig,w,cx,cz})});
+    let curK=1,targetK=1,appliedK=-1,curStage=null;
+    const applyGirth=k=>{for(const g of girth){const p=g.pos;
+      for(let i=0;i<g.w.length;i++){const s=1+(k-1)*g.w[i],j=i*3;
+        p.setXYZ(i,g.cx+(g.orig[j]-g.cx)*s,g.orig[j+1],g.cz+(g.orig[j+2]-g.cz)*s)}
+      p.needsUpdate=!0}};
     const dist=1.5/(2*Math.tan(cam.fov*Math.PI/360))*1.3;
     cam.position.set(0,.8,-dist);cam.lookAt(0,.7,0);
 
@@ -168,6 +196,11 @@ export async function initCrid3D(host,getState,onReady,onFail){
       turn.rotation.z=st.lean?st.lean.angle*Math.PI/180*.55:0;
 
       const by=(p.by||0)/100,bs=clamp(p.bs||1,.8,1.15);
+      // Stage: the bot names his build; the mesh eases to that girth over ~a second so a sub
+      // milestone reads as him filling out, not as a pop. First sighting snaps — no boot swell.
+      if(st.stage&&st.stage!==curStage){curStage=st.stage;targetK=STAGE_K[st.stage]??1;if(appliedK<0)curK=targetK}
+      curK+=(targetK-curK)*Math.min(1,dt*4);
+      if(Math.abs(curK-appliedK)>.0005){applyGirth(curK);appliedK=curK}
       model.position.y=-feetY-by*.9*s+(walking?Math.abs(Math.sin(TAU*u))*.035*s:Math.sin(t*1.55)*.012*s);
       model.scale.set(s*(1+.05*(1-bs)),s*bs,s*(1+.05*(1-bs)));
 

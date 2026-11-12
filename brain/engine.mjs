@@ -85,9 +85,12 @@ export class InitiativeEngine {
       if (c) candidates.push(c);
     }
     const winner = this.decide(candidates, { source: "tick" });
-    // The quiet layer only gets a turn when the loud loop had nothing to say. That one
-    // line is the whole guarantee that a micro-emotion can never displace a big reaction.
-    if (!winner) this.microEmotion();
+    // The quiet layer is not a fallback for an empty tick — it is an ambient layer with its
+    // own pacing (micro-emotions.mjs: gap, idle gap, per-minute ceiling, never-repeat). Gating
+    // it on `!winner` starved it completely: on a quiet stream a quiet rule is eligible almost
+    // every tick, so the eight feelings could never play. It still cannot displace anything —
+    // it is not an action, spends no budget and interrupts nothing.
+    this.microEmotion();
     return winner;
   }
 

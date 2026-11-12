@@ -55,7 +55,7 @@ export class Personality {
    */
   reactionLine(kind, slots = {}, { avoid = [], random = Math.random } = {}) {
     const cfg = this.reaction(kind);
-    const pool = arr(cfg.lines).map((t) => this.fill(t, { ...this.ambient(), ...slots }));
+    const pool = arr(cfg.lines).map((t) => this.fill(t, { ...this.ambient(random), ...slots }));
     return this._pick(pool, avoid, random);
   }
 
@@ -67,7 +67,7 @@ export class Personality {
   /** The tiny caption for a micro-emotion, through the same `never` guard as every line. */
   microLine(name, slots = {}, { avoid = [], random = Math.random } = {}) {
     const cfg = this.microEmotion(name);
-    const pool = arr(cfg?.lines).map((t) => this.fill(t, { ...this.ambient(), ...slots }));
+    const pool = arr(cfg?.lines).map((t) => this.fill(t, { ...this.ambient(random), ...slots }));
     return this._pick(pool, avoid, random);
   }
 
@@ -100,14 +100,14 @@ export class Personality {
    * which is always in character.
    */
   line(bucketName, slots = {}, { avoid = [], random = Math.random } = {}) {
-    const pool = this.bucket(bucketName).map((t) => this.fill(t, { ...this.ambient(), ...slots }));
+    const pool = this.bucket(bucketName).map((t) => this.fill(t, { ...this.ambient(random), ...slots }));
     return this._pick(pool, avoid, random);
   }
 
-  ambient() {
-    const opinion = this.opinions.length ? this.opinions[Math.floor(Math.random() * this.opinions.length)] : "";
-    const joke = this.jokes.length ? this.jokes[Math.floor(Math.random() * this.jokes.length)].line : "";
-    const catchphrase = this.catchphrases.length ? this.catchphrases[Math.floor(Math.random() * this.catchphrases.length)] : "";
+  ambient(random = Math.random) {
+    const opinion = this.opinions.length ? this.opinions[Math.floor(random() * this.opinions.length)] : "";
+    const joke = this.jokes.length ? this.jokes[Math.floor(random() * this.jokes.length)].line : "";
+    const catchphrase = this.catchphrases.length ? this.catchphrases[Math.floor(random() * this.catchphrases.length)] : "";
     return { opinion, joke, catchphrase, name: this.name, owner: this.owner };
   }
 

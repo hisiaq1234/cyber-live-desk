@@ -318,11 +318,10 @@ test("the quiet layer never takes the floor from the loud one", () => {
   h.advance(30_000); // deep enough for both a musing AND a sleepy
   const winner = h.engine.tick();
   assert.equal(winner.rule, "musing", "the loud loop had something to say");
-  assert.equal(h.micros().length, 0, "so the quiet layer stayed silent");
-
-  h.advance(5_000);
-  assert.equal(h.engine.tick(), null, "the loud loop has nothing now");
-  assert.equal(h.micros()[0].payload.emotion, "sleepy", "and the quiet layer takes over");
+  // The quiet layer is ambient, not a competitor: it may share the tick on its own pacing,
+  // but it is still not an action — interrupt "none", no budget, no moment (asserted above).
+  for (const cmd of h.micros()) assert.equal(cmd.interrupt, "none", "a small feeling never cuts anything");
+  assert.equal(h.memory.counters.actions, 1, "only the musing spent the action budget");
 });
 
 test("a micro-emotion is not an action: no budget, no moment, no memory", () => {

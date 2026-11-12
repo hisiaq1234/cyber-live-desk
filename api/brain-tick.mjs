@@ -21,81 +21,20 @@
 // Upstash KV_REST_API_URL / KV_REST_API_TOKEN via _store.mjs.
 
 import { getStore } from "./_store.mjs";
-import { BOT_CUES, runAction } from "./_desk-core.mjs";
+import { runAction } from "./_desk-core.mjs";
 import { CommandBus } from "../brain/commands.mjs";
+import { cueFor } from "../brain/cue-map.mjs";
 import { SessionMemory } from "../brain/memory.mjs";
 import { InitiativeEngine } from "../brain/engine.mjs";
 import { Personality, PERSONALITY_PATH, loadPersonality } from "../brain/personality.mjs";
 import personalityData from "../brain/crid-personality.json" with { type: "json" };
 
+export { cueFor };
+
 export const config = { runtime: "nodejs" };
 
 /** Where the engine's session lives between ticks. Namespaced by _store.mjs ("cld:"). */
 export const BRAIN_KEY = "brain";
-
-/* ---------- engine commands → the cues the desk overlay can perform ---------- */
-
-// brain/commands.mjs names gestures by intent ("double-take", "lean-in"); the overlay names its
-// sequences (public/desk-assets/crid-bot.js → CUE_NAMES, mirrored by BOT_CUES). Only the ones both
-// sides agree on are translated — an unknown gesture is dropped rather than guessed at on air.
-const GESTURE_CUES = {
-  wave: "wave",
-  cheer: "cheer",
-  nod: "nod",
-  hop: "hop",
-  jump: "jump",
-  shrug: "shrug",
-  sit: "sit",
-  stand: "stand",
-  salute: "salute",
-  peek: "peek",
-  kick: "kick",
-  crawl: "crawl",
-  "double-take": "surprise",
-  "lean-in": "think",
-};
-
-// Expressions are a mood, not a sequence. These are the moods with an honest one-word equivalent.
-const EXPRESS_CUES = {
-  excited: "cheer",
-  pleased: "nod",
-  delighted: "delighted",
-  thinking: "think",
-  deadpan: "sideeye",
-  curious: "curious",
-  surprised: "surprise",
-  sad: "wince",
-};
-
-/**
- * The one thing CRID performs this tick, from the envelopes the engine just emitted.
- *
- * The desk state holds a single one-shot cue, so a tick posts at most one: the line if he has
- * one (that is what reads as performing on stream), otherwise a gesture, otherwise a
- * micro-emotion, otherwise an expression. Everything else the engine emits — presence, look,
- * effects, layer moves — has no cue equivalent and is simply not posted.
- */
-export function cueFor(envelopes = []) {
-  const list = Array.isArray(envelopes) ? envelopes.filter(Boolean) : [];
-  const said = list.find((e) => e.type === "say" && String(e.payload?.text ?? "").trim());
-  if (said) return { name: "say", text: String(said.payload.text).trim() };
-  for (const e of list) {
-    if (e.type !== "gesture") continue;
-    const name = GESTURE_CUES[e.payload?.type];
-    if (name) return { name };
-  }
-  for (const e of list) {
-    if (e.type !== "micro") continue;
-    const name = e.payload?.emotion;
-    if (BOT_CUES.includes(name)) return { name };
-  }
-  for (const e of list) {
-    if (e.type !== "express") continue;
-    const name = EXPRESS_CUES[e.payload?.emotion];
-    if (name) return { name };
-  }
-  return null;
-}
 
 /* ---------- session, carried between invocations ---------- */
 
@@ -201,7 +140,10 @@ export async function runBrainTick({ store = getStore(), now = Date.now, log = n
   let fired = null;
   const emitted = [];
   engine.onAction = (action, envelopes) => {
-    fired = action?.rule ?? null;
+    // `fired` reports the rule that won the tick; a micro-emotion is ambient, not a win, so
+    // it must not overwrite the name the response and the tests read.
+    const rule = action?.rule ?? null;
+    if (rule && !rule.startsWith("micro-emotion:")) fired = rule;
     if (Array.isArray(envelopes)) emitted.push(...envelopes);
   };
 

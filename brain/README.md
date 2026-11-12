@@ -246,7 +246,7 @@ Either way the brain names the layer and the side. It never touches pixels.
 ## 6. Tests
 
 ```bash
-node --test brain/tests/*.test.mjs     # the brain suite (105 tests)
+node --test brain/tests/*.test.mjs     # the brain suite
 node --test                            # the whole repo
 ```
 
@@ -255,8 +255,10 @@ rejection (`wow`, `water`, `1 kill`, `www.google.com`, `lol`); L/roast tears; co
 per-minute ceilings; the `never` guard on reaction lines; the `move` command contract; and
 the refusal of unknown layers.
 
-Three tests fail on `main` before this work and still fail after it (`api-handler-shape`,
-`tests/desk-route`, `tests/http-shell`) — pre-existing, unrelated to the brain.
+Every engine action is also translated to the desk's one-shot cue (`brain/cue-map.mjs`, the
+same table `api/brain-tick.mjs` uses) and posted through `brain/cue.mjs` when the brain has a
+desk to talk to: set `CRID_DESK_URL` to the deployed desk and `DESK_OPERATOR_TOKEN` to its
+operator token. Without them the channel stays off and the local overlay is unaffected.
 
 ---
 

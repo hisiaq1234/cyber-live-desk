@@ -17,6 +17,8 @@ import { createTwitchIrc } from "./twitch-irc.mjs";
 import { createDemoSource, createReactionDemo, mulberry32 } from "./demo.mjs";
 import { createBrainServer } from "./server.mjs";
 import { createLettersGame } from "./letters.mjs";
+import { createCueChannel } from "./cue.mjs";
+import { cueFor } from "./cue-map.mjs";
 
 const DEFAULT_PORT = 7311;
 
@@ -148,7 +150,16 @@ async function main() {
     getStatus: () => ({ ...status, uptimeMs: Date.now() - status.startedAt }),
   });
 
-  engine.onAction = (action, commands) => server.broadcastDecision({ ...action }, commands);
+  // The same decision also goes to the desk the stream actually shows: cueFor picks the one
+  // cue this action maps to and the cue channel posts it as state.bot.cue, which the desk
+  // overlay is already polling. With CRID_DESK_URL / DESK_OPERATOR_TOKEN unset the channel
+  // stays off and says so once — the local overlay above is unaffected either way.
+  const deskCues = createCueChannel({ log });
+  engine.onAction = (action, commands) => {
+    server.broadcastDecision({ ...action }, commands);
+    const cue = cueFor(commands);
+    if (cue) deskCues.cue(cue.name, { text: cue.text });
+  };
 
   // Letters rides on the chat the brain already reads. It needs one thing nothing else in here does —
   // a way to write desk state — so it stays off, and says why once, until that is configured.

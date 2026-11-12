@@ -743,7 +743,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const tick=()=>{if(frozen)return; const now=Date.now(); tickN++; if(walk&&(jobs.length||running))stopWalk(); advanceJob(); advanceWalk(); maybeVisit(now);
     if(now>=trAt+trFor){ // the previous beat has finished travelling: choose the next one
       let frame=null; if(walk&&!walk.done&&!gestureQ.length)gestureQ.push(...SEQ.crawl);
-      if(gestureQ.length)frame=gestureQ.shift(); else if(mode!=="dead"&&!dying){
+      if(gestureQ.length){const head=gestureQ[0]; if(head&&head.__cueEnd!=null){gestureQ.shift(); endCue(head.__cueEnd,"done")} else frame=gestureQ.shift()} else if(mode!=="dead"&&!dying){
         // Against a panel, or inside a thought, he is not pottering about: the staged hold is the
         // performance, so nothing picks a wander for him until he lets go.
         if(!idleQ.length&&!walk&&!leanAt&&!pondering&&now>=waitUntil){const q=pickIdle();
@@ -751,7 +751,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
         frame=idleQ.shift()||null; if(mode==="on"&&now-lastActive>DOZE_AFTER_MS)setMode("doze")}
       stepTo(frame,now);
       if(dying&&!gestureQ.length){mode="dead";dying=!1;host.dataset.mode="dead";lastDrawn=""}
-      else if(!dying&&!running&&!jobs.length&&!gestureQ.length&&pendingReact.length)play(SEQ[pendingReact.shift()]||[]);
+      else if(!dying&&!running&&!jobs.length&&!gestureQ.length&&pendingReact.length){const next=pendingReact.shift(); const nm=typeof next==="string"?next:next&&next.name; play([...(SEQ[nm]||[]),...(next&&next.__cueEnd!=null?[{__cueEnd:next.__cueEnd}]:[])])}
     }
     // Dead/dying: render the pose (die sequence while dying, prone at rest when dead) but do not
     // run the rig/idle loop — the flat drawing carries the dead treatment and limbs stay still.
@@ -766,7 +766,18 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       if(g.tr!=null)g.tr=clamp(g.tr,-2,2); if(g.hy!=null)g.hy=clamp(g.hy,-1.5,1.5); if(g.hr!=null)g.hr=clamp(g.hr,-2,2);
       const k=JSON.stringify(g); if(!seen.has(k)){seen.add(k); out.push(g)}}
     return out.length?out:[frames[frames.length-1]||{}]};
-  const play=(frames,{urgent=!1}={})=>{if(urgent)gestureQ=[]; gestureQ.push(...(reduced?calm(frames):frames))};
+  // ---- cue completion -------------------------------------------------------------------------
+  // The desk asks "wave"; now it also asks "did he?". One callback per cue, fired exactly once and
+  // only by something that actually happened: the last frame of the sequence is drawn ("done"),
+  // something louder clears the queue underneath it ("aborted"), or a line's bubble has been held
+  // and faded ("done"). A cue that gets neither — the page is reloaded, the tab is killed, he walks
+  // off mid-gesture — reports nothing, which is why the brain keeps its own timer as the fallback.
+  let cueEndSeq=0; const cueEnds=new Map();
+  const endCue=(id,outcome)=>{if(id==null||!cueEnds.has(id))return; const fire=cueEnds.get(id); cueEnds.delete(id); try{fire(outcome)}catch{}};
+  const cueEndWith=(id,outcome)=>()=>endCue(id,outcome);
+  const abortCueEnds=()=>{for(const id of [...cueEnds.keys()])endCue(id,"aborted")};
+  const cueEndFor=onEnd=>{if(typeof onEnd!=="function")return null; const id=++cueEndSeq; cueEnds.set(id,onEnd); return id};
+  const play=(frames,{urgent=!1}={})=>{if(urgent){gestureQ=[]; abortCueEnds()} gestureQ.push(...(reduced?calm(frames):frames))};
   // Going quiet is not a reason to leave a panel: a doze is a mode, not a recall, and taking the
   // lean away here was what sent him home the moment the desk went still. Only a mode that takes
   // him off the desk (dead) comes home; a lean is released by unlean(), by another lean, or by
@@ -779,7 +790,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // take it back. The beat is queued, never urgent, so a small feeling can never interrupt the loud
   // layer — the same promise the brain's bus makes (interrupt "none", lowest priority).
   let feelTimer=null;
-  const feel=(name,{hold}={})=>{const f=FEEL[name]; if(!f||mode==="dead"||dying)return false;
+  const feel=(name,{hold,onEnd}={})=>{const f=FEEL[name]; if(!f||mode==="dead"||dying)return false;
     if(mode==="doze"){mode="on";lastActive=Date.now()}
     // A feeling is a different drawing for a moment, not a different body: now that the bodies are a
     // real size ladder, swapping to a fixed shape would balloon a lanky Crid into a fat one for a
@@ -789,21 +800,24 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     if(i>=0){const here=Math.max(0,bodyI), near=clamp(i,here-1,here+1); setBody(near)}
     if(f.seq&&SEQ[f.seq])play(SEQ[f.seq]);
     lastActive=Date.now(); clearTimeout(feelTimer);
-    feelTimer=setTimeout(()=>{if(mode!=="dead")setBody(stageFor(subs).i)},clamp(Number(hold)||f.hold,400,4e3));
+    feelTimer=setTimeout(()=>{if(mode!=="dead")setBody(stageFor(subs).i); if(typeof onEnd==="function")onEnd()},clamp(Number(hold)||f.hold,400,4e3));
     return true};
   // ---- the cue channel ---------------------------------------------------------------------
   // One thing at a time, from the desk state. A cue is never stacked on another: if he is already
   // busy it waits its turn in the same queue the derived reactions use, and if that queue is full it
   // is dropped. Nothing here remounts him, clears the frame or teleports a walk, and a name he does
   // not know is ignored, so the desk can pass whatever state carries.
-  const cue=(name,{text=""}={})=>{
+  const cue=(name,{text="",onEnd}={})=>{
     if(typeof name!=="string"||!name||mode==="dead"||dying)return false;
-    if(name==="say"){const line=String(text||"").trim().slice(0,140); if(!line)return false; say(line,clamp(line.length*65,2e3,6e3)); return true}
-    if(FEEL[name])return feel(name);
-    if(!SEQ[name])return false;
+    const end=cueEndFor(onEnd);
+    if(name==="say"){const line=String(text||"").trim().slice(0,140); if(!line){endCue(end,"failed"); return false} const ms=clamp(line.length*65,2e3,6e3); say(line,ms); if(end)setTimeout(()=>endCue(end,"done"),ms+450); return true}
+    if(FEEL[name])return feel(name,{onEnd:end?cueEndWith(end,"done"):undefined});
+    if(!SEQ[name]){endCue(end,"failed"); return false}
     if(mode==="doze"){mode="on";lastActive=Date.now()}
-    if(running||jobs.length){if(pendingReact.length<3)pendingReact.push(name); return true}
-    play(SEQ[name]);
+    // Busy: it waits its turn like every other cue, and the end marker waits with it, so a cue that
+    // plays three seconds late still reports when it actually finishes.
+    if(running||jobs.length){if(pendingReact.length<3){pendingReact.push(end?{name,__cueEnd:end}:name); return true} endCue(end,"aborted"); return false}
+    play(end?[...SEQ[name],{__cueEnd:end}]:SEQ[name]);
     return true};
   const centre=r=>({x:r.left+r.width/2,y:r.top+r.height/2});
   const setFlight=(node,f)=>{if(!f){for(const k of["transform","opacity","transition","zIndex","willChange","transformOrigin","visibility"])node.style[k]=""; if(flights.has(node)&&flights.get(node).madeRelative)node.style.position=""; flights.delete(node); return} node.style.transform=`translate(${f.tx}px,${f.ty}px) scale(${f.s}) rotate(${f.r}deg)`; node.style.opacity=f.o; node.style.visibility=f.o===0?"hidden":"visible"};

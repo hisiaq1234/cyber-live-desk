@@ -21,7 +21,8 @@
 // Upstash KV_REST_API_URL / KV_REST_API_TOKEN via _store.mjs.
 
 import { getStore } from "./_store.mjs";
-import { runAction } from "./_desk-core.mjs";
+import { readCueLedger, runAction } from "./_desk-core.mjs";
+import { openActivity, settleActivity, supersedeActivity } from "../brain/activity.mjs";
 import { CommandBus } from "../brain/commands.mjs";
 import { cueFor } from "../brain/cue-map.mjs";
 import { SessionMemory } from "../brain/memory.mjs";
@@ -39,12 +40,16 @@ export const BRAIN_KEY = "brain";
 /* ---------- session, carried between invocations ---------- */
 
 /** Everything the engine learned, so the next tick continues this session rather than starting one. */
-export function snapshotBrain(engine, now = Date.now()) {
+export function snapshotBrain(engine, now = Date.now(), activity = null) {
   const m = engine.memory;
   const micro = engine.micro;
   return {
     v: 1,
     savedAt: now,
+    // The activity the desk was last told to perform, and whether the desk confirmed it. It rides
+    // in the same snapshot as everything else, so a tick that starts cold still knows what he was
+    // doing a minute ago instead of assuming the slate is clean.
+    activity,
     memory: {
       startedAt: m.startedAt,
       chat: m.chat,
@@ -132,6 +137,12 @@ export async function runBrainTick({ store = getStore(), now = Date.now, log = n
     log?.(String(line));
   };
 
+  // The desk reports how a cue ended into its own ledger; this is where the brain picks that up.
+  // Settling happens before the tick decides anything, so an activity that finished or ran out of
+  // time is closed even on a tick that emits nothing at all.
+  const ledger = await readCueLedger(store);
+  let activity = settleActivity(saved?.activity ?? null, { reports: ledger.reports, now: now() });
+
   const memory = new SessionMemory({ now });
   const bus = new CommandBus({ now });
   const engine = new InitiativeEngine({ memory, personality: currentPersonality(), bus, now, log: record });
@@ -154,10 +165,16 @@ export async function runBrainTick({ store = getStore(), now = Date.now, log = n
   if (cue) {
     const result = await runAction(store, { action: "bot-cue", ...cue }, now());
     posted = result.state?.bot?.cue ?? null;
+    if (posted) {
+      // A new cue replaces whatever he was doing: the old activity is over, and nobody said how,
+      // so it closes unconfirmed rather than sitting open behind the new one.
+      activity = supersedeActivity(activity, now());
+      activity = openActivity(posted, now());
+    }
   }
 
-  await store.setJSON(BRAIN_KEY, snapshotBrain(engine, now()));
-  return { ok: true, fired, cue: posted, commands: emitted.map((e) => e.type), log: lines };
+  await store.setJSON(BRAIN_KEY, snapshotBrain(engine, now(), activity));
+  return { ok: true, fired, cue: posted, activity, commands: emitted.map((e) => e.type), log: lines };
 }
 
 const handler = async (req) => {

@@ -110,11 +110,13 @@ test("every reaction the desk advertises has something to render, and the two li
 
 test("the overlay drains the cue into CRID on the poll it already makes", () => {
   const overlay = readFileSync(new URL("../public/desk-assets/overlay.js", import.meta.url), "utf8");
-  assert.match(overlay, /import \{ createCueReader \} from "\.\/cue\.mjs";/, "the reader is the tested module");
+  assert.match(overlay, /import \{ createCueReader, createCueReporter \} from "\.\/cue\.mjs";/, "the reader and its way back are the tested modules");
   assert.match(overlay, /const cues = createCueReader\(\{ known: \(name\) => CUE_NAMES\.includes\(name\) \}\)/);
   assert.match(overlay, /bot\?\.observe\(s\);/, "it must ride the existing poll, not a second transport");
   assert.match(overlay, /const cue = cues\.read\(s\.bot\);/);
-  assert.match(overlay, /if \(cue && bot\) bot\.cue\(cue\.name, \{ text: cue\.text \}\);/);
+  // The way back rides the same hand-off: the cue is still given to CRID in one call, and that call
+  // now carries what to do when he finishes it.
+  assert.match(overlay, /bot\.cue\(cue\.name, \{ text: cue\.text, onEnd: \(outcome\) => cueReports\.report\(cue\.at, outcome\) \}\)/);
   assert.doesNotMatch(overlay, /new WebSocket\(/, "no second transport on the stream page");
   assert.doesNotMatch(overlay, /\/api\/desk\/command/, "and no command route: the poll is the transport");
 });

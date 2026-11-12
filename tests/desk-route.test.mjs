@@ -70,6 +70,23 @@ test("voice music explains the missing server-side YouTube key without revealing
   );
 });
 
+test("the location write sits behind the operator Bearer gate like every other write", async () => {
+  const old = process.env.DESK_OPERATOR_TOKEN;
+  process.env.DESK_OPERATOR_TOKEN = "route-test-only-token";
+  const post = (auth) => desk.fetch(new Request("https://cyber-live-desk.vercel.app/api/desk/location", {
+    method: "POST",
+    headers: { "content-type": "application/json", ...(auth ? { authorization: auth } : {}) },
+    body: JSON.stringify({ lat: 6.5, lon: 3.3 }),
+  }));
+  try {
+    assert.equal((await post(null)).status, 401, "no token is refused before storage is touched");
+    assert.equal((await post("Bearer wrong-token")).status, 401, "a wrong token is refused");
+  } finally {
+    if (old === undefined) delete process.env.DESK_OPERATOR_TOKEN;
+    else process.env.DESK_OPERATOR_TOKEN = old;
+  }
+});
+
 // The voice route checks its allowlist before any storage read, so these assertions hold without a
 // live Redis. The operator's ask is an overlay that answers back, so the layout and a mascot
 // gesture are speakable; what stays refused is anything that reaches credentials, approval or the

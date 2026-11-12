@@ -96,7 +96,14 @@ export const DEFAULT_STATE = {
   // which is how every frame looked before there was a location, so an old desk renders unchanged.
   // The overlay resolves it in this order, first available wins: the page's own ?lat=&lon= URL,
   // this stored point, then the browser's geolocation if it is granted. `source` says which one won.
-  location: null, // { lat, lon, alt, place, source, updatedAt }
+  // Privacy shape (see writeLocation below): coordinates are coarsened to 2 decimals (~1.1 km)
+  // at write time so a precise home address is never stored, `at` is the server receipt time,
+  // and `hidden: true` is the panic flag — the public projection blanks map and place at once.
+  // `locationHistory` is the operator-private ring of recent coarse fixes the delayed public
+  // view is cut from; it never leaves this file (publicProjection strips it).
+  location: null, // { lat, lon, alt, place, source, at, updatedAt, hidden } — fresh, control-only
+  locationHistory: [], // [{ lat, lon, place, at }] — last ~3 min of coarse fixes, never public
+  gta: false, // desk-wide GTA mode: green theme + radar-green map on the overlay
   autoPlay: false, // when on, an expired card advances to the next approved one by itself
   autoResearch: false, // when on, the scheduled run adds new research by itself
   // Research approval is a separate, persistent decision from whether the scheduler fetches at
@@ -358,6 +365,75 @@ export function matchesDesk(c, deskId) {
 
 // ---------- public feed ----------
 
+// ---------- live location ----------
+// The desk shows where the creator is, but never where he is *right now*: the public state
+// carries the newest fix that is at least LOCATION_DELAY_MS old, cut from the private
+// locationHistory ring. A live dot would let anyone with the overlay URL trail the streamer's
+// house in real time; a 90-second-old coarse point (~1.1 km cells) does not. The operator's own
+// surfaces read state.location directly and always see the fresh fix.
+export const LOCATION_DELAY_MS = 90_000; // public position lags the real fix by 90 s
+export const LOCATION_HISTORY_MS = 180_000; // the ring only needs to reach back past the delay
+export const LOCATION_HISTORY_MAX = 12; // and stay small: this rides every state commit
+
+// Two decimals is ~1.1 km of latitude: enough for a city readout and a map plate, useless for
+// finding a door. Raw coordinates from the operator or a phone are never stored.
+const coarseDeg = (v) => Math.round(v * 100) / 100;
+
+// Validates a location body and returns the state patch for it. Shared by the "location"
+// desk action and POST /api/desk/location so both paths store the same shape.
+function locationPatch(b, state, now) {
+  // The desk shows where he is, not where he has been: a body always replaces the point whole,
+  // and `{ clear: true }` puts the frame back to "location unknown" — ring included, or the
+  // delayed public view would keep serving a point the operator just deleted.
+  if (b.clear === true) return { location: null, locationHistory: [] };
+  const lat = Number(b.lat);
+  const lon = Number(b.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) throw new HttpError(422, "lat and lon are required, in degrees.");
+  if (lat < -90 || lat > 90) throw new HttpError(422, "lat must be between -90 and 90.");
+  if (lon < -180 || lon > 180) throw new HttpError(422, "lon must be between -180 and 180.");
+  if (b.hidden !== undefined && typeof b.hidden !== "boolean") throw new HttpError(422, "hidden must be true or false.");
+  // Altitude is optional: a phone that cannot see the sky still knows where it is.
+  const rawAlt = b.alt == null || b.alt === "" ? null : Number(b.alt);
+  if (rawAlt !== null && !Number.isFinite(rawAlt)) throw new HttpError(422, "alt must be a number of metres.");
+  const fix = {
+    lat: coarseDeg(lat),
+    lon: coarseDeg(lon),
+    alt: rawAlt === null ? null : Math.round(rawAlt),
+    place: text(b.place, LIMITS.place, "place"),
+    source: "control",
+    at: now,
+    // updatedAt stays alongside `at` so the overlay build that reads it keeps working until
+    // the frontend moves to the contract field.
+    updatedAt: now,
+    hidden: b.hidden === true,
+  };
+  const history = [
+    ...(state.locationHistory ?? []),
+    { lat: fix.lat, lon: fix.lon, place: fix.place, at: now },
+  ].filter((e) => now - e.at <= LOCATION_HISTORY_MS).slice(-LOCATION_HISTORY_MAX);
+  return { location: fix, locationHistory: history };
+}
+
+// The point the public overlay is allowed to see: the newest history entry at least
+// LOCATION_DELAY_MS old, or null while the first fix is still inside the delay window.
+// Panic is not delayed — hidden is the operator's current flag, so it blanks the frame at once.
+export function publicLocation(state, now = Date.now()) {
+  const fresh = state.location;
+  if (!fresh) return null;
+  const cutoff = now - LOCATION_DELAY_MS;
+  const pick = [...(state.locationHistory ?? [])].reverse().find((e) => e.at <= cutoff);
+  if (!pick) return null;
+  return { lat: pick.lat, lon: pick.lon, place: pick.place, at: pick.at, hidden: Boolean(fresh.hidden) };
+}
+
+// The operator route's write path (POST /api/desk/location). Same validation and same
+// commitState version bump as every other write, so the overlay's long-poll hears it.
+export async function writeLocation(store, b, now = Date.now()) {
+  const state = await readState(store);
+  const committed = await commitState(store, state, locationPatch(b, state, now), now);
+  return { ok: true, location: committed.location };
+}
+
 // Only fields safe for viewers. Presenter notes, source URLs and the operator's automation
 // settings never leave the operator routes.
 export const publicCard = (c) => ({
@@ -374,7 +450,7 @@ export const publicCard = (c) => ({
   eventDate: c.eventDate ?? null,
 });
 
-export function publicProjection(state) {
+export function publicProjection(state, now = Date.now()) {
   const {
     activeCardId,
     autoResearch,
@@ -383,6 +459,8 @@ export function publicProjection(state) {
     twitchChatEnabled,
     twitchAllowedUserIds,
     music,
+    location,
+    locationHistory,
     ...rest
   } = state;
   const track = music?.current;
@@ -391,7 +469,9 @@ export function publicProjection(state) {
     artist: typeof track.artist === "string" ? track.artist : "",
     ...(typeof track.videoId === "string" && /^[A-Za-z0-9_-]{11}$/.test(track.videoId) ? { videoId: track.videoId } : {}),
   } : null;
-  return { ...rest, music: music ? { current: publicTrack, playing: Boolean(music.playing) } : null };
+  // The public `location` is the delayed view, never the fresh fix: state.location and
+  // state.locationHistory stay on the operator side.
+  return { ...rest, location: publicLocation(state, now), music: music ? { current: publicTrack, playing: Boolean(music.playing) } : null };
 }
 
 // Answers the overlay's poll. Auto-advance is read-driven, so the card only moves when
@@ -408,7 +488,7 @@ export async function publicState(store, since, now = Date.now()) {
     const found = (await readCards(store)).find((c) => c.id === state.activeCardId);
     if (found && found.approval === "approved") card = publicCard(found);
   }
-  return { status: 200, body: { ...publicProjection(state), card, serverNow: now } };
+  return { status: 200, body: { ...publicProjection(state, now), card, serverNow: now } };
 }
 
 // ---------- input validation ----------
@@ -1258,33 +1338,17 @@ export async function runAction(store, b, now = Date.now()) {
     }
     // ---------- where the creator is ----------
     case "location": {
-      // The operator's own coordinate, for the times the URL cannot carry one: a browser source
-      // opened by hand, or a Swae widget whose link was set months ago. It is one point, not a
-      // track — the desk shows where he is, not where he has been — so a body always replaces it
-      // whole, and `{ clear: true }` puts the frame back to "location unknown".
-      if (b.clear === true) {
-        patch = { location: null };
-        break;
-      }
-      const lat = Number(b.lat);
-      const lon = Number(b.lon);
-      if (!Number.isFinite(lat) || !Number.isFinite(lon)) throw new HttpError(422, "lat and lon are required, in degrees.");
-      if (lat < -90 || lat > 90) throw new HttpError(422, "lat must be between -90 and 90.");
-      if (lon < -180 || lon > 180) throw new HttpError(422, "lon must be between -180 and 180.");
-      // Altitude is optional: a phone that cannot see the sky still knows where it is.
-      const rawAlt = b.alt == null || b.alt === "" ? null : Number(b.alt);
-      if (rawAlt !== null && !Number.isFinite(rawAlt)) throw new HttpError(422, "alt must be a number of metres.");
-      patch = {
-        location: {
-          lat, lon,
-          alt: rawAlt === null ? null : Math.round(rawAlt),
-          place: text(b.place, LIMITS.place, "place"),
-          source: "control",
-          updatedAt: now,
-        },
-      };
+      // Operator's own coordinate for the times the URL cannot carry one. The patch comes
+      // from the same builder POST /api/desk/location uses: coarse cells only, server time,
+      // panic flag, and the private ring the delayed public view is cut from.
+      patch = locationPatch(b, state, now);
       break;
     }
+    // GTA mode: one desk-wide switch, like auto-play. The overlay reads state.gta for the
+    // green theme and the radar-green map; nothing else about the desk changes.
+    case "gta":
+      patch = { gta: typeof b.value === "boolean" ? b.value : !state.gta };
+      break;
     default:
       throw new HttpError(422, "Unknown action.");
   }

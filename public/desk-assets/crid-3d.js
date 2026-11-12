@@ -139,7 +139,8 @@ export async function initCrid3D(host,getState,onReady,onFail){
         pr=clamp((p.pr||0)*Math.PI/180,-1.2,1.2);
       if(walking)phase=(phase+dt*(reduced?3.4:5.2))%1;
       const u=phase,gait=Math.sin(TAU*u),          // one full gait cycle per phase wrap
-        kL=walking?swingOf(((u*2)%1+.5)%1):0,kR=walking?swingOf(((u*2+.5)%1+.5)%1):0;
+        kL=walking?swingOf(((u*2)%1+.5)%1):0,kR=walking?swingOf(((u*2+.5)%1+.5)%1):0,
+        wL=gait*(walking?1:0),wR=-gait*(walking?1:0);
 
       // Facing: eased yaw toward travel direction; a lean pulls him toward the panel.
       const dir=st.walkDir||(st.fx<0?-1:1),

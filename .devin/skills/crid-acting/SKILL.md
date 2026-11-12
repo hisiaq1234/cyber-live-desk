@@ -25,6 +25,10 @@ relevant reference before tuning timings, easings, or morph blends.
 - `references/threejs-physics.md` — physics engine comparison and sync
   patterns. Reference only — Crid uses the project's own fixed-step
   `physics.mjs`, not cannon-es/Rapier. Vendored from the same package (MIT).
+- `references/threejs-animation-api.md` — Three.js r186 animation API:
+  AnimationClip/tracks, morph-target tracks, mixer/action crossfades,
+  glTF clips, bone posing order. Vendored from
+  `CloudAI-X/threejs-skills` (MIT).
 
 ## How Crid's face actually works
 

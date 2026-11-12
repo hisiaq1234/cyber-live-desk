@@ -270,7 +270,7 @@ export async function initCrid3D(host,getState,onReady,onFail){
       // lid hold, talking jaw, and the emotion envelope crid-bot cues in.
       if(st.face&&st.face.name){const fk=st.face.name+":"+(st.face.seq||0);
         if(fk!==lastFaceKey){lastFaceKey=fk;face.cue(st.face.name,st.face.hold)}}
-      face.update(dt,{t,dt,talking:!!st.talking,mode,dying,reduced,gx:p.gx,gy:p.gy});
+      face.update(dt,{t,dt,talking:!!st.talking,mode,dying,reduced,gx:p.gx,gy:p.gy,attend:st.attend});
       const fc=face.channels();
       for(const k in fc)setMorph(k,fc[k]);
 

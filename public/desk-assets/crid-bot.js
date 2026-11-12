@@ -240,6 +240,10 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const hideFigure=()=>{parts.avatarBase.setAttribute("display","none");parts.rigG.setAttribute("display","none");parts.ph.setAttribute("display","none")};
   init3d(host,()=>({p:lastPose,mode,dying,walking:!!(walk&&walk.to),
     walkDir:walk&&walk.to?(walk.tx-walk.x<0?-1:1):0,fx,lean:leanAt,reduced,stage:BODIES[bodyI],face:faceNow,
+    // Phase B attention: eyes fixate what the body is engaged with — the panel
+    // he's touching while leaning (dir=+1 is screen-right), a down-glance while
+    // pondering. null hands gaze back to the saccade/drift scheduler.
+    attend:leanAt?{x:leanAt.dir*.8,y:.15}:pondering?{x:0,y:.4}:null,
     talking:host.classList.contains("is-active"),grooving:host.classList.contains("music-playing"),mood,bag:bag.worn}),hideFigure)
     .then(h=>{crid3d=h}).catch(err=>{try{console.warn("[crid-3d] not started:",err&&err.message||err)}catch{}});
   // ---- the backpack: a prop with mass (docs/specs/backpack.md + physics.md) ---------------

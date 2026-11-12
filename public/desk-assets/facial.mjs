@@ -63,6 +63,7 @@ export function createFacial({rand=Math.random}={}){
   // gaze: saccades on a 1.4–3.2 s clock plus slow drift; eyes lead the head.
   let sacAt=rand(.8,2),sacFrom={x:0,y:0},sacTo={x:0,y:0},sacT=1,sacDur=.16;
   const drift={x:0,y:0};
+  const attend={x:0,y:0};   // fixation target, smoothed — see gaze block
 
   const smooth=(k,v,dt,rate)=>{cur[k]=(cur[k]||0)+(v-(cur[k]||0))*Math.min(1,dt*rate);if(Math.abs(cur[k])<.001)cur[k]=0};
 
@@ -117,10 +118,20 @@ export function createFacial({rand=Math.random}={}){
     if(sacT<1)sacT=Math.min(1,sacT+dt/sacDur);
     const se=out3(sacT);
     const gx=clamp(((input.gx||0)/60)*2.2,-1,1),gy=clamp(((input.gy||0)/60)*2.2,-1,1);
+    // attention: a target (panel he's touching, the camera) pulls the eyes on
+    // with a slower fixate than a saccade; releasing eases back out. While
+    // locked, idle saccades shrink to micro-jitter so he holds the look.
+    const ax=clamp(input.attend?.x||0,-1,1),ay=clamp(input.attend?.y||0,-1,1);
+    const attK=Math.min(1,dt*(ax||ay?1.8:.9));
+    attend.x+=(ax-attend.x)*attK;attend.y+=(ay-attend.y)*attK;
+    const attMag=Math.min(1,Math.hypot(attend.x,attend.y));
+    const sacScale=1-attMag*.65;
     drift.x+= (rand(-.02,.02)-drift.x)*Math.min(1,dt*.5);
     drift.y+= (rand(-.015,.015)-drift.y)*Math.min(1,dt*.5);
-    const lookX=sacFrom.x+(sacTo.x-sacFrom.x)*se+gx*.8+drift.x;
-    const lookY=sacFrom.y+(sacTo.y-sacFrom.y)*se+gy*.8+drift.y;
+    const sacX=(sacFrom.x+(sacTo.x-sacFrom.x)*se)*sacScale;
+    const sacY=(sacFrom.y+(sacTo.y-sacFrom.y)*se)*sacScale;
+    const lookX=sacX+gx*.8+attend.x*.85+drift.x;
+    const lookY=sacY+gy*.8+attend.y*.85+drift.y;
     const lx=clamp(lookX,-1,1),ly=clamp(lookY,-1,1);
 
     // ---- channel assembly ---------------------------------------------------

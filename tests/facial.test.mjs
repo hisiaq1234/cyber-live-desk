@@ -81,3 +81,19 @@ test("gaze follows the pose look offset through the iris morphs", () => {
   assert.ok((c.irisOutL || 0) > 0.3 && (c.irisInR || 0) > 0.3, "look-left must drive L-out + R-in");
   assert.ok((c.irisUpL || 0) > 0.3 && (c.irisUpR || 0) > 0.3, "look-up must drive both irises up");
 });
+
+test("attention fixation pulls the gaze and releases cleanly", () => {
+  const f = createFacial({ rand: (a, b) => a + (b - a) * 0.5 });
+  // idle baseline
+  run(f, 0, 1);
+  const base = f.channels();
+  // fixate screen-right (attend.x>0 = his left / viewer right, same sign as gx>0)
+  run(f, 1, 3, 1 / 60, { attend: { x: 0.8, y: 0.1 } });
+  const locked = f.channels();
+  assert.ok((locked.irisOutL || 0) > (base.irisOutL || 0) + 0.2, "fixation must pull the left iris out");
+  assert.ok((locked.irisInR || 0) > (base.irisInR || 0) + 0.2, "and the right iris in");
+  // release: attend=null eases back toward the saccade scheduler
+  run(f, 3, 6);
+  const free = f.channels();
+  assert.ok(Math.abs((free.irisOutL || 0) - (base.irisOutL || 0)) < 0.35, "release must not stick");
+});

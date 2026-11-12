@@ -79,6 +79,9 @@ export async function initCrid3D(host,getState,onReady,onFail){
       if(Array.isArray(o.material))o.material=o.material.map(dress);
       else o.material=dress(o.material);
     });
+    // Snap's skinned meshes ship degenerate bind-pose bounds — three.js frustum-culls
+    // them every frame and he never draws. Skeleton joints are the truth; disable culling.
+    root.traverse(o=>{if(o.isMesh||o.isSkinnedMesh)o.frustumCulled=false});
 
     // Fit: bounds come from the SKELETON joints, not the skinned-mesh bbox — morph targets and
     // bind-pose geometry can report a degenerate box that flings the model off-camera.
@@ -187,7 +190,7 @@ export async function initCrid3D(host,getState,onReady,onFail){
 
       // Torso: breath lifts the chest, the pelvis carries the weight shift.
       if(has("spine2"))rot(J.spine2,(.07*br-pr*.55+(p.tr||0)*.004)*life,(look*.05)*life,
-        (shift*.09+p.hr*.004+(grooving?.08*Math.sin(t*3):0))*life);
+        (shift*.09+(p.hr||0)*.004+(grooving?.08*Math.sin(t*3):0))*life);
       if(has("spine3"))rot(J.spine3,(.05*br-pr*.2)*life,look*.04*life,shift*.04*life);
       if(has("pelvis"))rot(J.pelvis,br*.015*life,0,shift*.1*life);
 

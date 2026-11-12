@@ -3,6 +3,11 @@
 OTOLORIN's live desk: the `/desk` overlay, the `/control` operator surface, and **Crid** — the
 character who lives in the overlay.
 
+> **Before you change anything, read [`CLAUDE.md`](CLAUDE.md).** It is the handoff for any agent
+> picking this project up: what is built, what is next, and the rules that are not negotiable.
+> Crid is the owner's own Bitmoji — never redesign him, never generate his body or face, and never
+> make him short.
+
 ---
 
 ## Crid's brain (initiative)

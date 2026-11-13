@@ -61,7 +61,7 @@ test("out-of-reach ledge anchors are rejected",()=>{
 });
 
 test("releasing a grip returns the character to gravity and floor support",()=>{
-  const {world,body,run}=make({x:140,y:-250,grounded:true,supportId:"ledge"});
+  const {world,body,run}=make({x:140,y:-250,grounded:false,supportId:null});
   world.setPlatforms([{id:"ledge",left:100,right:200,top:-200,bottom:0}]);
   world.releaseGrip(body);
   run(1);

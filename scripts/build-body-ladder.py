@@ -262,8 +262,9 @@ def build_all():
             raise RuntimeError(f"body {body}: torso axis drift {mid_torso_axis(out):.1f} (canonical {canonical_axis:.1f})")
         if out.crop((0, 0, FRAME_W, HEAD_LOCK_BOTTOM)).tobytes() != canonical.crop((0, 0, FRAME_W, HEAD_LOCK_BOTTOM)).tobytes():
             raise RuntimeError(f"body {body}: head/face pixels differ from canonical")
-        png, webp = CRID / f"body-{body}-r0.png", CRID / f"body-{body}-r0.webp"
-        out.save(png, optimize=True)
+        # Keep the 2100x2800 / 1050x1400 PNG masters in views/ only.
+        # Public runtime assets are WebP; never leave heavyweight PNGs in CRID's served folder.
+        webp = CRID / f"body-{body}-r0.webp"
         out.save(webp, "WEBP", quality=95, method=6)
         t = (target_w - WIDTH_TARGETS[0]) / (WIDTH_TARGETS[-1] - WIDTH_TARGETS[0])
         slow, heft, girth = round(1 + .45*t, 3), round(.86 + .59*t, 3), round(.72 + t, 3)

@@ -77,12 +77,8 @@ export function createStage({
 
   function go(state) { stage.state = state; stage.t = 0; }
 
-  // physics.md §2 — a climb is an attempt with a cost. The bag is a drag on a lean man:
-  // the lighter he is and the more he is carrying, the more the lip can beat him, and
-  // heavy Crid does not slip at all. Rolled once per pull, when his weight commits.
-  function slipChance() {
-    return bagOn() ? clamp((1.10 - mass) * 0.9, 0, 0.38) : clamp((1.02 - mass) * 0.35, 0, 0.12);
-  }
+  // Grip failure is resolved by physics.mjs from actual mass, carried load,
+  // reach and sustained force. This hook exists only for deterministic lab tests.
   const forcedSlip = () => (typeof slip === "function" ? !!slip() : !!slip);
 
   function endStage() {
@@ -231,7 +227,7 @@ export function createStage({
         // not a glitch: he slides back down and pays a recovery beat before the trace moves on.
         if (!stage.slipRolled && stage.t >= 0.22) {
           stage.slipRolled = true;
-          if (forcedSlip() || rand() < slipChance()) {
+          if (forcedSlip()) {
             stage.slipFromX = stage.walkX; stage.slipFromY = stage.groundY;
             stage.trace = "climb · slipping"; go("slip"); break;
           }

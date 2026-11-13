@@ -80,6 +80,42 @@ CRID receives many small, resettable tasks: reach a shelf, carry a signal, inspe
 
 Chat can invoke many gestures/layer interactions at any time. It has the widest agency, but is the least cinematic, most vulnerable to spam, and directly conflicts with the owner's request for calm authored animation rather than random behavior.
 
+## Parallel research addendum — unattended Ascent contract
+
+### Transport and scope facts
+
+- Retain signed EventSub **webhooks** as the paid-event authority for an unattended cloud/Vercel service. Twitch documents WebSocket EventSub as requiring subscription recreation after an unplanned disconnect and does not replay missed events; it is not the source of truth for a sleeping/overnight run. [Subscription authorization](https://dev.twitch.tv/docs/eventsub/manage-subscriptions/) and [WebSocket reconnection](https://dev.twitch.tv/docs/eventsub/handling-websocket-events/).
+- The smallest first version needs `channel.chat.message` only for an explicit route-vote grammar, plus `channel.subscribe` and `channel.subscription.gift` for named strength events. Do not add Bits, Channel Points, follows, an Extension or an LLM merely to launch the first story. [Chat EventSub reference](https://dev.twitch.tv/docs/eventsub/reference/chat) and [channel EventSub reference](https://dev.twitch.tv/docs/eventsub/reference/channel).
+- The existing webhook core already does the required signature, time-window and delivery-deduplication protection. Keep gifted-recipient subscription events ignored when the aggregate gift event is the authoritative accounting record.
+
+### Proposed single-record contract (not approved implementation)
+
+One persisted `cridRun` record should own `status`, a finite visible goal/checkpoints, the currently open route vote, cumulative strength/tier, a currently requested or queued authored moment, and a bounded idempotency set of consumed delivery IDs. The webhook is the sole writer; the public overlay only renders the derived snapshot.
+
+1. Chat selects direction only at a checkpoint: two pre-authored exact tokens, one vote per viewer in a visible 30-second window, plurality wins; no votes means CRID takes the pre-authored default.
+2. A new subscription adds a small fixed strength amount; a gift adds its aggregate event count exactly once. Neither is required to finish the story.
+3. Strength is a **separate simulation value**, never the body ladder: do not resize, regenerate or mutate `body-000-r7` or the fixed seven-stage sizing ladder.
+4. A strength gain asks the existing motion/world queue for an authored acknowledgement. If the world is busy or the move is unsafe, record the gain and coalesce/queue the acknowledgement; never add a CSS/rAF/physics loop or fake a success.
+5. Reaching the goal transitions to an explicit resting/completed state. Do not silently manufacture a new goal during an unattended night.
+
+### Calm interaction rules (specification)
+
+| Situation | Visible outcome | Required restraint |
+| --- | --- | --- |
+| Quiet room | Goal and one unobtrusive open-route cue; default route on expiry | No repeated plea or dead-air alert. |
+| Busy chat | Two labels, compact tally and one result | Ignore malformed/repeated entries; never move per message. |
+| New support | Small factual strength mark and one grounded acknowledgement when safe | Coalesce visual responses for 45–60 seconds; accounting is never dropped. |
+| Threshold | One tier mark and an unlocked authored move | It is not a paywall or automatic victory. |
+| Completed run | “Reached; resting here” state | Stop prompts and queue churn until an operator begins a new run. |
+
+Avoid countdown pressure, “only X left,” loss/guilt wording, randomized rewards, supporter leaderboards and prompts in quiet periods. This is an ethical product constraint, not a growth experiment.
+
+### Open-source comparison
+
+- Twitch's [EventSub webhook Node sample](https://github.com/twitchdev/eventsub-webhooks-node-sample) demonstrates challenge, signature and dispatch structure; its repository has no license grant, so use only as a behavioral reference.
+- [TwitchLib.EventSub.Websockets](https://github.com/TwitchLib/TwitchLib.EventSub.Websockets) is MIT and confirms event-specific handler/session boundaries, but its WebSocket model is not preferred for the unattended paid-event path.
+- [tmi.js](https://github.com/tmijs/tmi.js) is MIT and demonstrates a small chat event-emitter shape; it may inform non-authoritative ambience only, not money-linked accounting.
+
 ## Provisional proposal
 
 Choose **A: The Ascent**, delivered in small, independently testable steps:
@@ -104,10 +140,12 @@ Choose **A: The Ascent**, delivered in small, independently testable steps:
 - **This branch has no Vercel preview by design.** `vercel.json` currently disables automatic Vercel deployments for `fix/crid-physical-mobility`; production therefore cannot prove this branch's unmerged overlay changes.
 - **Netlify is non-authoritative for this app.** Its commit-status preview was marked ready, but its `/desk` URL returned the host's 404 page because no Netlify function/rewrite configuration exists in this repository. Do not use that preview as a product verification signal.
 - **Local Vercel runtime was attempted without secrets.** Vercel CLI 65.15.0 linked the existing `crid/cyber-live-desk` project; development environment variables were explicitly not downloaded. The CLI then stopped before serving because its Windows builder cache could not create symlinks (`EPERM`). This is an environment/tooling blocker, not a repository build result, and left the Git working tree clean.
+- **Production is demonstrably not the feature-branch overlay.** In a 2026-11-13 audit, the production `https://cyber-live-desk.vercel.app/desk` returned HTTP 200 from Vercel, but its live `overlay.js` had `Content-Length: 122629` and a different ETag from the feature-branch source (123725 bytes, SHA-256 `fa7267…`). It cannot be used as evidence for this branch. The branch-specific Vercel guard is documented by Vercel as preventing deployments triggered by commits on that named branch. [Vercel Git configuration](https://vercel.com/docs/project-configuration/git-configuration).
+- **Focused regression evidence remains green.** The changed-area suite (`desk-core`, overlay contract and Twitch EventSub) passed **129/129** with zero failures in 15.0 seconds during that audit. This supports source behavior, but does not replace visual runtime verification.
 
 ### Consequence
 
-The startup-overlay change has passing source and integration coverage, but an interactive visual check of this exact branch still needs either a working Vercel local runtime or an explicitly enabled Vercel preview. No deployment was created while collecting this evidence.
+The startup-overlay change has passing source and integration coverage, but an interactive visual check of this exact branch still needs either a working Vercel local runtime or an explicitly enabled Vercel preview. Vercel documents `vercel dev` as the local route/function replica; retry it only from a Windows/WSL context that permits its cache symlinks, without downloading secrets. [Vercel CLI `dev`](https://vercel.com/docs/cli/dev). No deployment was created while collecting this evidence.
 
 ## Confidence labels
 

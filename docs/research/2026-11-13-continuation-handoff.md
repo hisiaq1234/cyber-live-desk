@@ -48,4 +48,14 @@ Either repair the local Vercel CLI environment without downloading secrets, or *
 
 ## Parallel research in progress
 
-At the time of this handoff, three read-only Terra agents are investigating independent areas: Vercel verification options, a fresh startup/default-content audit, and an adversarial audience-game research pass. Persist each result in the research log before making a design or implementation decision.
+The Vercel and adversarial audience-game audits are complete and their findings are persisted in `2026-11-13-living-crid-engagement.md`. The startup/default-content agent hit the Codex account usage cap before it could return a new report. Its already-completed work remains represented by the source changes and tests in `80bf648`; no unreported finding is being inferred from that interrupted audit.
+
+## Last verification command
+
+Run the full suite from the repository root before any merge or new implementation:
+
+```powershell
+& 'C:\Program Files\nodejs\npm.cmd' test
+```
+
+Then keep the branch unmerged until a current-HEAD Vercel runtime check proves `/desk` at the required viewports. The deployment guard must not be removed without the owner's explicit instruction.

@@ -1019,7 +1019,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     if(stageTick.lastState!==stage.state){stageTick.lastState=stage.state;if(stage.state==="hop")stageTick.hopStarted=false}
     if(mode!=="on"||dying){world.stopCharacter(cridBody);return}
     const bodySpec=build(),fw=stageHW.w||host.offsetWidth||180,fh=stageHW.h||host.offsetHeight||220;
-    const bodyWpx=fw*bodySpec.w/FRAME.w,bodyHpx=fh*bodySpec.h/FRAME.h,slow=Math.max(1,bodySpec.slow||1);
+    const bodyWpx=fw*bodySpec.w/FRAME.w,bodyHpx=fh*bodySpec.h/FRAME.h,slow=Math.max(1,bodySpec.slow||1),heft=bodySpec.heft,load=bag.worn?BAG_MASS:0;
     const walkSpeed=Math.max(.12,.76*bodyHpx/UPX())/slow,walkAccel=3.2/slow;
     cridBody.mass=bodySpec.heft;cridBody.strength=bodySpec.heft;cridBody.load=bag.worn?BAG_MASS:0;
     cridBody.halfW=Math.max(12,bodyWpx*.52)/UPX();cridBody.halfH=Math.max(30,bodyHpx*.5)/UPX();

@@ -1040,7 +1040,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
         {strength:heft,load,maxAcceleration:12,stiffness:18,damping:8});
     } else if(stage.state==="reach"&&!cridBody.grip){
       const box=stageBoxes[stage.layer],side=stage.side==="right"?-1:1;
-      const anchored=box&&world.grabCharacter(cridBody,{id:stage.layer,x:side<0?box.right:box.left,y:-box.top},
+      const anchored=box&&world.grabCharacter(cridBody,{id:stage.layer,x:side<0?box.right-8/UPX():box.left+8/UPX(),y:-box.top},
         {side,strength:heft,load,reach:cridBody.halfH*1.9});
       if(!anchored)stage.gripFailed=true;
     } else if(["slip","drop","hop-down","crouch"].includes(stage.state)){

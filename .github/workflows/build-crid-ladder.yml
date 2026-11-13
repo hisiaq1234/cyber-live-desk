@@ -36,8 +36,7 @@ jobs:
         run: python scripts/build-body-ladder.py
       - name: Rebuild all per-stage cutout rigs
         run: |
-          python scripts/build-crid-rig.py --all
-          python scripts/build-crid-rig.py --check
+          python scripts/build-crid-rig.py --all --check
       - name: Run the full JavaScript regression suite
         run: |
           npm ci

@@ -117,7 +117,11 @@ export function createWorld({ gravity = GRAVITY, fixedDt = 1 / 120 } = {}) {
     if (!hasBody(body) || !anchor ||
         !Number.isFinite(anchor.x) || !Number.isFinite(anchor.y)) return false;
     const toward = side < 0 ? -1 : 1;
-    const armReach = Math.max(24, Number.isFinite(reach) ? reach : body.halfH * 1.9);
+    // Coordinates are stage-world units here, not CSS pixels. Do not apply the
+    // old 24px lower bound: it makes every ledge reachable at any scale.
+    const armReach = Number.isFinite(reach)
+      ? Math.max(EPS, reach)
+      : Math.max(EPS, body.halfH * 1.9);
     const shoulderX = body.x + toward * body.halfW * .18;
     const shoulderY = body.y - body.halfH * .25;
     if (Math.hypot(anchor.x - shoulderX, anchor.y - shoulderY) > armReach * 1.35) return false;

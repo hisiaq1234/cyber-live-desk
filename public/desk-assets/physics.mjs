@@ -280,13 +280,13 @@ export function createWorld({ gravity = GRAVITY, fixedDt = 1 / 120 } = {}) {
       // A grip is lost only when the ledge leaves the arm's reachable envelope
       // for a sustained interval. The IK renderer keeps the hand on this same
       // world-space point; the body motor supplies the load-aware pull.
-      const g = body.grip;
-      const shoulderX = body.x + g.side * body.halfW * .18;
+      const anchor = body.grip;
+      const shoulderX = body.x + anchor.side * body.halfW * .18;
       const shoulderY = body.y - body.halfH * .25;
-      const reachError = Math.hypot(g.x - shoulderX, g.y - shoulderY) - g.reach;
-      if (reachError > Math.max(8, g.reach * .07)) g.strain += dt;
-      else g.strain = Math.max(0, g.strain - dt * 1.5);
-      if (g.strain >= .24) {
+      const reachError = Math.hypot(anchor.x - shoulderX, anchor.y - shoulderY) - anchor.reach;
+      if (reachError > Math.max(8, anchor.reach * .07)) anchor.strain += dt;
+      else anchor.strain = Math.max(0, anchor.strain - dt * 1.5);
+      if (anchor.strain >= .24) {
         body.gripFailed = true;
         body.grip = null;
         body.climb = null;

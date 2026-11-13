@@ -1108,6 +1108,9 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // The bag is a body in the same world as everything else: it integrates on the tick's own
     // clock, and while it is in the air the loop runs at the fast cadence so the fall reads.
     const tS=now/1000,fdt=Math.min(.1,tS-(tick.lastT||tS)); tick.lastT=tS;
+    // Non-browser tests have no display RAF; keep their deterministic physics
+    // seam alive without adding a second production clock.
+    if(typeof requestAnimationFrame!=="function")world.step(fdt);
     if(!reduced)for(const p of papers)if(!world.settled(p.body))p.body.vx+=Math.sin(tS*6+p.phase)*150*fdt;
     {const r=host.getBoundingClientRect(),cx=r.left+r.width/2; hisVx=(cx-(tick.lastCX||cx))/Math.max(.05,tS-(tick.lastCT||tS)); tick.lastCX=cx; tick.lastCT=tS}
     placeBag(); placePapers(now);

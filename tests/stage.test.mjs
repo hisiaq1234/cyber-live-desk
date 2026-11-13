@@ -78,6 +78,28 @@ test("he stands on the panel during 'top' and the trace says done", () => {
   assert.equal(stage.trace, "climb · done");
 });
 
+
+test("a climb waits for the physics motor to confirm platform support",()=>{
+  let supported=false;
+  const {stage}=makeStage({canCompleteClimb:()=>supported});
+  drive(stage,climbIntent,8);
+  assert.equal(stage.state,"pull");
+  supported=true;
+  drive(stage,climbIntent,1);
+  assert.equal(stage.state,"top");
+});
+
+test("a drop waits for the physics motor to confirm floor landing",()=>{
+  let onFloor=false;
+  const {stage}=makeStage({canCompleteDrop:()=>onFloor});
+  drive(stage,climbIntent,8);
+  drive(stage,{key:"climb",phase:"end",layer:"panel-r",x:.5},8);
+  assert.equal(stage.state,"drop");
+  onFloor=true;
+  drive(stage,{key:"climb",phase:"end",layer:"panel-r",x:.5},1);
+  assert.equal(stage.state,"floor");
+});
+
 test("a slip slides him back down and interrupts once, with reason 'slip'", () => {
   const { stage, interrupts } = makeStage({ slip: () => true });
   // begin on the start beat, then keep the same activity in its middle so floor doesn't restart it

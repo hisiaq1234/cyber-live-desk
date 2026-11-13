@@ -1055,11 +1055,15 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     if(stage&&mode==="on"&&!dying&&!reduced){
       const dt=lastStageRAF?Math.min(.1,Math.max(0,(now-lastStageRAF)/1000)):.016; lastStageRAF=now;
       try{stage.step(now,stageBusy?null:stageIntent,dt)}catch{}
-      stageTick();
     } else lastStageRAF=0};
+  let lastWorldRAF=0;
   const stageRAF=()=>{
     if(frozen){requestAnimationFrame(stageRAF);return}
-    stageDrive(Date.now());
+    const now=Date.now(),dt=lastWorldRAF?Math.min(.1,Math.max(0,(now-lastWorldRAF)/1000)):.016;
+    lastWorldRAF=now;
+    stageDrive(now);
+    try{stageTick()}catch{}
+    world.step(dt);
     try{stageTick()}catch{}
     if(typeof requestAnimationFrame=="function")requestAnimationFrame(stageRAF)};
   if(typeof requestAnimationFrame=="function")requestAnimationFrame(stageRAF);
@@ -1081,7 +1085,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const tick=()=>{if(frozen)return; const now=Date.now(); tickN++;
     // The bag is a body in the same world as everything else: it integrates on the tick's own
     // clock, and while it is in the air the loop runs at the fast cadence so the fall reads.
-    const tS=now/1000,fdt=Math.min(.1,tS-(tick.lastT||tS)); world.step(fdt); tick.lastT=tS;
+    const tS=now/1000,fdt=Math.min(.1,tS-(tick.lastT||tS)); tick.lastT=tS;
     if(!reduced)for(const p of papers)if(!world.settled(p.body))p.body.vx+=Math.sin(tS*6+p.phase)*150*fdt;
     {const r=host.getBoundingClientRect(),cx=r.left+r.width/2; hisVx=(cx-(tick.lastCX||cx))/Math.max(.05,tS-(tick.lastCT||tS)); tick.lastCX=cx; tick.lastCT=tS}
     placeBag(); placePapers(now);

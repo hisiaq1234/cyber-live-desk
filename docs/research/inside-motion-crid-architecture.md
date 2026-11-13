@@ -121,16 +121,20 @@ The order used by its locomotion orchestrator is a useful design reference:
 
 ### Gaps that actually cause the puppet feeling
 
-1. **Gait is still too simple.** The current phase is largely a sinusoidal leg swing. A planted-foot IK correction exists, but there is not yet a full stance / plant / lift / swing cycle with support weights, toe-off, heel strike and a planned landing target.
-2. **Foot locking is not yet a general contact solver.** The desk's screen-space inverse-root correction can hold an ankle steady for planar movement. A true 3D game must store the ankle contact in world space, including surface normal and orientation.
+1. **The first contact-state gait is now implemented, but footstep planning is still missing.** `gait.mjs` advances phase from measured root distance, uses a 0.62 stance duty factor, offsets the two feet by half a cycle, labels plant / stance / toe-off / swing, and emits liftoff/touchdown events. `crid-3d.js` uses its swing envelope with the existing Bitmoji leg pose and IK. It does not yet plan footholds from terrain, retarget a foot mid-swing when braking, or compute support-weighted pelvis motion like the reference library.
+2. **Foot locking is not yet a general contact solver.** The desk's screen-space inverse-root correction can hold an ankle steady for planar movement. This is a 2.5D approximation, not a reusable 3D contact. A true 3D game must store each ankle contact in world space, including surface normal and orientation, then solve the leg against that anchor.
 3. **The pelvis has only limited support response.** A more convincing step needs hip height, lateral weight shift and knee loading to follow the actual supporting foot(s), rather than only a clock-driven body bob.
 4. **Upper-body follow-through is approximate.** The current renderer has breathing and head drift, but needs acceleration-based torso lag, pelvis/spine counter-rotation, shoulder follow-through and anticipatory gaze tied to the next action.
 5. **Climbing needs both a physical root and a real hand target.** Reaching toward a panel is not the same as gripping it. The hand target needs a point, normal, palm orientation and elbow pole; the root should be pulled by a bounded grip constraint.
 6. **The sound/event clock is not yet shared with the contacts.** A footstep, landing, grip, release or breath cue should be emitted from the same movement state that drives the body, not estimated by a separate timer.
 
-### Current feature branch is a first integration pass, not yet merge-ready
+### Current feature branch: integrated 2.5D foundation; visual acceptance still open
 
-PR #41 is implementing the single-world 2.5D root motor and platform contacts. It remains a draft and `main` is untouched. The current CI run and physical lab QA still decide whether this branch is safe to merge. Do not merge just because a particular unit test passes; verify a real climb, a fall, a landing and ordinary cue movement in the lab.
+PR #41 now extends the existing shared `physics.mjs` world and adds the stage-owned CRID root body; the abandoned standalone motor is removed. The layer registry feeds reachable platform surfaces into collision; jump, bounded grip, climb, floor landing, and support-gated stage transitions are implemented. The lab's `driveStage()` now submits an intent through the real display loop rather than directly advancing the choreography state machine. The lab exposes root/support and gait telemetry.
+
+The distance gait is a first selective adaptation of the reference's duty-factor/contact-state model, not a port of its full locomotion stack. Ordinary cue walks still use the existing `startWalk()/advanceWalk()` percentage-step path and are explicitly not yet unified with the physical root. That is a remaining integration task: do not claim the whole character has one source of truth until cue walking is either migrated to the motor or deliberately isolated behind a documented non-physical presentation contract.
+
+PR #41 remains a draft and `main` is untouched. The latest checked GitHub Actions run is green, but that does not replace the still-required real browser captures of a walk, climb, grip failure, drop, landing and cue-owned movement at phone and desktop sizes.
 
 ---
 
@@ -201,12 +205,12 @@ For the desk, an adapter maps this to the present 2.5D world and screen. For the
 
 ### Mix now (desk / overlay)
 
-1. Finish and verify the shared 2.5D character motor in PR #41. Keep the old separate cue movement from fighting stage-owned movement.
-2. Replace the basic sine gait with a small, testable gait coordinator inspired by the reference's duty-factor and contact-state model. Keep the existing CRID-specific bone mapping and IK.
-3. Derive stance / swing from travel distance and real root velocity. Add liftoff/touchdown events and make them available to the desk audio and QA.
-4. Improve pelvis support shift and acceleration-driven torso / head lag as additive procedural channels. Do not change the GLB or create a new rig.
-5. Make hand contacts persistent through reach, pull, hold and release, and validate that both grip and landing conditions match collision geometry.
-6. Add lab probes that assert root path, support id, foot/hand error, event timing and no large bone-rotation spikes—not just a green unit test.
+1. Complete the physical-motor visual QA and then migrate ordinary cue `startWalk()/advanceWalk()` travel onto the same root motor, or formally separate any deliberately screen-layout-only movements so they cannot fight the physical stage path.
+2. Extend the new `gait.mjs` with per-foot world-space stance anchors, planned swing targets, braking retargets and contact events. Keep the existing CRID bone mapping and IK.
+3. Make liftoff/touchdown events available to the desk audio and QA; use actual impact speed for landing cues and squash.
+4. Add support-weighted pelvis shift/knee loading and acceleration-driven torso/head lag as additive procedural channels. Do not change the GLB or create a new rig.
+5. Make hand contacts persistent through reach, pull, hold and release, and validate grip and landing against collision geometry.
+6. Add repeatable browser probes that assert root path, support ID, foot/hand error, event timing and bone angular acceleration—not just a green unit test.
 
 ### Save the full 3D work for the actual game scene
 
@@ -230,13 +234,14 @@ For the desk, an adapter maps this to the present 2.5D world and screen. For the
 
 - [ ] All repository tests green on the final PR head.
 - [ ] Existing cue walk/lean/gesture tests still pass; cue-owned movement never fights the physical stage root.
+- [ ] Cue-owned horizontal walking is driven by the same motor, or its screen-layout-only contract is explicitly separated and verified with no conflicting root writes.
 - [ ] A reach target outside measured arm range is rejected.
 - [ ] A heavy / bag-loaded climb either reaches the ledge or fails visibly and falls; it never teleports.
 - [ ] The root is fully supported before the stage says `top` or `seat`.
 - [ ] Drop and hop-down remain airborne until actual floor contact.
 - [ ] Foot stance anchors do not slide while the root moves.
 - [ ] Phone-sized and desktop `crid-lab` captures are inspected; no clipping, jitter, limb inversion or root/mesh offset.
-- [ ] `window.__cridMotor` / `window.__cridStage` telemetry agrees with visible body contacts.
+- [ ] `window.__cridMotor` / `window.__cridStage` / `window.__cridGait` telemetry agrees with visible body contacts.
 - [ ] No second physics loop, no second root owner, no new third-party physics engine.
 
 ## Sources

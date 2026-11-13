@@ -428,7 +428,7 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
    (public/x-overlay/) in an iframe — its own React UI, its own feed poll
    through /api/x-timeline/feed. Transparent body, so only its cards show. */
 #x-feed.x-overlay-panel{max-height:none;padding:.4em}
-#x-feed.x-overlay-panel iframe{display:block;width:100%;height:64dvh;border:0;background:transparent}
+#x-feed.x-overlay-panel iframe{display:block;width:100%;height:64dvh;border:0;background:transparent;pointer-events:none}
 
 /* Module Component Styles — individual caps keep the dock total bounded */
 .court-wrap,.music-wrap,.space-wrap,.ledger-wrap,.riad-wrap {
@@ -1525,7 +1525,7 @@ html.swae #desk .letters{background:#0b0d12f5}
     if (xEl) {
       xEl.replaceChildren(head, list, foot);
     } else {
-      xEl = h("div", { id: "x-card" }, head, list, foot);
+      xEl = h("div", { id: "x-feed" }, head, list, foot);
       dockRight.prepend(xEl);
       bot?.summon(xEl);
       requestAnimationFrame(() => requestAnimationFrame(() => xEl?.classList.add("in")));
@@ -1594,7 +1594,7 @@ html.swae #desk .letters{background:#0b0d12f5}
     if (xEl) {
       xEl.replaceChildren(head, list, foot);
     } else {
-      xEl = h("div", { id: "x-card" }, head, list, foot);
+      xEl = h("div", { id: "x-feed" }, head, list, foot);
       dockRight.prepend(xEl);
       bot?.summon(xEl);
       requestAnimationFrame(() => requestAnimationFrame(() => xEl?.classList.add("in")));
@@ -1606,7 +1606,7 @@ html.swae #desk .letters{background:#0b0d12f5}
   };
 
   // The Following/For-You timeline is the extracted X-overlay app (public/x-overlay/),
-  // iframed into the same #x-card slot. It polls /api/x-timeline/feed itself — the
+  // iframed into the same #x-feed slot. It polls /api/x-timeline/feed itself — the
   // desk's own /api/x/feed stays the trends path and the ?xui=classic escape hatch.
   const renderXoverlay = () => {
     if (!xMode || xMode === "trends") return;
@@ -1615,7 +1615,7 @@ html.swae #desk .letters{background:#0b0d12f5}
       src: "/x-overlay/index.html?theme=dark&position=bottom-left&scale=.72&margin=8&count=5&refresh=30&interval=18&stack=1",
       title: "X Following timeline", loading: "lazy",
     });
-    const card = h("div", { id: "x-card", class: "x-overlay-panel" }, frame);
+    const card = h("div", { id: "x-feed", class: "x-overlay-panel" }, frame);
     if (xEl) { xEl.replaceWith(card); xEl = card; }
     else {
       xEl = card;

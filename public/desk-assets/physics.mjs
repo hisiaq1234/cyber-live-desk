@@ -97,7 +97,8 @@ export function createWorld({ gravity = GRAVITY, fixedDt = 1 / 120 } = {}) {
 
   const jumpCharacter = (body, { height = 120, horizontal = 0 } = {}) => {
     if (!hasBody(body) || !body.grounded || !Number.isFinite(height)) return false;
-    body.vy = -Math.sqrt(2 * Math.max(1, gravity) * Math.max(0, height));
+    const g = Math.max(1, body.gravity ?? gravity);
+    body.vy = -Math.sqrt(2 * g * Math.max(0, height));
     body.vx += Number.isFinite(horizontal) ? horizontal : 0;
     body.grounded = false;
     body.supportId = null;
@@ -254,6 +255,7 @@ export function createWorld({ gravity = GRAVITY, fixedDt = 1 / 120 } = {}) {
   };
 
   const integrateCharacter = (body, dt) => {
+    const g = Number.isFinite(body.gravity) ? body.gravity : gravity;
     pinSupport(body);
     const oldX = body.x, oldY = body.y, oldVy = body.vy;
     const control = body.climb || body.motor;
@@ -272,7 +274,7 @@ export function createWorld({ gravity = GRAVITY, fixedDt = 1 / 120 } = {}) {
         ax *= scale; ay *= scale;
       }
       body.vx += ax * dt;
-      body.vy += (gravity + ay) * dt;
+      body.vy += (g + ay) * dt;
 
       // A grip is lost only when the ledge leaves the arm's reachable envelope
       // for a sustained interval. The IK renderer keeps the hand on this same
@@ -300,7 +302,7 @@ export function createWorld({ gravity = GRAVITY, fixedDt = 1 / 120 } = {}) {
       } else {
         body.vx *= Math.exp(-(body.grounded ? 10 : .8) * dt);
       }
-      body.vy += gravity * dt;
+      body.vy += g * dt;
     }
 
     body.x += body.vx * dt;

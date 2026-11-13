@@ -438,12 +438,15 @@ export async function initCrid3D(host,getState,onReady,onFail){
       footW+=((locked?1:0)-footW)*Math.min(1,dt*5);
       if(footW>.02&&footBind.L&&footBind.R){
         footDbg=0;B(J.pelvis).getWorldPosition(_ip);const floorY=shadowY();
+        // Stance offsets and the knee pole rotate with his heading — a lean
+        // that yaws him 0.85 rad must not leave the feet planted on bind axes.
+        const cy=Math.cos(heading),sy=Math.sin(heading);
         for(const sd of["L","R"]){const fb=footBind[sd],th=B(J["thigh"+sd]),sn=B(J["shin"+sd]),ft=B(J["foot"+sd]);
           if(!th||!sn||!ft)continue;
           ft.getWorldPosition(_it);                                   // current ankle
-          _ic.set(_ip.x+fb.x,floorY+fb.ankleH,_ip.z+fb.z);            // planted target
+          _ic.set(_ip.x+fb.x*cy+fb.z*sy,floorY+fb.ankleH,_ip.z-fb.x*sy+fb.z*cy);
           _it.lerp(_ic,footW);                                        // eased reach, like the hand plant
-          _id.set(_it.x,_it.y+.5,_it.z+.5);                           // pole: knees back, away from camera
+          _id.set(_it.x+sy*.5,_it.y+.5,_it.z+cy*.5);                  // pole: knees back along facing
           const r2=ikSolver.solve({rootBone:th,middleBone:sn,endBone:ft,target:_it,poleTarget:_id,preserveEndRotation:!0});
           if(r2&&!r2.reachable)footDbg=1}
       }

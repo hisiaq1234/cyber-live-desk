@@ -68,11 +68,14 @@ if (process.env.PROBE_CLIMB === "1") {
   if (drive.result?.value !== "true") process.exitCode = 1;
   await new Promise((r) => setTimeout(r, 5000));
   await capture("climb");
+  let sawClimb = false;
   for (let i = 0; i < 15; i++) {
     await new Promise((r) => setTimeout(r, 1000));
     const s = await send("Runtime.evaluate", { expression: "JSON.stringify(window.__cridStage?{state:window.__cridStage().state,groundY:window.__cridStage().groundY,roll:+window.__cridStage().roll.toFixed(2)}:null)", returnByValue: true }, sessionId);
     console.log("[stage t+" + (i + 1) + "s]", s.result?.value);
+    if (s.result?.value && !s.result.value.includes('"state":"floor"')) sawClimb = true;
   }
+  if (!sawClimb) { console.error("[probe] climb never left floor state"); process.exitCode = 1; }
   await send("Runtime.evaluate", { expression: "window.lab.driveStage('climb','p-climb','end')" }, sessionId);
   await new Promise((r) => setTimeout(r, 4000));
   await capture("recovery");

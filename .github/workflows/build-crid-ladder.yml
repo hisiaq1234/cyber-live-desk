@@ -12,6 +12,7 @@ on:
       - scripts/build-body-ladder.py
       - scripts/build-crid-rig.py
       - scripts/probe-crid.mjs
+      - public/crid-lab.html
       - .github/workflows/build-crid-ladder.yml
 
 permissions:

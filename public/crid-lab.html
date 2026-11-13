@@ -13,9 +13,8 @@
     border:1px solid #2f3b63;box-shadow:0 10px 30px rgba(0,0,0,.45)}
   .panel::after{content:"";position:absolute;inset:0;border-radius:10px;
     background:repeating-linear-gradient(0deg,transparent 0 22px,rgba(125,143,245,.05) 22px 23px)}
-  /* p-climb's top edge must sit within his reach: deskTargets() only offers a
-     climb when the lip is no higher than his own height above the floor line.
-     At the lab's ~484px viewport that means top >= ~54%. */
+  /* Platform height scales with viewport width, matching CRID's rendered body.
+     The climb lip remains within reach at phone, compact and desktop aspect ratios. */
   #p-climb{left:50%;top:calc(100% - 15vw);width:44%;height:12vw}
   #p-lean{left:4%;top:calc(100% - 25vw);width:22%;height:22vw}
   #p-seat{left:34%;top:calc(100% - 10vw);width:30%;height:8vw}

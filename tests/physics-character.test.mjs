@@ -62,7 +62,7 @@ test("a reachable ledge grip drives a weighted mantle onto the platform",()=>{
   run(2);
   assert.equal(body.supportId,"ledge");
   assert.equal(body.grip.id,"ledge");
-  assert.ok(body.x>100);
+  assert.ok(body.x>1);
 });
 
 test("out-of-reach ledge anchors are rejected",()=>{

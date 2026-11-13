@@ -131,15 +131,10 @@ test("the sprite payload ships as downscaled webp inside the budget", async () =
   }
 });
 
-test("the body ladder is seven builds of one render, not seven different drawings", async () => {
-  // Break caught twice over. First: the seven frames were seven different Snap renders at rotation
-  // 7, so a weight change swapped the pose, the head size and the silhouette — a different person,
-  // not the same man heavier. Then: three of those seven sat within 2px of each other, so a stage
-  // change was invisible. The frames are now the seven distinct builds Snap's own body= parameter
-  // gives at rotation 0 (3, 0, 4, 5, 1, 11, 2 lean -> heavy; 4/6/7/8/9/10/12 all return the same
-  // picture as 4), one render in one pose, framed by scripts/build-body-ladder.py, which measures
-  // each frame it writes into ladder.json; the renderer's own table has to be that measurement,
-  // not a second opinion.
+test("the body ladder preserves the selected r7 face and seven ordered body builds", async () => {
+  // The first frame is the exact owner-selected body-000-r7 image. Six heavier stages come from
+  // Snap's distinct rotation-zero body values, then inherit that image's head/face crop and align
+  // to its torso axis and floor. The report and renderer table must measure the shipped files.
   const { BODY_LADDER } = await import("../public/desk-assets/crid-bot.js");
   const doc = JSON.parse(await readFile(new URL("../public/desk-assets/crid/ladder.json", import.meta.url), "utf8"));
   assert.equal(BODY_LADDER.length, 7, "one stage per body frame");
@@ -147,9 +142,8 @@ test("the body ladder is seven builds of one render, not seven different drawing
     "the ladder and the frames must be in the same lean -> heavy order");
   assert.deepEqual(doc.stages.map((s) => [s.ink.w, s.ink.h]), BODY_LADDER.map((s) => [s.w, s.h]),
     "the renderer's table must be the measured ink box of the frames that ship");
-  // The builds differ in mass more than in silhouette width — only the heaviest frame is
-  // measurably wider — so the order is proven on ink area (which the build script also uses for
-  // slow/heft), with slow and heft required to climb the whole way up.
+  // The build report measures the actual shipped silhouettes; both ink area and the movement
+  // profile must progress monotonically from the selected leanest image to the heaviest.
   for (let i = 1; i < doc.stages.length; i++) {
     assert.ok(doc.stages[i].area >= doc.stages[i - 1].area, `stage ${i} must not lose mass`);
     assert.ok(BODY_LADDER[i].slow >= BODY_LADDER[i - 1].slow && BODY_LADDER[i].heft >= BODY_LADDER[i - 1].heft,

@@ -37,13 +37,27 @@ test("the location dock reads the delayed public fix defensively and keeps panic
   assert.ok(!overlay.includes('id: "map-plate"'));
 });
 
-test("peek, full view and GTA mode are wired to state and URL params", () => {
-  assert.ok(overlay.includes('num("locpeek"'));
+test("the GTA minimap is persistent, location-gated and player-centred", () => {
+  assert.ok(overlay.includes('let locMode = "mini"'));
+  assert.ok(overlay.includes("const miniRect = () =>"));
+  assert.ok(overlay.includes("const syncMinimap = () =>"));
+  assert.ok(overlay.includes("the player marker stays centred"));
+  assert.ok(overlay.includes("map.easeTo({ center: [lng, lat], duration: 520 })"));
+  assert.ok(!overlay.includes("LOCPEEK_MS"));
+  assert.ok(!overlay.includes("peekHideTimer"));
   assert.ok(overlay.includes('P.get("locview") === "full"'));
-  assert.ok(overlay.includes('s.gta === true'));
-  assert.ok(overlay.includes('classList.toggle("gta"'));
   // SWAE kills CSS transitions: dock motion must be stepped in JS, never transitioned.
   assert.ok(overlay.includes("animateRect"));
+});
+
+test("GTA HUD styles the whole cyber overlay and leaves camera feeds visible by default", () => {
+  const theme = readFileSync(new URL("../public/desk-assets/cyber-theme.js", import.meta.url), "utf8");
+  assert.match(overlay, /const SCENE_ON = P.get\("bg"\) === "1"/);
+  assert.match(theme, /GTA HUD layer: applies to the whole broadcast/);
+  assert.match(theme, /#desk #desk-logo/);
+  assert.match(theme, /#desk #loc-map/);
+  assert.match(theme, /#desk #crid-live/);
+  assert.match(theme, /#desk :is\(\.card,\.court-wrap,\.music-wrap/);
 });
 
 

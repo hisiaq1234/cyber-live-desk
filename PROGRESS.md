@@ -85,11 +85,9 @@ The owner supplied reference files for all of these; they are in `docs/reference
 2. **The right-hand side has moved too.** The location readout doubles the same way in his frame, and
    the old version showed different information: coordinates (`6.5252° N, 3.3673° E · 2.2m`) where the
    current one shows street, area and `±9m`. Which one he wants is an open question.
-3. **Dual camera.** The stream runs two camera feeds side by side with a split down the centre. The
-   current layout puts the clock bottom-left, the radar bottom-right and the logo top-centre, so the
-   logo straddles the split and the radar crosses it. The layout has to keep each feed's half clear.
-   Only `?scene=pip` (corner inset) exists; there is no split layout. **The split ratio is an open
-   question.**
+3. ~~**Dual camera.**~~ Built on this branch: default `scene=split` is a 50/50 side-by-side
+   HUD safe-zone layout. Black Market clock and minimap stay in the left half; location readout and
+   live modules stay in the right half. Swae/OBS still supplies and positions the actual camera feeds.
 4. ~~**The goat sting is not playing.**~~ Fixed — `a183584`, `ab7472c`, `a9869bb`: the lockup plays
    the operator's goat Lottie, looped, with the vector fallback only when the sting cannot.
 5. **The X news panel.** `index-biybl5ta.js` and `index-p0keguo4.css` in the owner's drop are the built

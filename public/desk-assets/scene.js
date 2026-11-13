@@ -1,10 +1,7 @@
-/* CYBER LIVE DESK — the room the desk stands in.
+/* CYBER LIVE DESK — optional synthetic room backdrop.
 
-   The page is served with `html,body{background:transparent}` on purpose: the same /desk file is
-   loaded straight into OBS as a browser source, and a transparent page is what lets the desk be
-   keyed over the stream. In a browser that same transparency is the browser's own white canvas,
-   so the desk read as three cards floating in a void. This layer is the fix — the room is drawn
-   inside the page instead of being left to the renderer.
+   The stream camera feeds are the world. /desk stays transparent by default so this layer cannot
+   cover them; ?bg=1 opts into the synthetic sky/grid/horizon for a standalone browser preview.
 
    Four things, back to front, all static:
      sky       deep navy at the horizon falling to black at both ends
@@ -22,7 +19,7 @@
    a low-power box pay nothing for it. The one blur is on the horizon glow and is switched off for
    both of those renderers.
 
-   ?bg=0 on /desk removes the layer entirely and gives back the transparent page OBS needs. */
+   ?bg=1 on /desk opts into this backdrop. The default overlay stays transparent over real camera feeds. */
 
 export const SCENE_CSS = `
 #desk-scene{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;

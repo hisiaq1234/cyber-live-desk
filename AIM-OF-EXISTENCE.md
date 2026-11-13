@@ -114,6 +114,11 @@ live.
 
 ## The GTA theme
 
+GTA is the **visual language of the entire stream overlay**, not only the world Crid inhabits. The
+camera feeds are the world; the HUD sits over them and unifies both camera halves, identity, clock,
+location/minimap, live information, community elements and Crid. It should feel like a game HUD
+composited over a live broadcast, not a row of conventional streaming dashboard cards.
+
 GTA is the **theme and visual direction for Crid and his world** — not the identity of the product.
 
 - The recognisable GTA V interface language: minimap behaviour, blips, markers, HUD hierarchy,

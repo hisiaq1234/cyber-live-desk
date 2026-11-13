@@ -451,6 +451,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     world.setPlatforms(Object.entries(stageBoxes).filter(([id])=>solid.has(id)).map(([id,b])=>({
       id,left:b.left,right:b.right,top:-b.top,bottom:-b.top+b.h,solidSides:true
     })));
+  };
   const getStage=()=>stage||(stage=createStage({
     targets:deskTargets,boxes:stageBoxes,unit:UPX,worldX:px=>stagePX(px),screenWidth:()=>innerWidth,
     rand:Math.random,mass:()=>build().heft,bagOn:()=>bag.worn,

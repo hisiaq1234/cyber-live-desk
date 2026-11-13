@@ -439,7 +439,8 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       const b=layerOf(name); if(!b||!b.edge)continue;
       const left=b.edge.left??(b.edge.x??0),right=b.edge.right??(left+(b.w||0));
       stageBoxes[name]={left:stagePX(left),right:stagePX(right),top:(feet-(b.edge.top??0))/UPX(),w:b.w/UPX(),h:b.h/UPX(),z:b.z??0}}};
-    world.setPlatforms(Object.entries(stageBoxes).map(([id,b])=>({
+    const targets=deskTargets(),solid=new Set([...(targets.sit||[]),...(targets.climb||[])]);
+    world.setPlatforms(Object.entries(stageBoxes).filter(([id])=>solid.has(id)).map(([id,b])=>({
       id,left:b.left,right:b.right,top:-b.top,bottom:-b.top+b.h,solidSides:true
     })));
   const getStage=()=>stage||(stage=createStage({

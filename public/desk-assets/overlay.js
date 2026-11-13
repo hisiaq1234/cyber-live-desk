@@ -749,13 +749,13 @@ html.gta #desk #auto-headlines .headline-feed-kicker{color:#4dff6a}
    can push a plate across the centre seam. */
 html[data-scene="split"] #desk.layout-alive .slot{width:min(460px,calc(50vw - 2*var(--m)))}
 html[data-scene="split"] #desk.layout-alive #dock-right{width:min(360px,calc(50vw - 2*var(--m)));max-height:calc(100svh - 2*var(--m))}
-html[data-scene="split"] #desk #time-dock{min-width:0;width:min(390px,calc(50vw - 2*var(--m)));max-width:calc(50vw - 2*var(--m))}
+html[data-scene="split"] #desk #time-dock {min-width:0;width:min(390px,calc(50vw - 2*var(--m)));max-width:calc(50vw - 2*var(--m))}
 html[data-scene="split"] #desk #loc-map{max-width:calc(50vw - 2*var(--m))}
 html[data-scene="split"] #desk #music-plate{width:min(342px,calc(50vw - 2*var(--m)))}
 html[data-scene="split"] #desk #auto-headlines{width:min(36vw,calc(50vw - 2*var(--m)))}
 @media(max-width:520px){
   html[data-scene="split"] #desk #time-dock{padding:10px 10px 10px 12px}
-  html[data-scene="split"] #desk #time-dock .clock-time{font-size:clamp(12px,3.2vw,22px)}
+  html[data-scene="split"] #desk #time-dock .clock-time {font-size:clamp(12px,3.2vw,22px)}
   html[data-scene="split"] #desk #time-dock .clock-top,
   html[data-scene="split"] #desk #time-dock .clock-detail{font-size:clamp(8px,1.8vw,10px)}
 }

@@ -1000,7 +1000,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // Root motion is integrated here because stage.mjs stays pure: walking is a
   // flag + a target, the body covers the distance. Speed is ~0.76 body-widths
   // a second (the rig page's 0.42 units at hisW 0.55), slowed on a ledge.
-  let stageWalkMs=0,stageAnchored=false;
+  let stageAnchored=false;
   // Once the stage owns him he is pinned by a compositor transform, not left/top:
   // the behaviour tick used to write layout properties ~22x a second while the
   // rig drew at 60fps, and every write forced style+layout work the transform
@@ -1017,8 +1017,14 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const stageTick=()=>{
     if(!stage)return;
     if(stageTick.lastState!==stage.state){stageTick.lastState=stage.state;if(stage.state==="hop")stageTick.hopStarted=false}
+    if(mode!=="on"||dying){world.stopCharacter(cridBody);return}
+    if(stage.state==="floor"&&(walk||leanAt||pendingLean)){
+      const r=host.getBoundingClientRect();
+      cridBody.x=stagePX(r.left+r.width/2);cridBody.y=-cridBody.halfH;
+      cridBody.vx=0;cridBody.vy=0;cridBody.grounded=true;cridBody.supportId="floor";
+      cridBody.motor=null;return;
+    }
     if(!stageAnchored&&stage.state==="floor"&&!stage.walking&&!cridBody.motor&&!cridBody.grip)return;
-    const now=Date.now(),dt=stageWalkMs?Math.min(.1,Math.max(0,(now-stageWalkMs)/1000)):.016;stageWalkMs=now;
     const heft=build().heft,load=bag.worn?BAG_MASS:0;
     cridBody.mass=heft;cridBody.strength=heft;
     cridBody.halfW=Math.max(20,(stageHW.w||host.offsetWidth||180)*.34)/UPX();

@@ -284,7 +284,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     motorState:{x:cridBody.x,y:cridBody.y,vx:cridBody.vx,vy:cridBody.vy,
       grounded:cridBody.grounded,supportId:cridBody.supportId,distanceTravelled:cridBody.distanceTravelled,
       screenX:cridBody.x*UPX(),active:!!(stage&&stage.walking&&["approach","floor","top"].includes(stage.state)),
-      strideLength:Math.max(.08,cridBody.halfW*4.5),
+      strideLength:Math.max(.08,cridBody.halfW*2.25),
       grip:cridBody.grip?{...cridBody.grip}:null},
     lean:leanAt||stageLean(),reduced,stage:BODIES[bodyI],face:faceNow,
     stagePose:stage?{ref:stage,roll:stage.roll,pitch:stage.pitch,liftPx:stage.groundY*UPX(),

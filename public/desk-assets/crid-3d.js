@@ -200,9 +200,8 @@ export async function initCrid3D(host,getState,onReady,onFail){
     // Delta rotation on top of each bone's rest pose (userData.q0).
     const E=new THREE.Euler(),Q=new THREE.Quaternion(),Q2=new THREE.Quaternion();
     const rot=(n,x=0,y=0,z=0)=>{const b=B(n);if(!b)return;E.set(x,y,z,"XYZ");Q.setFromEuler(E);Q2.copy(b.userData.q0).multiply(Q);b.quaternion.copy(Q2)};
-    // Post-multiplied local delta for the stage machine's channel map — applied
-    // after the pose pass, before IK (which owns the arm chain during a lean).
-    const rotAdd=(n,x=0,y=0,z=0)=>{const b=B(n);if(!b)return;E.set(x,y,z,"XYZ");Q.setFromEuler(E);b.quaternion.multiply(Q)};
+    // Post-multiplied local delta — kept for one-off poses; stage channels use
+    // the world-axis applyStageChannels path instead.
 
     const J={
       pelvis:"C_pelvis0001_bind_JNT",spine2:"C_spine0002_bind_JNT",spine3:"C_spine0003_bind_JNT",
@@ -230,6 +229,66 @@ export async function initCrid3D(host,getState,onReady,onFail){
       const fp=f.getWorldPosition(new THREE.Vector3());
       footBind[sd]={x:fp.x-bindPelvis.x,z:fp.z-bindPelvis.z,ankleH:fp.y-shadowY()}}
     function shadowY(){shadow.updateWorldMatrix(!0,!1);return shadow.getWorldPosition(new THREE.Vector3()).y}
+
+    // ---- stage channels: the rig page's own convention, ported verbatim ---------
+    // crid3d.html applyChannels/applyAcc: semantic channels accumulate as WORLD-AXIS
+    // euler triples per bone, then each bone gets _D = P^-1·R·P premultiplied onto its
+    // posed quaternion (P = the parent's rest world orientation). Rotating about world
+    // axes is why the climb reads as a body and not a pile of local-axis bends — the
+    // guessed-axis rotAdd version is gone.
+    const CH_ACC=new Map(),_CH_Q=new THREE.Quaternion(),_CH_E=new THREE.Euler(),_CH_D=new THREE.Quaternion();
+    const restPQ=new Map();let chanFrozen=false;
+    const chanAdd=(n,x,y,z)=>{if(!x&&!y&&!z)return;const a=CH_ACC.get(n);if(a){a[0]+=x;a[1]+=y;a[2]+=z}else CH_ACC.set(n,[x,y,z])};
+    const freezeChan=()=>{if(chanFrozen||!model)return;chanFrozen=true;
+      model.updateMatrixWorld(!0);
+      for(const n in bones){const b=bones[n];if(b.parent)restPQ.set(n,b.parent.getWorldQuaternion(new THREE.Quaternion()))}};
+    const applyStageChannels=c=>{
+      CH_ACC.clear();const g=n=>c[n]||0;
+      const lf=g("leanFwd"),ls=g("leanSide")||0,tw=g("twist")||0;
+      chanAdd("C_pelvis0001_bind_JNT",-lf*.10,tw*.25,-ls*.10);
+      chanAdd("C_spine0001_bind_JNT",-lf*.25,tw*.25,-ls*.25);
+      chanAdd("C_spine0002_bind_JNT",-lf*.35,tw*.30,-ls*.35);
+      chanAdd("C_spine0003_bind_JNT",-lf*.30,tw*.20,-ls*.30);
+      chanAdd("C_neck0001_bind_JNT",-g("headPitch")*.30,(g("headYaw")||0)*.35,-(g("headTilt")||0)*.30);
+      chanAdd("C_head_bind_JNT",-g("headPitch")*.70,(g("headYaw")||0)*.65,-(g("headTilt")||0)*.70);
+      chanAdd("L_eye_bind_JNT",0,(g("eyeYaw")||0)*.5,0);chanAdd("R_eye_bind_JNT",0,(g("eyeYaw")||0)*.5,0);
+      chanAdd("L_clavicle_bind_JNT",0,0,(g("shrugL")||0));chanAdd("R_clavicle_bind_JNT",0,0,-(g("shrugR")||0));
+      chanAdd("L_armUpper0001_bind_JNT",-g("armFwdL"),0,g("armLiftL"));
+      chanAdd("R_armUpper0001_bind_JNT",-g("armFwdR"),0,-g("armLiftR"));
+      chanAdd("L_armLower0001_bind_JNT",-g("elbowL"),0,0);
+      chanAdd("R_armLower0001_bind_JNT",-g("elbowR"),0,0);
+      chanAdd("L_legUpper0001_bind_JNT",-g("legFwdL"),0,(g("legSideL")||0));
+      chanAdd("R_legUpper0001_bind_JNT",-g("legFwdR"),0,(g("legSideR")||0));
+      chanAdd("L_legLower0001_bind_JNT",g("kneeL"),0,0);
+      chanAdd("R_legLower0001_bind_JNT",g("kneeR"),0,0);
+      chanAdd("L_foot0001_bind_JNT",-(g("ankleL")||0)*.5,0,0);
+      chanAdd("R_foot0001_bind_JNT",-(g("ankleR")||0)*.5,0,0);
+      CH_ACC.forEach((a,n)=>{const b=bones[n],P=restPQ.get(n);if(!b||!P)return;
+        _CH_Q.setFromEuler(_CH_E.set(a[0],a[1],a[2],"XYZ"));
+        _CH_D.copy(P).invert().multiply(_CH_Q).multiply(P);
+        b.quaternion.premultiply(_CH_D)})};
+
+    // ---- the bag's lag: the rig page rigid-skins it to the upper spine and lets
+    // a spring group swing it — straps and bag trailing him is the secondary
+    // motion that sells weight. Ported: same re-skin, same pivot, same springs.
+    let bagPivot=null,bagLag=null,bagAxes=null;const Sbag={v:0,vel:0},SbagX={v:0,vel:0};
+    {
+      let skinned=null;root.traverse(o=>{if(o.isSkinnedMesh&&/outfit_bag/i.test(o.name))skinned=o});
+      const spine3=B(J.spine3);
+      if(skinned&&spine3){const skel=skinned.skeleton,i=skel.bones.indexOf(spine3);
+        if(i>=0){const ibm=skel.boneInverses[i].clone(),geo=skinned.geometry.clone();
+          geo.deleteAttribute("skinIndex");geo.deleteAttribute("skinWeight");
+          const mesh=new THREE.Mesh(geo,skinned.material);mesh.frustumCulled=false;
+          const pivot=new THREE.Group();pivot.matrixAutoUpdate=false;pivot.matrix.copy(ibm);
+          const lag=new THREE.Group();pivot.add(lag);lag.add(mesh);spine3.add(pivot);
+          skinned.parent.remove(skinned);
+          bagPivot=pivot;bagLag=lag;
+          const q=spine3.getWorldQuaternion(new THREE.Quaternion()).invert();
+          bagAxes={x:new THREE.Vector3(1,0,0).applyQuaternion(q).normalize(),
+                   z:new THREE.Vector3(0,0,1).applyQuaternion(q).normalize()}}}}
+    const stepSpring=(s,target,k,d,dt)=>{const n=Math.max(1,Math.ceil(dt/.008)),h=dt/n;
+      for(let i=0;i<n;i++){const a=(target-s.v)*k-s.vel*d;s.vel+=a*h;s.v+=s.vel*h}return s.v};
+    freezeChan();   // rest parent orientations at bind — the same reference frame the rig page froze
     // Fingers: five chains per hand. Each entry carries its bone, its share of
     // the curl (middle joints fold furthest) and the side sign — the rig
     // mirrors L/R, so one axis angle closes both hands.
@@ -245,7 +304,7 @@ export async function initCrid3D(host,getState,onReady,onFail){
     // The bind pose holds his arms wide (A-pose); the relaxed hang is the baseline of every pose.
     const RELAX={armL:{z:1.12},armR:{z:-1.12},foreL:{x:.3},foreR:{x:-.3}};
 
-    let disposed=!1,raf=0,ready=!1,phase=0,heading=0,bagShown=true,ikW=0,footW=0,footDbg=0,curlW=0;
+    let disposed=!1,raf=0,ready=!1,phase=0,heading=0,bagShown=true,ikW=0,footW=0,footDbg=0,curlW=0,lastBagCX=0,C_leanF=0;
     const ikSolver=new TwoBoneIK();let ikLast=null,ikDbg="";
     const _iv=new THREE.Vector3(),_id=new THREE.Vector3(),_it=new THREE.Vector3(),
       _ic=new THREE.Vector3(),_ip=new THREE.Vector3(),_io=new THREE.Vector3(),
@@ -364,30 +423,29 @@ export async function initCrid3D(host,getState,onReady,onFail){
       const fc=face.channels();
       for(const k in fc)setMorph(k,fc[k]);
 
-      // The pack: Snap's bag mesh is on his back only while the snapshot says he
+      // The pack: Snap's bag mesh rides his back only while the snapshot says he
       // wears it — a dropped bag leaves the floor prop as the only bag in the room.
+      // The lag pivot (ported from the rig page) swings it on two springs: sway
+      // from his root velocity, pitch from the stage lean channel.
       const showBag=st.bag!==false;
-      if(showBag!==bagShown){bagShown=showBag;for(const m of bagMeshes)m.visible=showBag}
+      if(showBag!==bagShown){bagShown=showBag;if(bagPivot)bagPivot.visible=showBag;
+        for(const m of bagMeshes)m.visible=false}   // the skinned original is gone; the pivot carries the bag
+      if(bagLag){
+        const hr=host.getBoundingClientRect(),cx=hr.left+hr.width/2;
+        const vx=lastBagCX?(cx-lastBagCX)/Math.max(dt,1e-3):0;lastBagCX=cx;
+        const leanF=C_leanF||0;
+        stepSpring(Sbag,clamp(-vx*.0011,-.3,.3),55,7.5,dt);
+        stepSpring(SbagX,clamp(-leanF*.25,-.2,.2),45,7,dt);
+        _CH_Q.setFromAxisAngle(bagAxes.z,Sbag.v);_CH_D.setFromAxisAngle(bagAxes.x,SbagX.v);
+        bagLag.quaternion.copy(_CH_Q).multiply(_CH_D)}
 
       // Stage machine pose channels — the reach/pull/crouch/seat/slip/recover
-      // beats as bone deltas, mapped on the measured joint axes (shoulder Z,
-      // arm swing X mirrored L+/R-, knee +Y on shins mirrored by side, thigh Y,
-      // spine/head pitch Y). Applied before IK so the solver still owns the
-      // arm chain while a lean is planted.
-      if(sp&&sp.ref){const C=stageChannels(sp.ref,t);
-        if(C.armLiftL)rotAdd(J.armL,0,0,C.armLiftL*.4);
-        if(C.armLiftR)rotAdd(J.armR,0,0,-C.armLiftR*.4);
-        if(C.armFwdL)rotAdd(J.armL,C.armFwdL*.4,0,0);
-        if(C.armFwdR)rotAdd(J.armR,-C.armFwdR*.4,0,0);
-        if(C.elbowL)rotAdd(J.foreL,C.elbowL*.5,0,0);
-        if(C.elbowR)rotAdd(J.foreR,-C.elbowR*.5,0,0);
-        if(C.kneeL)rotAdd(J.shinL,0,C.kneeL*.6,0);
-        if(C.kneeR)rotAdd(J.shinR,0,-C.kneeR*.6,0);
-        if(C.legFwdL)rotAdd(J.thighL,0,C.legFwdL*.4,0);
-        if(C.legFwdR)rotAdd(J.thighR,0,-C.legFwdR*.4,0);
-        if(C.leanFwd){rotAdd(J.spine2,0,C.leanFwd*.5,0);rotAdd(J.spine3,0,C.leanFwd*.3,0)}
-        if(C.headPitch){rotAdd(J.neck1,0,C.headPitch*.4,0);rotAdd(J.head,0,C.headPitch*.3,0)}
+      // beats, applied with the rig page's own world-axis convention
+      // (applyChannels/applyAcc above). Runs before IK so the solver still owns
+      // the arm chain while a lean is planted.
+      if(sp&&sp.ref){freezeChan();const C=stageChannels(sp.ref,t);applyStageChannels(C);C_leanF=C.leanFwd||0;
         if(C.rootY)model.position.y+=C.rootY*s}
+      else C_leanF*=Math.max(0,1-dt*4);
 
       // Hand plant (Phase C groundwork): while he leans on a panel, the touching
       // arm solves onto the contact point crid-bot measured in screen px. The

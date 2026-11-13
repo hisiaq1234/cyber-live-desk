@@ -843,6 +843,76 @@ import { createCridVoice } from "./crid-voice.js";
       prompt("Swae PiP Overlay URL:", url);
     }
   };
+  // GPS is started deliberately from the private controller, never by the public overlay.
+  // The server stores coarse 0.01° cells and exposes them only after its 90-second delay.
+  let gpsWatchId = null, gpsSession = 0, gpsLastCell = "", gpsLastSentAt = 0, gpsWriteBusy = false;
+  const gpsStatus = h("p", "sub", "GPS is off. Start it only while streaming somewhere you are comfortable sharing. The public map uses ~1.1 km cells and a 90-second delay.");
+  const stopGpsWatch = () => {
+    gpsSession++;
+    if (gpsWatchId != null && navigator.geolocation?.clearWatch) navigator.geolocation.clearWatch(gpsWatchId);
+    gpsWatchId = null;
+    gpsLastCell = "";
+    gpsLastSentAt = 0;
+  };
+  const startGps = () => {
+    if (!token) return toast("Log in first", true);
+    if (gpsWatchId != null) return;
+    if (!navigator.geolocation?.watchPosition) {
+      gpsStatus.textContent = "This browser does not provide GPS location.";
+      return;
+    }
+    const session = ++gpsSession;
+    gpsStatus.textContent = "Waiting for location permission and a GPS fix…";
+    try {
+      gpsWatchId = navigator.geolocation.watchPosition(async (position) => {
+        if (session !== gpsSession || gpsWriteBusy) return;
+        const { latitude, longitude, altitude, accuracy } = position.coords;
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+        const cell = `${Math.round(latitude * 100)}:${Math.round(longitude * 100)}`;
+        const now = Date.now();
+        if (cell === gpsLastCell && now - gpsLastSentAt < 30000) return;
+        gpsWriteBusy = true;
+        try {
+          await api("/api/desk/location", { lat: latitude, lon: longitude, alt: altitude });
+          if (session !== gpsSession) return;
+          gpsLastCell = cell;
+          gpsLastSentAt = Date.now();
+          gpsStatus.textContent = `GPS active · accuracy ±${Math.round(accuracy || 0)} m · public map updates after 90 s in coarse cells.`;
+        } catch (error) {
+          gpsStatus.textContent = "GPS write failed: " + (error?.message || error);
+        } finally {
+          gpsWriteBusy = false;
+        }
+      }, (error) => {
+        if (session !== gpsSession) return;
+        stopGpsWatch();
+        gpsStatus.textContent = error?.code === 1
+          ? "Location permission was denied. Enable it in browser settings, then start GPS again."
+          : "GPS unavailable: " + (error?.message || "waiting for a better signal");
+      }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 });
+    } catch (error) {
+      stopGpsWatch();
+      gpsStatus.textContent = "Could not start GPS: " + (error?.message || error);
+    }
+  };
+  const stopGpsAndClear = async () => {
+    stopGpsWatch();
+    try {
+      await api("/api/desk/location", { clear: true });
+      gpsStatus.textContent = "GPS stopped. The delayed public location and map history have been cleared.";
+    } catch (error) {
+      gpsStatus.textContent = "GPS stopped locally, but clearing the public location failed: " + (error?.message || error);
+    }
+  };
+  window.addEventListener("pagehide", stopGpsWatch, { once: true });
+  const gpsPanel = h("section", "panel gps-panel",
+    h("h2", {}, "Cyber Radar — Live GPS"),
+    h("p", "sub", "The control phone supplies real GPS. The public overlay never asks for precise location itself; the server rounds fixes to ~1.1 km cells and delays them by 90 seconds."),
+    h("div", "row",
+      btn("Start GPS", startGps, "primary"),
+      btn("Stop & clear location", stopGpsAndClear, "danger")),
+    gpsStatus);
+
   const reloadPreview = () => {
     try { previewFrame.src = "/desk?debug=0&scene=split&r=" + Date.now(); } catch { /* ignore */ }
     toast("Preview refreshed");
@@ -1741,16 +1811,16 @@ import { createCridVoice } from "./crid-voice.js";
     // Build a scroll container with the current tab's panels
     let panels;
     switch(currentTab) {
-      case "live": panels = [statusEl, controlsEl, voicePanel, briefPanel, previewPanel]; break;
+      case "live": panels = [statusEl, controlsEl, gpsPanel, voicePanel, briefPanel, previewPanel]; break;
       case "topics": panels = [queuePanel, editorEl]; break;
       case "crid": panels = [cridPanel, botPanel]; break;
       case "community": panels = [riadPanel, ledgerPanel, spacePanel, chatPanel, slangPanel]; break;
       case "studio": panels = [clipPanel, musicPanel, courtPanel, audiomackPanel]; break;
       case "settings": panels = [autoEl, pollEl, twitchPanel, settingsExtrasEl]; break;
-      default: panels = [statusEl, controlsEl, voicePanel, briefPanel, previewPanel];
+      default: panels = [statusEl, controlsEl, gpsPanel, voicePanel, briefPanel, previewPanel];
     }
     // Show/hide panels based on active tab
-    const allPanels = [statusEl, controlsEl, voicePanel, briefPanel, previewPanel, queuePanel, editorEl, cridPanel, botPanel,
+    const allPanels = [statusEl, controlsEl, gpsPanel, voicePanel, briefPanel, previewPanel, queuePanel, editorEl, cridPanel, botPanel,
       riadPanel, ledgerPanel, spacePanel, chatPanel, slangPanel,
       clipPanel, musicPanel, courtPanel, audiomackPanel, autoEl, pollEl, twitchPanel, settingsExtrasEl];
     for (const p of allPanels) {

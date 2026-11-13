@@ -78,6 +78,27 @@ test("he stands on the panel during 'top' and the trace says done", () => {
   assert.equal(stage.trace, "climb · done");
 });
 
+test("a light Crid carrying the bag can slip, while a heavy Crid keeps his grip", () => {
+  const { stage: light } = makeStage({
+    mass: () => 0.5,
+    bagOn: () => true,
+    rand: () => 0.2,
+  });
+  light.step(50, climbIntent, 0.05);
+  const lightPath = drive(light, { ...climbIntent, phase: "middle" }, 8);
+  assert.ok(lightPath.includes("slip"), `light bag-carrier never slipped: ${[...new Set(lightPath)].join(", ")}`);
+  assert.ok(lightPath.includes("recover"), "the failed climb must include a recovery beat");
+
+  const { stage: heavy } = makeStage({
+    mass: () => 1.4,
+    bagOn: () => true,
+    rand: () => 0.2,
+  });
+  heavy.step(50, climbIntent, 0.05);
+  const heavyPath = drive(heavy, { ...climbIntent, phase: "middle" }, 8);
+  assert.ok(!heavyPath.includes("slip"), "a heavy Crid should not lose the lip under the same bag");
+});
+
 test("a slip slides him back down and interrupts once, with reason 'slip'", () => {
   const { stage, interrupts } = makeStage({ slip: () => true });
   // begin on the start beat, then keep the same activity in its middle so floor doesn't restart it

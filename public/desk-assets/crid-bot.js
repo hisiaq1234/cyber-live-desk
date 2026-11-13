@@ -432,7 +432,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     const now=Date.now(); if(!force&&now-lastBoxSync<250)return; lastBoxSync=now;
     for(const k of Object.keys(stageBoxes))delete stageBoxes[k];
     const hr=host.getBoundingClientRect(); stageHW.w=hr.width||host.offsetWidth; stageHW.h=hr.height||host.offsetHeight;
-    if(!getLayer)return;
+    if(!getLayer){world.setPlatforms([]);return}
     const feet=deskFeet(),names=(layers&&Array.isArray(layers.names)?layers.names:BEING_LAYERS).filter(n=>n!=="crid");
     for(const name of names){
       const b=layerOf(name); if(!b||!b.edge)continue;

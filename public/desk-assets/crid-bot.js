@@ -309,7 +309,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   bagEl.append(bagSvg); bagEl.style.cssText="position:fixed;z-index:26;pointer-events:none";
   root.append(bagEl);
   const bag={worn:!0,body:null};
-  let pickupWalk=!1,pickupEnd=null,bucketThinkAt=Date.now()+rand(200000,380000),pickupThinkAt=0;
+  let pickupWalk=!1,pickupEnd=null,bucketThinkAt=Date.now()+rand(200000,380000),pickupThinkAt=0,paperThinkAt=0;
   const bagWH=()=>{const w=host.offsetWidth||innerWidth*.175; return{w:w*.5,h:w*.5*78/64}};
   const floorY=()=>{const r=host.getBoundingClientRect(); return r.bottom-r.height*.03};
   // His horizontal speed, measured off the host's own movement — the toss a dropped bag gets is
@@ -326,12 +326,32 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       bagEl.style.left=`${b.x-w/2}px`; bagEl.style.top=`${b.y-h/2}px`}
     else bagEl.style.display="none";
     if(bag.body){bag.body.floor=floorY(); bag.body.halfH=h/2}};
-  const releaseBag=()=>{if(bag.worn||bag.body)return; const r=host.getBoundingClientRect(),{h}=bagWH();
+  const releaseBag=()=>{if(!bag.worn||bag.body)return; const r=host.getBoundingClientRect(),{h}=bagWH();
     const b=world.add({x:r.left+r.width/2,y:r.top+r.height*.22,vx:hisVx,vy:-60,mass:1,drag:.4,restitution:reduced?0:.26,floor:floorY(),halfH:h/2});
-    bag.body=b; bag.worn=!1; bagEl.style.display=""};
+    bag.body=b; bag.worn=!1; bagEl.style.display="";
+    spawnPaper(b.x-rand(4,16),b.y-rand(0,10),hisVx); if(Math.random()<.5)spawnPaper(b.x+rand(4,16),b.y,hisVx)};
   const wearBag=()=>{if(bag.worn||!bag.body)return; world.remove(bag.body); bag.body=null; bag.worn=!0};
   // The marker frames inside SEQ.dropbag / SEQ.pickup land here, the same place __cueEnd does.
   const bagMark=(kind,frame)=>{if(kind==="drop")releaseBag(); else if(kind==="wear")wearBag()};
+  // Loose paper (physics.md §3): what slips out of the bag obeys the same gravity, the same
+  // drag and the same floor — it flutters on the way down, lands flat and stays where it lies.
+  // Session-only: a reload clears the floor the way a reset desk would.
+  const papers=[],PAPER_MAX=4;
+  const paperEl=()=>{const d=document.createElement("div");d.id="crid-paper";
+    const s=el("svg",{viewBox:"0 0 20 14","aria-hidden":"true",focusable:"false"});
+    s.append(el("path",{d:"M2 2 L18 1 L19 12 L3 13 Z",fill:PAL.bone,opacity:.92,stroke:PAL.ink,"stroke-width":.6}),
+      el("path",{d:"M4 5 L16 4.5 M4 8 L15 7.6",stroke:PAL.slate,"stroke-width":.8,"stroke-linecap":"round"}));
+    s.style.cssText="width:100%;height:100%;display:block";d.append(s);
+    d.style.cssText="position:fixed;z-index:25;pointer-events:none";
+    const w=13+rand(0,7);d.style.width=`${w}px`;d.style.height=`${w*.7}px`;root.append(d);return d};
+  const spawnPaper=(x,y,vx=0)=>{
+    if(papers.length>=PAPER_MAX){const old=papers.shift();world.remove(old.body);old.el.remove()}
+    const d=paperEl(),b=world.add({x,y,vx:vx+rand(-30,30),vy:rand(-50,10),mass:.05,drag:2.8,restitution:0,floor:floorY(),halfH:7});
+    papers.push({body:b,el:d,phase:rand(0,6.28),rot:rand(-14,14)})};
+  const placePapers=now=>{for(const p of papers){const b=p.body,w=p.el.offsetWidth||16,h=w*.7;
+    p.el.style.left=`${b.x-w/2}px`;p.el.style.top=`${b.y-h/2}px`;
+    const fl=!reduced&&!world.settled(b)?Math.sin(now/130+p.phase)*9+b.vx*.05:0;
+    p.el.style.transform=`rotate(${p.rot+fl}deg)`}};
   // Carrying is not free: his step shrinks and his gap lengthens by the mass ratio, so a lean
   // Crid visibly works harder under the same bag than a heavy one does (physics.md §1).
   const carrySlow=()=>bag.worn?build().heft/(build().heft+BAG_MASS):1;
@@ -1003,12 +1023,21 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   try{window.__cridStage=()=>stage?{state:stage.state,key:stage.key,layer:stage.layer,
     walkX:Math.round(stage.walkX*UPX()+innerWidth/2),groundY:Math.round(stage.groundY*UPX()),
     roll:+stage.roll.toFixed(3),pitch:+stage.pitch.toFixed(3),trace:stage.trace,hold:+stage.hold.toFixed(1)}:null}catch{}
+  // Same read-only QA spirit for the loose bodies: a screenshot or a test can prove a sheet
+  // fell, fluttered and came to rest without reaching into the closure.
+  try{window.__cridPapers=()=>papers.map(p=>({x:Math.round(p.body.x),y:Math.round(p.body.y),
+    vx:+p.body.vx.toFixed(1),vy:+p.body.vy.toFixed(1),settled:world.settled(p.body)}))}catch{}
   const tick=()=>{if(frozen)return; const now=Date.now(); tickN++;
     // The bag is a body in the same world as everything else: it integrates on the tick's own
     // clock, and while it is in the air the loop runs at the fast cadence so the fall reads.
-    const tS=now/1000; world.step(Math.min(.25,tS-(tick.lastT||tS))); tick.lastT=tS;
+    const tS=now/1000,fdt=Math.min(.25,tS-(tick.lastT||tS)); world.step(fdt); tick.lastT=tS;
+    if(!reduced)for(const p of papers)if(!world.settled(p.body))p.body.vx+=Math.sin(tS*6+p.phase)*150*fdt;
     {const r=host.getBoundingClientRect(),cx=r.left+r.width/2; hisVx=(cx-(tick.lastCX||cx))/Math.max(.05,tS-(tick.lastCT||tS)); tick.lastCX=cx; tick.lastCT=tS}
-    placeBag();
+    placeBag(); placePapers(now);
+    // A sheet slips out now and then while he walks under it — rare enough to be a detail,
+    // regular enough that a long stream always has one on the floor eventually.
+    if(bag.worn&&walk&&now>=paperThinkAt){paperThinkAt=now+rand(150000,360000);
+      if(Math.random()<.3){const r=host.getBoundingClientRect();spawnPaper(r.left+r.width/2+rand(-16,16),r.top+r.height*.2,hisVx)}}
     if(walk&&(jobs.length||running))stopWalk(); advanceJob(); advanceWalk(); beingTick(now);
     // A commanded lean or walk is the desk's ask outranking his own stage: the
     // machine is told to abandon gracefully rather than fight the new verb.

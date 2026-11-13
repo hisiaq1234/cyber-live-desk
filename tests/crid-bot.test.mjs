@@ -449,3 +449,22 @@ test("an out-of-range floorX clamps to the ends of the floor band", async () => 
     `floorX 4 clamps to the strip end ${hi.toFixed(2)}%, got ${bot.el.style.left}`);
   bot.destroy();
 });
+
+test("dropbag spills paper that falls under the same gravity and comes to rest (physics.md §3)", async () => {
+  // The bag's release marker spawns sheets as world bodies: they must appear, fall, and every
+  // one of them must settle on the floor — nothing floats, nothing fades mid-air.
+  const root = installDom();
+  globalThis.window = {};                    // the QA handles attach here; node has no window
+  const bot = createCridBot({ root, step: 12, position: "bc" });
+  bot.observe({ bot: { on: true } });
+  bot.cue("dropbag");
+  let papers = [];
+  for (let i = 0; i < 700 && !papers.length; i++) { await sleep(20); papers = window.__cridPapers(); }
+  assert.ok(papers.length >= 1, "dropping the bag must spill at least one sheet of paper");
+  assert.equal(bot.getBeing().bag.worn, false, "the bag itself must actually leave his back");
+  assert.ok(papers.every((p) => p.y < 97), "every sheet starts above the floor line");
+  for (let i = 0; i < 400; i++) { await sleep(20); papers = window.__cridPapers(); }
+  assert.ok(papers.length >= 1, "the sheets stay on the floor — they are not cleaned up");
+  assert.ok(papers.every((p) => p.settled), "every sheet must come to rest on the floor");
+  bot.destroy();
+});

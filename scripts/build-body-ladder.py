@@ -140,7 +140,7 @@ def fetch():
         with urllib.request.urlopen(req, timeout=90) as r:
             reference_file.write_bytes(r.read())
     reference_data = reference_file.read_bytes()
-    git_blob = hashlib.sha1(f"blob {len(reference_data)}\\0".encode("ascii") + reference_data).hexdigest()
+    git_blob = hashlib.sha1(f"blob {len(reference_data)}\0".encode("ascii") + reference_data).hexdigest()
     if git_blob != FACE_REFERENCE["source_blob_sha"]:
         raise SystemExit(f"body-000-r7 source blob mismatch: {git_blob}")
     reference = Image.open(__import__("io").BytesIO(reference_data)).convert("RGBA")

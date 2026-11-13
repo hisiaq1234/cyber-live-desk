@@ -439,7 +439,15 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       const b=layerOf(name); if(!b||!b.edge)continue;
       const left=b.edge.left??(b.edge.x??0),right=b.edge.right??(left+(b.w||0));
       stageBoxes[name]={left:stagePX(left),right:stagePX(right),top:(feet-(b.edge.top??0))/UPX(),w:b.w/UPX(),h:b.h/UPX(),z:b.z??0}}};
-    const targets=deskTargets(),solid=new Set([...(targets.sit||[]),...(targets.climb||[])]);
+    // Mirror deskTargets' physical reach/occlusion checks without calling it
+    // during boot (its responsive dimensions are initialized later in this file).
+    const wPx=stageHW.w||host.offsetWidth||innerWidth*.175,hPx=stageHW.h||host.offsetHeight||220;
+    const cridZ=(layerOf("crid")||{}).z??0;
+    const solid=new Set(Object.keys(stageBoxes).filter(id=>{
+      const b=layerOf(id);if(!b||!b.edge||b.z>cridZ)return false;
+      const top=feet-(b.edge.top??0);
+      return top>=hPx*.25&&top<=hPx&&b.w>=wPx*1.2;
+    }));
     world.setPlatforms(Object.entries(stageBoxes).filter(([id])=>solid.has(id)).map(([id,b])=>({
       id,left:b.left,right:b.right,top:-b.top,bottom:-b.top+b.h,solidSides:true
     })));

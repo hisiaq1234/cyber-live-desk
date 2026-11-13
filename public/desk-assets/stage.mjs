@@ -75,11 +75,18 @@ export function createStage({
 
   function go(state) { stage.state = state; stage.t = 0; }
 
-  // physics.md §2 — a climb is an attempt with a cost. The bag is a drag on a lean man:
-  // the lighter he is and the more he is carrying, the more the lip can beat him, and
-  // heavy Crid does not slip at all. Rolled once per pull, when his weight commits.
+  // physics.md §2 — a climb is an attempt with a cost. The desk supplies mass as a
+  // live getter because the body ladder can change while the overlay is running; tests and
+  // other callers may still supply a fixed number. Resolve it once per pull so a body swap
+  // cannot change the odds halfway through the attempt.
+  const currentMass = () => {
+    const value = typeof mass === "function" ? mass() : mass;
+    return Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : 1;
+  };
+  const carryingBag = () => typeof bagOn === "function" ? !!bagOn() : !!bagOn;
   function slipChance() {
-    return bagOn() ? clamp((1.10 - mass) * 0.9, 0, 0.38) : clamp((1.02 - mass) * 0.35, 0, 0.12);
+    const m = currentMass();
+    return carryingBag() ? clamp((1.10 - m) * 0.9, 0, 0.38) : clamp((1.02 - m) * 0.35, 0, 0.12);
   }
   const forcedSlip = () => (typeof slip === "function" ? !!slip() : !!slip);
 

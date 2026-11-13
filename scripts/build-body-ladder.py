@@ -335,6 +335,7 @@ def sheet(out_path):
                    font=small)
             x += im.width + gap
         y = ground + label_h
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     out.convert("RGB").save(out_path)
     print(f"sheet -> {out_path}  ({sheet_w}x{sheet_h})")
 

@@ -129,7 +129,7 @@ export const LOGO_MARKS = ["bot", "goat"];
 // The layout the frame works in. `pip` reserves the bottom-right for a second camera and lifts the
 // news and the right column out of its way; `full` is the desk's own corners. The inset picture is
 // composited by the renderer, never by this page, so the desk only ever needs to know the room.
-export const SCENES = ["full", "pip"];
+export const SCENES = ["full", "pip", "split"];
 export const PIP_SIZE = { min: 10, max: 60, default: 34 }; // vw and vh
 
 // CRID × Gemini — AI enrichment for social/trend cards
@@ -1321,7 +1321,7 @@ export async function runAction(store, b, now = Date.now()) {
       const next = { mode: "full", w: PIP_SIZE.default, h: PIP_SIZE.default, ...state.scene };
       if (typeof b.value === "boolean") next.mode = b.value ? "pip" : "full";
       // Bare `crid scene` is the switch, because the ask on stream is one word: go dual, go back.
-      else if (Object.keys(b).length === 1) next.mode = next.mode === "pip" ? "full" : "pip";
+      else if (Object.keys(b).length === 1) next.mode = next.mode === "full" ? "pip" : "full";
       else if (b.value !== undefined) throw new HttpError(422, "value must be true or false.");
       if (b.mode !== undefined) {
         if (!SCENES.includes(b.mode)) throw new HttpError(422, `mode must be one of ${SCENES.join(", ")}.`);

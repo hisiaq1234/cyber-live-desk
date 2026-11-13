@@ -1454,6 +1454,11 @@ test("the frame layout is server state, so it survives a reload and answers to o
   const back = await runAction(store, { action: "scene" }, NOW);
   assert.equal(back.state.scene.mode, "full", "bare scene is the switch in both directions");
 
+  const split = await runAction(store, { action: "scene", mode: "split" }, NOW);
+  assert.equal(split.state.scene.mode, "split", "the operator can select the two-camera split HUD");
+  const splitBack = await runAction(store, { action: "scene" }, NOW);
+  assert.equal(splitBack.state.scene.mode, "full", "the one-word switch exits split mode");
+
   await runAction(store, { action: "scene", mode: "pip" }, NOW);
   const sized = await runAction(store, { action: "scene", w: 40, h: 22 }, NOW);
   assert.deepEqual(sized.state.scene, { mode: "pip", w: 40, h: 22 }, "a size keeps the mode it found");
@@ -1463,7 +1468,7 @@ test("the frame layout is server state, so it survives a reload and answers to o
   assert.equal(clamped.state.scene.h, 22, "and clamping one axis must not reset the other");
 
   await assert.rejects(runAction(store, { action: "scene", mode: "triangle" }, NOW),
-    (e) => e.status === 422 && /full, pip/.test(e.message));
+    (e) => e.status === 422 && /full, pip, split/.test(e.message));
   const untouched = await readState(store);
   assert.deepEqual(untouched.scene, clamped.state.scene, "a refused layout command changes nothing");
 

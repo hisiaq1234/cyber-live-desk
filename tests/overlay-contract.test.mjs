@@ -54,3 +54,12 @@ test("automatic RSS headlines are opt-in and never occupy the default startup fr
   assert.match(overlay, /if \(!HEADLINES_ON \|\| !headlineShelf\) return/);
   assert.match(overlay, /#music-plate\{position:fixed;right:var\(--m\);bottom:calc\(var\(--m\) \+ env\(safe-area-inset-bottom,0px\)\)/);
 });
+
+
+test("the default overlay uses the two-camera split HUD and keeps each half clear", () => {
+  assert.match(overlay, /const scene = pick\("scene", \["split", "pip"\], "split"\)/);
+  assert.match(overlay, /html\[data-scene="split"\] #desk\.layout-alive \.slot/);
+  assert.match(overlay, /html\[data-scene="split"\] #desk\.layout-alive #dock-right/);
+  assert.match(overlay, /scene === "split" \? "tl" : "tc"/);
+  assert.match(overlay, /split \? 0\.44 : 0\.94/);
+});

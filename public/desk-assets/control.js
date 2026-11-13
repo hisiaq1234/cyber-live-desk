@@ -812,7 +812,7 @@ import { createCridVoice } from "./crid-voice.js";
 
   // ---------- Swae / Twitch Landscape Overlay Preview ----------
   let previewRatio = "16-9"; // Default to the user's landscape Twitch scene
-  const previewFrame = h("iframe", { class: "preview-frame preview-16-9", src: "/desk?debug=0", title: "Swae landscape Twitch overlay preview" });
+  const previewFrame = h("iframe", { class: "preview-frame preview-16-9", src: "/desk?debug=0&scene=split", title: "Swae dual-camera split overlay preview" });
   const btnRatio916 = btn("Vertical (9:16)", () => setPreviewRatio("9-16"), "small");
   const btnRatio169 = btn("Landscape (16:9)", () => setPreviewRatio("16-9"), "small primary");
   const setPreviewRatio = (r) => {
@@ -826,13 +826,15 @@ import { createCridVoice } from "./crid-voice.js";
   const copySwaeUrl = () => {
     // The overlay forces its own placement and detects Swae on its own, so the plain URL
     // is the correct thing to paste into a Swae Browser Widget.
-    const url = `${location.origin}/desk`;
+    const url = `${location.origin}/desk?scene=split`;
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(url).then(() => toast("Copied Swae URL to clipboard!")).catch(() => prompt("Swae Overlay URL:", url));
     } else {
       prompt("Swae Overlay URL:", url);
     }
   };
+  const setSplitScene = () => act("scene", { mode: "split" });
+  const setFullScene = () => act("scene", { mode: "full" });
   const copySwaePipUrl = () => {
     const url = `${location.origin}/desk?scene=pip`;
     if (navigator.clipboard?.writeText) {
@@ -851,10 +853,13 @@ import { createCridVoice } from "./crid-voice.js";
       h("div", { class: "row", style: "flex:0 0 auto;gap:4px" },
         btnRatio916, btnRatio169,
         btn("↻", reloadPreview, "small"),
-        btn("Copy Swae URL", copySwaeUrl, "small"),
+        btn("Use split", setSplitScene, "small primary"),
+        btn("Full frame", setFullScene, "small"),
+        btn("Copy split URL", copySwaeUrl, "small"),
         btn("Copy PiP URL", copySwaePipUrl, "small"))),
     h("div", "preview-wrap", previewFrame),
     h("p", "sub", "Landscape 16:9 preview of the /desk overlay. Add the copied URL as a Swae Browser Widget or Web Page layer. Swae redraws the page as snapshots — about 5 per second by default — so it is never as smooth as this preview, and its stream audio is microphone-only: anything playing in the overlay is heard on the phone, not on the broadcast. Use the larger widget size or a lower frame rate if the device struggles. Private research stays in /control."),
+    h("p", "sub", "Split mode reserves a 50/50 side-by-side composition for two camera layers supplied by Swae or OBS. The overlay places the Black Market identity and map within the left half and location/modules within the right half; it does not create or control camera feeds."),
     h("p", "sub", "The PiP URL only reserves the bottom-right area; add or position the second-camera layer separately in Swae or OBS."));
 
   // ---------- CRID (Cyber's Rent Is Due) Segment ----------

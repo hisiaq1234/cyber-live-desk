@@ -61,6 +61,7 @@ window.lab={
   driveStage:(key,layerName,phase="start")=>bot.driveStage(key,layerName,phase),
   setMode:m=>bot.setMode(m),
   state:()=>({mode:bot.mode,stage:window.__cridStage?window.__cridStage():null,
+    motor:window.__cridMotor?window.__cridMotor():null,
     face:window.__cridFace?Object.keys(window.__cridFace.channels()).length:0})};
 // Warm the GLB before the first cue so footage never catches a load.
 setTimeout(()=>{document.getElementById("tag").textContent="crid lab · ready"},1500);

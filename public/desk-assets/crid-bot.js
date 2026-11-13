@@ -304,8 +304,8 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const BAG_MASS=.5,world=createWorld();
   // One weighted character body in the shared bag/paper world.
   const cridBody=world.add({character:true,x:0,y:-1,vx:0,vy:0,
-    halfW:Math.max(20,(host.offsetWidth||innerWidth*.175)*.34)/UPX(),
-    halfH:Math.max(50,(host.offsetHeight||220)*.47)/UPX(),
+    halfW:Math.max(20,(host.offsetWidth||innerWidth*.175)*.34)/Math.max(80,innerHeight/3.5),
+    halfH:Math.max(50,(host.offsetHeight||220)*.47)/Math.max(80,innerHeight/3.5),
     floor:0,gravity:2400/UPX(),mass:build().heft,strength:build().heft,grounded:true,supportId:"floor"});
   const bagEl=document.createElement("div"); bagEl.id="crid-bag";
   const bagSvg=el("svg",{viewBox:"0 0 64 78","aria-hidden":"true",focusable:"false"});

@@ -55,7 +55,7 @@ test("solid platform side blocks horizontal travel",()=>{
 });
 
 test("a reachable ledge grip drives a weighted mantle onto the platform",()=>{
-  const {world,body,run}=make({x:.7,y:-.2,halfW:.1,halfH:.2,gravity:8});
+  const {world,body,run}=make({x:.7,y:-.2,halfW:.1,halfH:.2,mass:.8,strength:1,gravity:8});
   world.setPlatforms([{id:"ledge",left:1,right:2,top:-.8,bottom:0}]);
   assert.equal(world.grabCharacter(body,{id:"ledge",x:1,y:-.8},{side:-1,reach:1.8}),true);
   assert.equal(world.climbCharacter(body,{x:1.4,feetY:-.8},{strength:1,load:.5}),true);

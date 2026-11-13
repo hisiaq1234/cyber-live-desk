@@ -417,6 +417,8 @@ export async function initCrid3D(host,getState,onReady,onFail){
       _ic=new THREE.Vector3(),_ip=new THREE.Vector3(),_io=new THREE.Vector3(),
       _idv=new THREE.Vector3(),_iq=new THREE.Quaternion(),_ih=new THREE.Vector3(),_aq=new THREE.Quaternion();
     try{window.__cridIk={w:()=>ikW,last:()=>ikLast,dbg:()=>ikDbg}}catch{}
+    try{window.__cridBag=()=>({pivot:!!bagPivot,visible:!!(bagPivot&&bagPivot.visible),
+      lag:!!bagLag,shown:bagShown})}catch{}
     const face=createFacial();let lastFaceKey=null;
     // Read-only handle for visual QA: the shot harness polls channels() to catch
     // a blink at its peak, and morph() proves the weight actually reached the GLB.

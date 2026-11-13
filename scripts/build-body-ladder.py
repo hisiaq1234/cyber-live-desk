@@ -71,6 +71,7 @@ HEAD_LOCK_BOTTOM = 450
 HEAD_BLEND = 100
 LEG_TAPER = 0.35
 # This blob is the user's exact leanest image; do not regenerate or alter it.
+# CI also packages the lab/runtime bundle for headless Chromium verification.
 FACE_REFERENCE = {"url":"https://github.com/hisiaq1234/cyber-live-desk/blob/cc1902269b6d36a4d086af3f67241af79a5bcbb0/public/desk-assets/crid/body-000-r7.webp","source_commit":"cc1902269b6d36a4d086af3f67241af79a5bcbb0","source_path":"public/desk-assets/crid/body-000-r7.webp","source_blob_sha":"864979d00e0e76de5ca87c30b6a99df57a33a417"}
 WIDTH_REFERENCE = {"source_commit":"cc1902269b6d36a4d086af3f67241af79a5bcbb0","source_path":"public/desk-assets/crid/ladder.json","measured_widths":[307,366,420,486,560,676,822]}
 

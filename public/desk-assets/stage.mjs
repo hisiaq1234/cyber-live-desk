@@ -44,6 +44,7 @@ export function createStage({
   onInterrupt = () => {},
   canCompleteClimb = () => true,
   canCompleteHop = () => true,
+  canCompleteDrop = () => true,
   walkX = 0,
   hisW = 0.55,
   hipY = 0.85,
@@ -279,7 +280,10 @@ export function createStage({
         const e = ease(stage.t / 0.4);
         stage.groundY = stage.fromY * (1 - e);
         stage.walkX = stage.lipX + (stage.fromX - stage.lipX) * e;
-        if (stage.t >= 0.4) { stage.groundY = 0; stage.walkX = stage.fromX; stage.surface = null; stage.squashAt = nowMs; go("settle"); }
+        if (stage.t >= 0.4) {
+          if (!canCompleteDrop(stage)) { stage.t = 0.4; break; }
+          stage.groundY = 0; stage.walkX = stage.fromX; stage.surface = null; stage.squashAt = nowMs; go("settle");
+        }
         break;
       }
       case "settle":
@@ -325,7 +329,10 @@ export function createStage({
         const e = ease(stage.t / 0.5);
         stage.groundY = stage.fromY * (1 - e);
         stage.walkX = stage.lipX + (stage.fromX - stage.lipX) * e;
-        if (stage.t >= 0.5) { stage.groundY = 0; stage.walkX = stage.fromX; stage.squashAt = nowMs; go("settle"); }
+        if (stage.t >= 0.5) {
+          if (!canCompleteDrop(stage)) { stage.t = 0.5; break; }
+          stage.groundY = 0; stage.walkX = stage.fromX; stage.squashAt = nowMs; go("settle");
+        }
         break;
       }
       default: endStage();

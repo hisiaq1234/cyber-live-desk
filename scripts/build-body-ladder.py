@@ -68,6 +68,14 @@ BODIES = [3, 0, 4, 5, 1, 11, 2]   # leanest -> heaviest, the seven distinct buil
 SUB_STEPS = [0, 4, 8, 12, 16, 20, 24]
 BODY_NAMES = {3: "leanest", 0: "lean", 4: "light", 5: "average",
               1: "full", 11: "heavy", 2: "heaviest"}
+# Historical r7 measured ink widths, mapped to the seven current front-facing body builds.
+WIDTH_TARGETS = [307, 366, 420, 486, 560, 676, 822]
+HEAD_LOCK_BOTTOM = 450
+HEAD_BLEND = 100
+LEG_TAPER = 0.35
+FACE_REFERENCE = {"url":"https://github.com/hisiaq1234/cyber-live-desk/blob/cc1902269b6d36a4d086af3f67241af79a5bcbb0/public/desk-assets/crid/body-000-r7.webp","source_commit":"cc1902269b6d36a4d086af3f67241af79a5bcbb0","source_path":"public/desk-assets/crid/body-000-r7.webp"}
+WIDTH_REFERENCE = {"source_commit":"cc1902269b6d36a4d086af3f67241af79a5bcbb0","source_path":"public/desk-assets/crid/ladder.json","measured_widths":[307,366,420,486,560,676,822]}
+
 
 # The Snap recipe — the owner's own avatar URL (fetch-crid-views.mjs in the CRID archive), with
 # `body` filled per stage by query() and the backpack taken off (`bag=-1`, its tones dropped with
@@ -76,26 +84,7 @@ BODY_NAMES = {3: "leanest", 0: "lean", 4: "light", 5: "average",
 # values. `scale` is overridden per request in query() — the fetch is a 2100x2800 master.
 API = "https://preview.bitmoji.com/bm-preview/v3/avatar/body"
 RECIPE = (
-    "scale=2 gender=1 style=5 rotation=0 bag=-1 "
-    "beard=8696 body=0 bottom=10001984 "
-    "bottom_tone1=0 bottom_tone10=0 bottom_tone2=0 bottom_tone3=0 bottom_tone4=0 "
-    "bottom_tone5=0 bottom_tone6=0 bottom_tone7=0 bottom_tone8=0 bottom_tone9=0 "
-    "breast=0 brow=1538 brow_tone=1579802 cheek_details=-1 clothing_type=1 ear=1424 "
-    "earringL_lobe1=5 earringL_lobe1_tone1=16763909 earringL_lobe1_tone2=16763909 "
-    "earringL_lobe1_tone3=16763909 earringL_lobe1_tone4=16763909 "
-    "earringR_lobe1=5 earringR_lobe1_tone1=16763909 earringR_lobe1_tone2=16763909 "
-    "earringR_lobe1_tone3=16763909 earringR_lobe1_tone4=16763909 "
-    "eye=1626 eyelash=-1 eye_details=-1 eye_size=0 eye_spacing=0 face_lines=-1 "
-    "face_proportion=10 footwear=866 "
-    "footwear_tone1=16448250 footwear_tone10=16448250 footwear_tone2=16448250 "
-    "footwear_tone3=16448250 footwear_tone4=16448250 footwear_tone5=16448250 "
-    "footwear_tone6=16448250 footwear_tone7=16448250 footwear_tone8=16448250 "
-    "footwear_tone9=16448250 glasses=-1 hair=1657 hair_tone=2039326 hat=-1 "
-    "hat_tone1=10626095 hat_tone2=10626095 hat_tone3=10626095 hat_tone4=10626095 "
-    "hat_tone5=10626095 hat_tone6=10626095 hat_tone7=10626095 hat_tone8=10626095 "
-    "hat_tone9=10626095 is_tucked=0 jaw=1396 mouth=2338 nose=1449 "
-    "pupil_tone=5977116 skin_tone=8080170 sock=295 "
-    "sock_tone1=1907997 sock_tone2=8158331 sock_tone3=15132132 sock_tone4=1907997 ua=2"
+    "scale=2 gender=1 style=5 rotation=0 bag=-1 beard=2212 body=0 bottom=10001984 bottom_tone1=0 bottom_tone10=0 bottom_tone2=0 bottom_tone3=0 bottom_tone4=0 bottom_tone5=0 bottom_tone6=0 bottom_tone7=0 bottom_tone8=0 bottom_tone9=0 breast=0 brow=1555 brow_tone=1579802 cheek_details=1356 clothing_type=1 ear=1423 earringL_lobe1=5 earringL_lobe1_tone1=16763909 earringL_lobe1_tone2=16763909 earringL_lobe1_tone3=16763909 earringL_lobe1_tone4=16763909 earringR_lobe1=5 earringR_lobe1_tone1=16763909 earringR_lobe1_tone2=16763909 earringR_lobe1_tone3=16763909 earringR_lobe1_tone4=16763909 eye=1614 eyelash=-1 eye_details=1352 eye_size=2 eye_spacing=0 face_lines=1366 face_proportion=13 footwear=866 footwear_tone1=16448250 footwear_tone10=16448250 footwear_tone2=16448250 footwear_tone3=16448250 footwear_tone4=16448250 footwear_tone5=16448250 footwear_tone6=16448250 footwear_tone7=16448250 footwear_tone8=16448250 footwear_tone9=16448250 glasses=-1 hair=1657 hair_tone=2566954 hat=-1 hat_tone1=10626095 hat_tone2=10626095 hat_tone3=10626095 hat_tone4=10626095 hat_tone5=10626095 hat_tone6=10626095 hat_tone7=10626095 hat_tone8=10626095 hat_tone9=10626095 is_tucked=0 jaw=1392 mouth=2337 nose=1482 pupil_tone=5977116 skin_tone=9657655 sock=295 sock_tone1=1907997 sock_tone2=8158331 sock_tone3=15132132 sock_tone4=1907997 ua=2 beard_tone=1579802 blush_tone=16754088 hair_treatment_tone=3353384 lipstick_tone=16740668"
 )
 
 
@@ -174,67 +163,124 @@ def frame(im, dx, dy):
     return canvas
 
 
+
+def smoothstep(t):
+    t = max(0.0, min(1.0, t))
+    return t * t * (3.0 - 2.0 * t)
+
+
+def body_profile(y):
+    if y < HEAD_LOCK_BOTTOM:
+        return 0.0
+    if y < HEAD_LOCK_BOTTOM + HEAD_BLEND:
+        return smoothstep((y - HEAD_LOCK_BOTTOM) / HEAD_BLEND)
+    taper_start = GROUND - 180
+    if y <= taper_start:
+        return 1.0
+    return 1.0 - LEG_TAPER * smoothstep((y - taper_start) / max(1, GROUND - taper_start))
+
+
+def lock_head(canonical, current):
+    out = current.copy()
+    out.paste(canonical.crop((0, 0, FRAME_W, HEAD_LOCK_BOTTOM)), (0, 0))
+    for y in range(HEAD_LOCK_BOTTOM, min(FRAME_H, HEAD_LOCK_BOTTOM + HEAD_BLEND)):
+        t = smoothstep((y - HEAD_LOCK_BOTTOM) / HEAD_BLEND)
+        out.paste(Image.blend(canonical.crop((0, y, FRAME_W, y + 1)), out.crop((0, y, FRAME_W, y + 1)), t), (0, y))
+    return out
+
+
+def warp_rows(im, scale):
+    out = Image.new("RGBA", im.size, (0, 0, 0, 0))
+    for y in range(FRAME_H):
+        k = 1.0 + (scale - 1.0) * body_profile(y)
+        row = im.crop((0, y, FRAME_W, y + 1))
+        if abs(k - 1.0) > 0.0001:
+            inv = 1.0 / k
+            row = row.transform((FRAME_W, 1), Image.Transform.AFFINE,
+                                (inv, 0, AXIS * (1.0 - inv), 0),
+                                resample=Image.Resampling.BICUBIC)
+        out.paste(row, (0, y))
+    return out
+
+
+def warp_to_width(im, target):
+    head_w = ink(im.crop((0, 0, FRAME_W, HEAD_LOCK_BOTTOM)))["w"]
+    if target <= head_w + 4:
+        raise RuntimeError(f"target width {target} is smaller than locked head width {head_w}")
+    scale = target / max(1, ink(im)["w"])
+    out = im
+    for _ in range(10):
+        out = warp_rows(im, scale)
+        actual = ink(out)["w"]
+        if abs(actual - target) <= 1:
+            return out
+        if actual <= head_w:
+            raise RuntimeError(f"body width collapsed under head: {actual} <= {head_w}")
+        scale *= target / max(1, actual)
+    raise RuntimeError(f"could not reach target width {target}; got {ink(out)['w']}")
+
+
+def write_runtime_module(stages):
+    rows = [
+        '  Object.freeze({key: "%s", w: %d, h: %d, slow: %.3f, heft: %.3f, girth: %.3f})'
+        % (s["key"], s["ink"]["w"], s["ink"]["h"], s["slow"], s["heft"], s["girth"])
+        for s in stages
+    ]
+    module = (
+        "// Generated by scripts/build-body-ladder.py. Do not edit by hand.\\n"
+        "export const FRAME = Object.freeze({w: %d, h: %d, ground: %d, axis: %d});\\n"
+        "export const BODY_LADDER = Object.freeze([\\n%s\\n]);\\n"
+        "export const bodyForKey = key => BODY_LADDER.find(s => s.key === String(key)) || BODY_LADDER[0];\\n"
+        % (FRAME_W, FRAME_H, GROUND, AXIS, ",\\n".join(rows))
+    )
+    (CRID / "ladder.mjs").write_text(module, encoding="utf-8")
+
+
 def build_all():
     masters = {b: master(b) for b in BODIES}
-    # One shared shift, solved on the lean frame: every stage then has its head on the same pixels.
-    dx = round(AXIS - mid_torso_axis(masters[0]))
-    dy = GROUND - ink(masters[0])["bottom"]
+    # Solve the shared frame from the approved leanest front-facing build, not body=0.
+    base = masters[BODIES[0]]
+    dx = AXIS - mid_torso_axis(base)
+    dy = GROUND - ink(base)["bottom"]
+    canonical = frame(base, dx, dy)
+    stages, areas = [], []
+    for i, body in enumerate(BODIES):
+        out = lock_head(canonical, frame(masters[body], dx, dy))
+        target_w = WIDTH_TARGETS[i]
+        out = warp_to_width(out, target_w)
+        m = ink(out)
+        if abs(m["w"] - target_w) > 1:
+            raise RuntimeError(f"body {body}: expected width {target_w}, got {m['w']}")
+        if m["h"] != 1190 or m["bottom"] != GROUND:
+            raise RuntimeError(f"body {body}: frame drift {m}")
+        if abs(mid_torso_axis(out) - AXIS) > 3:
+            raise RuntimeError(f"body {body}: torso axis drift {mid_torso_axis(out):.1f}")
+        if out.crop((0, 0, FRAME_W, HEAD_LOCK_BOTTOM)).tobytes() != canonical.crop((0, 0, FRAME_W, HEAD_LOCK_BOTTOM)).tobytes():
+            raise RuntimeError(f"body {body}: head/face pixels differ from canonical")
+        png, webp = CRID / f"body-{body}-r0.png", CRID / f"body-{body}-r0.webp"
+        out.save(png, optimize=True)
+        out.save(webp, "WEBP", quality=95, method=6)
+        t = (target_w - WIDTH_TARGETS[0]) / (WIDTH_TARGETS[-1] - WIDTH_TARGETS[0])
+        slow, heft, girth = round(1 + .45*t, 3), round(.86 + .59*t, 3), round(.72 + t, 3)
+        stages.append({"key":str(body),"name":BODY_NAMES[body],"file":webp.name,"ink":m,
+                       "was":ink(masters[body]),"area":m["area"],"target_width":target_w,
+                       "slow":slow,"heft":heft,"girth":girth})
+        areas.append(m["area"])
+    if any(b <= a for a, b in zip(areas, areas[1:])):
+        raise RuntimeError(f"body area must increase at every stage: {areas}")
+    diffs = [{"from":stages[i]["key"],"to":stages[i+1]["key"],
+              "dw":stages[i+1]["ink"]["w"]-stages[i]["ink"]["w"],
+              "dh":stages[i+1]["ink"]["h"]-stages[i]["ink"]["h"]}
+             for i in range(len(stages)-1)]
+    doc = {"frame":{"w":FRAME_W,"h":FRAME_H},"ground":GROUND,"axis":AXIS,"rotation":0,
+           "head_lock_bottom":HEAD_LOCK_BOTTOM,"face_reference":FACE_REFERENCE,
+           "width_reference":WIDTH_REFERENCE,"width_targets":WIDTH_TARGETS,
+           "min_step":{"w":min(d["dw"] for d in diffs),"h":min(d["dh"] for d in diffs)},
+           "stages":stages,"diffs":diffs}
+    (CRID / "ladder.json").write_text(json.dumps(doc, indent=2) + "\\n", encoding="utf-8")
+    write_runtime_module(stages)
+    print(json.dumps({"min_step":doc["min_step"],"stages":stages},indent=2))
 
-    stages, widths = [], []
-    for body in BODIES:
-        was = ink(masters[body])
-        out = frame(masters[body], dx, dy)
-        got = ink(out)
-        if got["bottom"] != GROUND:
-            raise SystemExit(f"body={body} lands its feet on y={got['bottom']}, not {GROUND}")
-        if got["x0"] <= 0 or got["x1"] >= FRAME_W or got["y0"] <= 0:
-            raise SystemExit(f"body={body} touches the frame edge: {got}")
-        p = CRID / f"body-{body}-r0.webp"
-        out.save(p, "WEBP", quality=QUALITY, method=6)
-        widths.append(got["w"])
-        stages.append({"key": str(body), "ink": got, "was": {"w": was["w"], "h": was["h"]},
-                       "file": p.name})
-        print(f"body={body} ({BODY_NAMES[body]:<7}) ink {got['w']}x{got['h']}  "
-              f"x {got['x0']}..{got['x1']}  cx {got['cx']}  top {got['y0']}  "
-              f"bottom {got['bottom']}  {p.name}  {p.stat().st_size / 1024:.0f} KB")
-
-    # Movement follows the build: the more mass he carries, the slower and heavier he moves.
-    # The builds differ in mass more than in silhouette width — only the heaviest frame is
-    # measurably wider — so the ramp runs on ink area, the number that actually tracks it.
-    areas = []
-    for s in stages:
-        a = Image.open(CRID / s["file"]).convert("RGBA").getchannel("A")
-        areas.append(sum(a.histogram()[ALPHA_MIN + 1:]))
-        s["area"] = areas[-1]
-    span = areas[-1] - areas[0]
-    for s, area in zip(stages, areas):
-        t = (area - areas[0]) / span
-        s["slow"] = round(1 + 0.45 * t, 3)
-        s["heft"] = round(0.86 + 0.59 * t, 3)
-
-    diffs = [{"from": stages[i]["key"], "to": stages[i + 1]["key"],
-              "dw": stages[i + 1]["ink"]["w"] - stages[i]["ink"]["w"],
-              "dh": stages[i + 1]["ink"]["h"] - stages[i]["ink"]["h"]}
-             for i in range(len(stages) - 1)]
-    doc = {"frame": [FRAME_W, FRAME_H], "ground": GROUND, "axis": AXIS,
-           "rotation": 0, "sub_steps": SUB_STEPS,
-           "min_step": {"w": min(d["dw"] for d in diffs), "h": min(d["dh"] for d in diffs)},
-           "stages": stages, "diffs": diffs}
-    LADDER_JSON.write_text(json.dumps(doc, indent=2) + "\n")
-    print("\nconsecutive differences:", [(d["dw"], d["dh"]) for d in diffs])
-    print(f"min consecutive ink-width step: {doc['min_step']['w']}px, "
-          f"height step: {doc['min_step']['h']}px")
-    print(f"ladder -> {LADDER_JSON.relative_to(ROOT)}")
-
-
-# --- commands ------------------------------------------------------------------------------
-def measure():
-    print(f"{'frame':<18}{'ink w':>7}{'ink h':>7}{'x0':>6}{'x1':>6}{'centre':>8}{'top':>7}{'bottom':>8}")
-    for body in BODIES:
-        p = CRID / f"body-{body}-r0.webp"
-        m = ink(Image.open(p).convert("RGBA"))
-        print(f"{p.name:<18}{m['w']:>7}{m['h']:>7}{m['x0']:>6}{m['x1']:>6}{m['cx']:>8}"
-              f"{m['y0']:>7}{m['bottom']:>8}")
 
 
 def sheet(out_path):

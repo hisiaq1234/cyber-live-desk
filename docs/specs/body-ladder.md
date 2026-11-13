@@ -1,80 +1,43 @@
-> Working spec kept with the code so an agent arriving cold can act on it. Read `CLAUDE.md` first.
-> Crid is the owner's own Bitmoji: never redesign or generate him, never make him short.
+# CRID body ladder
 
-# Crid body ladder — spec (v4, shipped)
+## Approved visual reference
 
-## What ships today
+The user-selected face and lean reference is [body-000-r7](https://github.com/hisiaq1234/cyber-live-desk/blob/cc1902269b6d36a4d086af3f67241af79a5bcbb0/public/desk-assets/crid/body-000-r7.webp). Its source commit is `cc1902269b6d36a4d086af3f67241af79a5bcbb0`.
 
-Seven stages, lean -> heavy, all front-facing renders of the **same** avatar at `rotation=0`:
+The old r7 set is **not** reused as the production ladder: its companion frames change camera angle/pose and include attached straps. The selected `000` frame supplies the preferred neutral face and lean-silhouette target only. The production bag remains a separate prop.
 
-| stage key | Snap `body=` | build |
-|---|---|---|
-| 3 | 3 | leanest |
-| 0 | 0 | lean |
-| 4 | 4 | light |
-| 5 | 5 | average |
-| 1 | 1 | full |
-| 11 | 11 | heavy |
-| 2 | 2 | heaviest (belly, thicker limbs) |
+## Verified historical sizing
 
-Snap's renderer only produces these seven distinct builds at rotation 0 — `body=4/6/7/8/9/10/12`
-all return the same picture as `body=4`, and `00`/`000` clamp to `body=0`. There is no eighth stage
-to fetch; growth *between* stages is the renderer's own sub-step stretch (`SUB_STEPS` in
-`scripts/build-body-ladder.py`, mirrored in `crid-bot.js`), never a new drawing.
+The r7 `ladder.json` at the same commit records these measured ink widths, in order:
 
-## Why it is built this way
+| Stage | Historical width |
+|---|---:|
+| `000` — lean reference | 307 px |
+| `00` | 366 px |
+| `3` | 420 px |
+| `0` | 486 px |
+| `5` | 560 px |
+| `1` | 676 px |
+| `2` — heaviest | 822 px |
 
-- **One render, one pose.** Every stage is the same Snap render parameters with only `body=`
-  changed, so head, face, stance, height and ground line are identical pixels. The old ladder
-  mixed rotation-7 renders and read as different people; that is what this rebuild removed.
-- **Never short.** Every shipped frame measures the same ink height and head top — enforced by
-  `ladder.json` (written by the build script) and by `tests/crid-bot.test.mjs`, which fails if
-  any stage's ink box, ground line or axis drifts.
-- **Weight = width and mass.** The six lighter builds differ mostly in *area*, not silhouette
-  width — only the heaviest is measurably wider — so stage order and `slow`/`heft` are proven on
-  ink area, not width.
-- **Bare chest, his own kit.** The frames come from `bm-preview/v3/avatar/body` — the owner's
-  own avatar URL — with `bag=-1`: bare chest, camo trousers, socks, shoes, no backpack straps.
-  Snap has no nude render (its floor is a white undershirt + briefs, which the wrong
-  `avatar-builder-v3` endpoint ships — do not use it for him). The backpack is a separate prop
-  the overlay draws; it is never part of the render.
+All reference frames were 1050×1400. The shared floor line is y=1325 and the body axis is x=560. These measurements are the seven production silhouette-width targets.
 
-## The recipe
+## Production ladder rules
 
-The authoritative parameters are the `RECIPE` constant in `scripts/build-body-ladder.py`
-(the owner's full avatar URL — face, hair, trousers `bottom=10001984`, footwear `866`, socks
-`295`, `clothing_type=1` for the bare chest — with `bag=-1`), mirrored in
-`docs/crid-avatar-params.json`. Fetch with
-`python3 scripts/build-body-ladder.py --fetch`, rebuild frames + `ladder.json` with a plain run.
-Render at `scale=2` (2100x2800 master, downscaled to 1050x1400); framing is a shared translation
-putting ink bottom on y=1325 and the mid-torso axis on x=560.
+- Render one front-facing pose at rotation 0 for body keys `3, 0, 4, 5, 1, 11, 2`.
+- Restore the historical r7 facial parameter values selected by the user. Keep the face identical across every body stage.
+- Keep all frames 1050×1400, the head/face pixels fixed, ink height 1190 px, floor y=1325 and torso axis x=560.
+- Apply deterministic horizontal body-only deformation below the head lock line. Blend through the shoulders and taper the lower legs; never scale the head or move the feet.
+- Hit widths 307, 366, 420, 486, 560, 676 and 822 px in order. Every adjacent stage must be visibly wider.
+- Do not bake the backpack into the character. The bag stays a separate physical prop.
+- Do not use AI redraws or change the character's identity.
 
-`rotation=7` or any non-zero rotation must never enter the ladder.
+## One source of truth
 
-## The rig
+`scripts/build-body-ladder.py` fetches the seven front-facing masters, locks the same head crop, applies the measured width targets, and writes:
 
-`scripts/build-crid-rig.py` cuts **every stage from its own frame** — `rigs/<key>/` holds the
-ten pieces (head, torso, upper arm/forearm+hand per side, thigh/shin+foot per side) plus a
-`rig.json` table, and `rig.mjs` exports them all as `RIGS` keyed by stage. The anatomy is
-measured off each render: neck, shoulder offset, crotch, ankle and knee come from the
-silhouette, and the arm's per-row extent is measured where the arm is its own cluster and
-interpolated by thickness where a heavy build fuses it to the torso — no pixel constant is
-assumed, so the same script cuts the leanest and the heaviest build correctly. Joint overlap
-bands keep every seam solid at the angles `crid-bot.js` uses; `--check` proves coverage,
-rest-pose fidelity and joint integrity per stage. The overlay keeps one set of ten piece
-images and re-points them at the active stage's crops and pivots on every body swap, so the
-limbs he moves are always the same build as the body he wears.
+- `public/desk-assets/crid/body-*-r0.webp` — production frames;
+- `public/desk-assets/crid/ladder.json` — measured build report;
+- `public/desk-assets/crid/ladder.mjs` — runtime source of truth for width, height, movement slow-down, heft and 3D girth.
 
-## Verification
-
-- `python3 scripts/build-crid-rig.py --check` — coverage, rest-pose tolerance, joint openings.
-- `python3 scripts/build-body-ladder.py --sheet out.png` — all stages at 336px and 150px.
-- `npm test` — the ladder test re-measures `ladder.json` against `crid-bot.js`'s table.
-- Screenshot `/desk` at 150px, 390px and 1920x1080 and *look*.
-
-## Rules that still hold
-
-- The character is the owner's Bitmoji. No AI-generated body; generated images are for props
-  (backpack, headphones, chair) and scene art only.
-- One pose, one light, one character. If a change would make Crid look like a different person,
-  stop and ask the owner.
+Both `crid-bot.js` (2D silhouette and physical collider) and `crid-3d.js` (GLB girth) will consume the same `ladder.mjs`, preventing the 2D body, collision footprint and 3D body from drifting apart.

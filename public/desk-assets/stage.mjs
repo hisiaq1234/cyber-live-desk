@@ -125,7 +125,7 @@ export function createStage({
     stage.key = intent.key; stage.layer = intent.layer; stage.side = s.side;
     stage.topY = s.top; stage.targetX = s.x; stage.fromX = s.x; stage.fromY = 0;
     stage.lipX = s.side === "right" ? s.r - lip : s.l + lip;
-    stage.abandoned = false; stage.reason = ""; stage.slipRolled = false; stage.stumble = 0;
+    stage.abandoned = false; stage.reason = ""; stage.gripFailed = false; stage.slipRolled = false; stage.stumble = 0;
     stage.next = null; stage.squashAt = null; stage.squashEnv = 0;
     go("approach");
     return true;

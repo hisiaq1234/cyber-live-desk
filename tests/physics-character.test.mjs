@@ -97,7 +97,7 @@ test("ledge grip respects the supplied world-space arm reach",()=>{
 
 test("grip releases after the shoulder remains outside the world-space reach envelope",()=>{
   const {world,body,run}=make({x:0,y:-.2,halfW:.1,halfH:.2,gravity:8});
-  assert.equal(world.grabCharacter(body,{id:"ledge",x:0,y:-.8},{reach:.4}),true);
+  assert.equal(world.grabCharacter(body,{id:"ledge",x:0,y:-.8},{reach:.5}),true);
   assert.equal(world.climbCharacter(body,{x:0,feetY:-.8},{strength:1,load:0,maxAcceleration:24}),true);
   body.x=2;
   run(.5);
@@ -106,7 +106,7 @@ test("grip releases after the shoulder remains outside the world-space reach env
 });
 
 test("a character is not supported while it is still above a platform top",()=>{
-  const {world,body}=make({x:150,y:-.5,floor:0,grounded:false,supportId:null});
+  const {world,body}=make({x:150,y:-.5,halfW:10,halfH:.2,floor:0,grounded:false,supportId:null});
   world.setPlatforms([{id:"ledge",left:100,right:200,top:-1,bottom:0,solidSides:false}]);
   world.step(1/120);
   assert.equal(body.grounded,false);

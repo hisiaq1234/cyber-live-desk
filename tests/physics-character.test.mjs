@@ -29,7 +29,7 @@ test("gravity lands the character on a platform and tracks its support id",()=>{
 });
 
 test("platform underside blocks upward movement",()=>{
-  const {world,body,run}=make({x:140,y:60,grounded:false,supportId:null,vy:-700});
+  const {world,body,run}=make({x:140,y:60,floor:300,grounded:false,supportId:null,vy:-700});
   world.setPlatforms([{id:"ledge",left:100,right:200,top:-200,bottom:0}]);
   run(.5);
   assert.ok(body.y>=50,"passed through underside, centre y="+body.y);

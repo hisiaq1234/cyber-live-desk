@@ -15,6 +15,7 @@
    ?crid3d=off forces the 2D path for A/B checks. */
 import{createFacial}from"./facial.mjs";
 import{TwoBoneIK}from"./ik.mjs";
+import{stageChannels}from"./stage.mjs";
 const GLB="/desk-assets/crid3d/crid.glb";
 const M={jaw:"ai_jawOpen",eyeShutL:"ai_eyeUpperClose_L",eyeShutR:"ai_eyeUpperClose_R",
   eyeShutLL:"ai_eyeLowerClose_L",eyeShutLR:"ai_eyeLowerClose_R",
@@ -67,6 +68,13 @@ export async function initCrid3D(host,getState,onReady,onFail){
 
     const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true,powerPreference:"low-power"});
     renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));
+    // A lost GL context (driver reset, GPU switch, tab discard) must not kill
+    // him: preventDefault keeps the context restorable, frames pause while it
+    // is gone, and the restored event hands rendering back to the loop.
+    let ctxLost=false;
+    canvas.addEventListener("webglcontextlost",e=>{e.preventDefault();ctxLost=!0});
+    canvas.addEventListener("webglcontextrestored",()=>{ctxLost=!1;
+      try{renderer.forceContextRestore&&renderer.forceContextRestore()}catch{}});
     renderer.outputColorSpace=THREE.SRGBColorSpace;
     // The GLB base colors are Snap's already-lit shader bakes (____Shader_*), not flat albedo.
     // Tone mapping and extra lights would shift that color. Show the map as stored.
@@ -165,6 +173,23 @@ export async function initCrid3D(host,getState,onReady,onFail){
     turn.add(shadow);
 
     const B=n=>bones[n];
+    // Read-only skeleton probe for rig work: rest local pos/quat + children names.
+    try{window.__cridBones=()=>{model.updateMatrixWorld(!0);const vp=new THREE.Vector3(),wq=new THREE.Quaternion(),o={};
+      for(const n in bones){const b=bones[n];b.getWorldPosition(vp);b.getWorldQuaternion(wq);
+        o[n]={w:[+vp.x.toFixed(3),+vp.y.toFixed(3),+vp.z.toFixed(3)],
+          wq:[+wq.x.toFixed(3),+wq.y.toFixed(3),+wq.z.toFixed(3),+wq.w.toFixed(3)],
+          p:[+b.position.x.toFixed(4),+b.position.y.toFixed(4),+b.position.z.toFixed(4)],
+          chain:(()=>{const c=[];for(let n=b.parent;n&&c.length<5;n=n.parent)c.push(n.name||n.type);return c})(),
+          c:b.children.filter(c=>c.isBone).map(c=>c.name)}}return o}}catch{}
+    // Which bones actually carry skin weight — a bone with zero influence can be
+    // posed all day without touching the mesh (the twist helpers' real test).
+    try{window.__cridSkin=()=>{const use={};
+      root.traverse(o=>{if(!o.isSkinnedMesh||!o.skeleton)return;
+        const si=o.geometry.attributes.skinIndex,sw=o.geometry.attributes.skinWeight;
+        for(let i=0;i<si.count;i++)for(let k=0;k<4;k++){
+          const w=sw.getComponent(i,k);if(w<=0)continue;
+          const n=o.skeleton.bones[si.getComponent(i,k)]?.name||"?";use[n]=(use[n]||0)+w}});
+      return use}}catch{}
     const MORPH_CACHE={};
     const morph=name=>{
       if(name in MORPH_CACHE)return MORPH_CACHE[name];
@@ -175,6 +200,9 @@ export async function initCrid3D(host,getState,onReady,onFail){
     // Delta rotation on top of each bone's rest pose (userData.q0).
     const E=new THREE.Euler(),Q=new THREE.Quaternion(),Q2=new THREE.Quaternion();
     const rot=(n,x=0,y=0,z=0)=>{const b=B(n);if(!b)return;E.set(x,y,z,"XYZ");Q.setFromEuler(E);Q2.copy(b.userData.q0).multiply(Q);b.quaternion.copy(Q2)};
+    // Post-multiplied local delta for the stage machine's channel map — applied
+    // after the pose pass, before IK (which owns the arm chain during a lean).
+    const rotAdd=(n,x=0,y=0,z=0)=>{const b=B(n);if(!b)return;E.set(x,y,z,"XYZ");Q.setFromEuler(E);b.quaternion.multiply(Q)};
 
     const J={
       pelvis:"C_pelvis0001_bind_JNT",spine2:"C_spine0002_bind_JNT",spine3:"C_spine0003_bind_JNT",
@@ -182,7 +210,27 @@ export async function initCrid3D(host,getState,onReady,onFail){
       thighL:"L_legUpper0001_bind_JNT",shinL:"L_legLower0001_bind_JNT",footL:"L_foot0001_bind_JNT",
       thighR:"R_legUpper0001_bind_JNT",shinR:"R_legLower0001_bind_JNT",footR:"R_foot0001_bind_JNT",
       armL:"L_armUpper0001_bind_JNT",foreL:"L_armLower0001_bind_JNT",handL:"L_hand0001_bind_JNT",
-      armR:"R_armUpper0001_bind_JNT",foreR:"R_armLower0001_bind_JNT",handR:"R_hand0001_bind_JNT"};
+      armR:"R_armUpper0001_bind_JNT",foreR:"R_armLower0001_bind_JNT",handR:"R_hand0001_bind_JNT",
+      toeL:"L_foot0002_bind_JNT",toeR:"R_foot0002_bind_JNT",
+      // Twist helpers (children of the 0001 bones via _SSC nodes, ~1/3 of the
+      // segment's skin weight): upper/lower arm and leg, both sides.
+      tArmL:"L_armUpper0002_bind_JNT",tForeL:"L_armLower0002_bind_JNT",
+      tArmR:"R_armUpper0002_bind_JNT",tForeR:"R_armLower0002_bind_JNT",
+      tThighL:"L_legUpper0002_bind_JNT",tShinL:"L_legLower0002_bind_JNT",
+      tThighR:"R_legUpper0002_bind_JNT",tShinR:"R_legLower0002_bind_JNT"};
+    const LIMB_TWIST=[["armL","tArmL"],["foreL","tForeL"],["armR","tArmR"],["foreR","tForeR"],
+      ["thighL","tThighL"],["shinL","tShinL"],["thighR","tThighR"],["shinR","tShinR"]];
+    // Fingers: five chains per hand. Each entry carries its bone, its share of
+    // the curl (middle joints fold furthest) and the side sign — the rig
+    // mirrors L/R, so one axis angle closes both hands.
+    const FINGERS=[],FINGER_W=[.35,.6,.85,.6],THUMB_W=[.4,.7,.5];
+    for(const side of["L","R"])
+      for(const f of["Thumb","Pointer","Middle","Ring","Pinky"]){
+        // sgn is +1 for BOTH hands: the _SSC helper nodes break the L/R mirror
+        // assumption — FK verification showed -1 on L hyperextends the fingers.
+        const ws=f==="Thumb"?THUMB_W:FINGER_W,sgn=1;
+        for(let i=0;i<ws.length;i++)FINGERS.push({
+          b:`${side}_hand${f}000${i+1}_bind_JNT`,w:ws[i],s:sgn})}
     const has=k=>!!B(J[k]);
     // The bind pose holds his arms wide (A-pose); the relaxed hang is the baseline of every pose.
     const RELAX={armL:{z:1.12},armR:{z:-1.12},foreL:{x:.3},foreR:{x:-.3}};
@@ -223,7 +271,11 @@ export async function initCrid3D(host,getState,onReady,onFail){
         targetYaw=(walking?.85:0)*dir+(st.lean?st.lean.dir*.3:0);
       heading+=(targetYaw-heading)*Math.min(1,dt*7);
       turn.rotation.y=heading;
-      turn.rotation.z=st.lean?st.lean.angle*Math.PI/180*.55:0;
+      // stagePose: roll/pitch from the climb/lean state machine (radians). The
+      // lean verb's z-tilt and the stage's roll add — they never run together.
+      const sp=st.stagePose||null;
+      turn.rotation.x=sp?sp.pitch:0;
+      turn.rotation.z=(st.lean?st.lean.angle*Math.PI/180*.55:0)+(sp?sp.roll:0);
 
       const by=(p.by||0)/100,bs=clamp(p.bs||1,.8,1.15);
       // Stage: the bot names his build; the mesh eases to that girth over ~a second so a sub
@@ -260,6 +312,25 @@ export async function initCrid3D(host,getState,onReady,onFail){
       if(has("armR"))rot(J.armR,-gait*.45*swing-still*(Math.sin(t*.7+1.2)*.1-shift*.05),0,RELAX.armR.z-still*w1*.04);
       if(has("foreR"))rot(J.foreR,RELAX.foreR.x-still*Math.sin(t*.7+2)*.08-gait*.16*swing,0,0);
 
+      // Fingers: a relaxed hand is not straight — base curl .14; a planted
+      // grip (the IK lean, soon the stage machine's reach/seat) closes toward
+      // .85; dying lets them go slack. st.grip is the stage machine's channel.
+      // TUNE: the curl axis is first-pass local Z — check a grip screenshot.
+      const grip=clamp(Math.max(ikW||0,(sp&&sp.grip)||st.grip||0,dying?.25:0),0,1);
+      // Only the planted hand fully closes — the free hand keeps a relaxed curl
+      // so it doesn't claw at air during a one-armed lean.
+      const plantSide=st.lean?(st.lean.dir>0?"R":"L"):null;
+      for(const f of FINGERS){
+        const a=.14+.78*(f.b[0]===plantSide?grip:grip*.35);
+        rot(f.b,0,0,f.s*f.w*a*.9)}
+
+      // Toes: the foot has a real toe joint (foot0002). It rolls through the
+      // step — dorsiflexed in swing, plantar-flexed at push-off — instead of
+      // the whole foot pivoting like a board.
+      const toe=walking?(Math.sin(TAU*u+2.4)*.5-.15)*gait*.9:still*.04;
+      if(has("toeL"))rot(J.toeL,0,toe,0);
+      if(has("toeR"))rot(J.toeR,0,-toe,0);
+
       // Torso: breath lifts the chest, the pelvis carries the weight shift.
       if(has("spine2"))rot(J.spine2,(.07*br-pr*.55+(p.tr||0)*.004)*life,(look*.05)*life,
         (shift*.09+(p.hr||0)*.004+(grooving?.08*Math.sin(t*3):0))*life);
@@ -284,6 +355,26 @@ export async function initCrid3D(host,getState,onReady,onFail){
       // wears it — a dropped bag leaves the floor prop as the only bag in the room.
       const showBag=st.bag!==false;
       if(showBag!==bagShown){bagShown=showBag;for(const m of bagMeshes)m.visible=showBag}
+
+      // Stage machine pose channels — the reach/pull/crouch/seat/slip/recover
+      // beats as bone deltas, mapped on the measured joint axes (shoulder Z,
+      // arm swing X mirrored L+/R-, knee +Y on shins mirrored by side, thigh Y,
+      // spine/head pitch Y). Applied before IK so the solver still owns the
+      // arm chain while a lean is planted.
+      if(sp&&sp.ref){const C=stageChannels(sp.ref,t);
+        if(C.armLiftL)rotAdd(J.armL,0,0,C.armLiftL*.4);
+        if(C.armLiftR)rotAdd(J.armR,0,0,-C.armLiftR*.4);
+        if(C.armFwdL)rotAdd(J.armL,C.armFwdL*.4,0,0);
+        if(C.armFwdR)rotAdd(J.armR,-C.armFwdR*.4,0,0);
+        if(C.elbowL)rotAdd(J.foreL,C.elbowL*.5,0,0);
+        if(C.elbowR)rotAdd(J.foreR,-C.elbowR*.5,0,0);
+        if(C.kneeL)rotAdd(J.shinL,0,C.kneeL*.6,0);
+        if(C.kneeR)rotAdd(J.shinR,0,-C.kneeR*.6,0);
+        if(C.legFwdL)rotAdd(J.thighL,0,C.legFwdL*.4,0);
+        if(C.legFwdR)rotAdd(J.thighR,0,-C.legFwdR*.4,0);
+        if(C.leanFwd){rotAdd(J.spine2,0,C.leanFwd*.5,0);rotAdd(J.spine3,0,C.leanFwd*.3,0)}
+        if(C.headPitch){rotAdd(J.neck1,0,C.headPitch*.4,0);rotAdd(J.head,0,C.headPitch*.3,0)}
+        if(C.rootY)model.position.y+=C.rootY*s}
 
       // Hand plant (Phase C groundwork): while he leans on a panel, the touching
       // arm solves onto the contact point crid-bot measured in screen px. The
@@ -325,14 +416,25 @@ export async function initCrid3D(host,getState,onReady,onFail){
           }
         }
       }
-    };
+
+      // Twist helpers: Snap's 0002 bones are children of their 0001 parents (via
+      // _SSC nodes) and carry real skin weight (~a third of the segment's). They
+      // inherit the limb's motion for free; their local X is the limb's long axis
+      // (measured on the GLB), so each takes half the parent's twist-about-X —
+      // the share that keeps the elbow/shoulder from candy-wrapping on a reach.
+      // Runs after IK so the solve's arm rotation is what gets distributed.
+      for(const[mk,tk]of LIMB_TWIST){
+        const b=B(J[mk]),tw=B(J[tk]);if(!b||!tw)continue;
+        Q2.copy(b.userData.q0).invert().multiply(b.quaternion);   // commanded delta in rest frame
+        E.set(Math.atan2(Q2.x,Q2.w),0,0,"XYZ");Q.setFromEuler(E); // half the X-twist (atan2 gives θ/2)
+        tw.quaternion.copy(tw.userData.q0).multiply(Q)}};
 
     let now=performance.now()/1000;
     const frame=()=>{
       if(disposed)return;
       raf=requestAnimationFrame(frame);
       const t=performance.now()/1000,dt=clamp(t-now,0,.05);now=t;
-      if(document.hidden)return;
+      if(document.hidden||ctxLost)return;
       const st=getState?getState():{};
       if(!ready){ready=!0;onReady&&onReady()}
       try{drive(t,dt,st);renderer.render(scene,cam)}

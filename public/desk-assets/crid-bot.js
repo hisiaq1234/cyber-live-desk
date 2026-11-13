@@ -29,6 +29,7 @@ import{RIGS}from"./crid/rig.mjs";
 import{initCrid3D}from"./crid-3d.js";
 import{createWorld}from"./physics.mjs";
 import{createBeing}from"./being.mjs";
+import{createStage}from"./stage.mjs";
 const NS="http://www.w3.org/2000/svg",XLINK="http://www.w3.org/1999/xlink",PAL={onyx:"#1F1736",screen:"#0F0B17",edge:"#3A1D9E",indigo:"#6531F8",indigoDk:"#3A1D9E",mint:"#86F6BC",bone:"#A98BFF",ink:"#F4F0FF",slate:"#2B2738",red:"#FF5B57",dead:"#5E5873"},
 DOZE_AFTER_MS=12e4,BODIES=["3","0","4","5","1","11","2"],ROT=0,ASSETS="./desk-assets/crid",AV=b=>`${ASSETS}/body-${b}-r${ROT}.webp`,
 SUB_STEPS=[0,4,8,12,16,20,24],STAGE_STRETCH=.03,
@@ -239,8 +240,23 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // is him. The SVG figure is hidden the moment the model is on the GPU and is not put back.
   let crid3d=null,lastPose=null,disposed3d=false;
   const hideFigure=()=>{parts.avatarBase.setAttribute("display","none");parts.rigG.setAttribute("display","none");parts.ph.setAttribute("display","none")};
-  init3d(host,()=>({p:lastPose,mode,dying,walking:!!(walk&&walk.to),
-    walkDir:walk&&walk.to?(walk.tx-walk.x<0?-1:1):0,fx,lean:leanAt,reduced,stage:BODIES[bodyI],face:faceNow,
+  // The stage machine's lean states don't set leanAt (that's the verb path) —
+  // synthesize the same contract for the renderer: roll/pitch/lift plus a
+  // contact point on the panel edge so the IK hand-plant keeps working.
+  const stageLean=()=>{
+    if(!stage||(stage.state!=="lean"&&stage.state!=="lean-in"))return null;
+    const b=layerOf(stage.layer); if(!b||!b.edge)return null;   // registry px — the IK solve wants px
+    const dir=stage.side==="right"?1:-1;
+    return{angle:stage.roll*57.3,dir,layer:stage.layer,
+      contact:{x:dir>0?b.edge.right-8:b.edge.left+8,y:b.edge.top+(host.offsetHeight||220)*.3}}};
+  const STAGE_GRIP={reach:.85,pull:.85,"lean-in":.8,lean:.8,seat:.7,slip:.9,hop:.4,top:.4};
+  init3d(host,()=>({p:lastPose,mode,dying,
+    walking:!!(walk&&walk.to)||(stage?stage.walking&&Math.abs(stage.targetX-stage.walkX)>.015:!1),
+    walkDir:walk&&walk.to?(walk.tx-walk.x<0?-1:1):(stage&&stage.targetX<stage.walkX?-1:1),fx,
+    lean:leanAt||stageLean(),reduced,stage:BODIES[bodyI],face:faceNow,
+    stagePose:stage?{ref:stage,roll:stage.roll,pitch:stage.pitch,liftPx:stage.groundY*UPX(),
+      state:stage.state,key:stage.key,trace:stage.trace,
+      grip:STAGE_GRIP[stage.state]||0}:null,
     // Phase B attention: eyes fixate what the body is engaged with — the panel
     // he's touching while leaning (dir=+1 is screen-right), a down-glance while
     // pondering. null hands gaze back to the saccade/drift scheduler.
@@ -326,6 +342,37 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       }
       out.climb.sort((a,b)=>above(layerOf(a))-above(layerOf(b)));   // the lowest ledge first
       return out};
+  // ---- the stage machine (stage.mjs — the crid3d.html body, on this desk) ---------------
+  // being decides WHAT; the stage decides HOW: approach the panel, reach, pull up, sit on
+  // the lip, lean in, slip and recover — the same states the rig page proved. stage.mjs is
+  // pure and speaks the rig page's world units: x centred on the screen's middle, y up from
+  // the floor line, one unit = UPX desk px. syncStageBoxes converts the registry's viewport
+  // px into that space; stageTick converts walkX/groundY back for the DOM.
+  const UPX=()=>Math.max(80,innerHeight/3.5);   // desk px per world unit (~the rig page's pxPerUnit)
+  const stageBoxes={};
+  let stage=null,lastStageMs=0;
+  const stageActive=()=>!!stage&&(stage.state!=="floor"||stage.walking);
+  const stagePX=x=>(x-innerWidth/2)/UPX();       // viewport px -> world x (0 = screen centre)
+  const syncStageBoxes=()=>{
+    for(const k of Object.keys(stageBoxes))delete stageBoxes[k];
+    if(!getLayer)return;
+    const feet=deskFeet(),names=(layers&&Array.isArray(layers.names)?layers.names:BEING_LAYERS).filter(n=>n!=="crid");
+    for(const name of names){
+      const b=layerOf(name); if(!b||!b.edge)continue;
+      const left=b.edge.left??(b.edge.x??0),right=b.edge.right??(left+(b.w||0));
+      stageBoxes[name]={left:stagePX(left),right:stagePX(right),top:(feet-(b.edge.top??0))/UPX(),w:b.w/UPX(),h:b.h/UPX(),z:b.z??0}}};
+  const getStage=()=>stage||(stage=createStage({
+    targets:deskTargets,boxes:stageBoxes,unit:UPX,worldX:px=>stagePX(px),screenWidth:()=>innerWidth,
+    rand:Math.random,mass:()=>build().heft,bagOn:()=>bag.worn,
+    hisW:Math.max(40,(host.offsetWidth||innerWidth*.175))/UPX(),hipY:Math.max(50,(host.offsetHeight||220)*.5)/UPX(),
+    walkX:0,   // seeded from his real centre-x on first step (stageSeed)
+    onInterrupt:reason=>{try{being.interrupt(reason)}catch{}
+      // Clear the verb-path lean directly — unlean() would re-enter goHome()
+      // and this callback fires from inside stage transitions.
+      if(leanAt||pendingLean){pendingLean=null;leanAt=null;lastDrawn=""}}}));
+  // Seed walkX from where he actually stands the first time the machine wakes.
+  const stageSeed=()=>{if(stage&&stage.walkX===0){const r=host.getBoundingClientRect();
+    stage.walkX=stagePX(r.left+r.width/2)}};
   // His inner life (being.mjs is pure — drives in, an intent out; beingTick below is the body
   // half). The registry is read live on every decision, so a panel that moves or leaves simply
   // stops being offered. beingOpts is the test seam: rng/drives/cooldown can be pinned without
@@ -456,7 +503,8 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // guest on a panel, not furniture himself, so the moment the desk needs him back he lets go of
   // it. Nothing else may take it away — see setMode(), unlean() and resettle() for the three
   // things that are allowed to call this while he is leaning.
-  const goHome=()=>{const roam=host.classList.contains("roam"); leanAt=null; pendingLean=null; lastDrawn="";
+  const goHome=()=>{if(stage&&stage.state!=="floor")stage.interrupt("home");   // going home abandons the panel gracefully — drop/crouch, never a cut
+    const roam=host.classList.contains("roam"); leanAt=null; pendingLean=null; lastDrawn="";
     if(pickupWalk){pickupWalk=!1; const e=pickupEnd; pickupEnd=null; e!=null&&endCue(e,"aborted")}
     if(!walk&&!roam)return; walk=null; fx=1; gestureQ=[]; host.classList.remove("roam"); host.style.left=host.style.top=""; host.classList.add(...homeCls)};
   // Stopping a walk is not letting go of a panel. A job arriving mid-stride, or a wander coming to
@@ -628,7 +676,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
           visitPondered=!1;visit=null;visitAt=now+rand(42000,95000)}
       }else if(!pendingLean&&!walk){visit=null;visitAt=now+rand(20000,40000)}
       return}
-    if(mode!=="on"||now<visitAt||walk||leanAt||pendingLean||pondering||idleQ.length||gestureQ.length||running||jobs.length||beingPrev)return;
+    if(mode!=="on"||now<visitAt||walk||leanAt||pendingLean||pondering||idleQ.length||gestureQ.length||running||jobs.length||beingPrev||stageActive())return;
     const names=VISIT_LAYERS.filter(n=>{const b=layerOf(n);return b&&b.w>10&&b.h>10});
     if(!names.length){visitAt=now+rand(20000,40000);return}
     const name=names[Math.floor(Math.random()*names.length)],side=Math.random()<.5?"left":"right";
@@ -835,13 +883,41 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // Stillness is part of him, but a painted body with a 28s gap reads as a statue.
     const sec=mode==="doze"?(r<.4?rand(12,20):rand(7,12)):(r<.2?rand(8,12):r<.55?rand(5,8):rand(2.8,5));
     return sec*1000*(reduced?1.35:1)};
+  // The stage owns his place on the floor: walkX is centre-x px, groundY lifts
+  // him off the floor line in px (panel tops, seats, the hop). While the machine
+  // is idle this does nothing — home anchors and cue walks are untouched.
+  // Root motion is integrated here because stage.mjs stays pure: walking is a
+  // flag + a target, the body covers the distance. Speed is ~0.76 body-widths
+  // a second (the rig page's 0.42 units at hisW 0.55), slowed on a ledge.
+  let stageWalkMs=0;
+  const stageTick=()=>{
+    if(!stage)return;
+    if(stage.state==="floor"&&!stage.walking){stageWalkMs=0;return}
+    const now=Date.now(),dt=stageWalkMs?Math.min(.1,Math.max(0,(now-stageWalkMs)/1000)):.016;stageWalkMs=now;
+    if(stage.walking&&Math.abs(stage.targetX-stage.walkX)>.015){
+      const speedPx=.76*(host.offsetWidth||180)*(stage.groundY>.02?.7:1);
+      stage.walkX+=Math.sign(stage.targetX-stage.walkX)*Math.min(Math.abs(stage.targetX-stage.walkX),speedPx*dt/UPX())}
+    const cxPx=stage.walkX*UPX()+innerWidth/2,gY=stage.groundY*UPX();
+    const r=host.getBoundingClientRect(),w=r.width||host.offsetWidth,h=r.height||host.offsetHeight;
+    host.classList.remove(...homeCls);host.classList.add("roam");
+    host.style.left=`${(cxPx-w/2)/innerWidth*100}%`;
+    host.style.top=`${(deskFeet()-h-gY)/innerHeight*100}%`};
+  // Read-only QA handle for the stage machine — same spirit as __cridIk/__cridFace.
+  // Positions are reported back in desk px so a screenshot can be checked by eye.
+  try{window.__cridStage=()=>stage?{state:stage.state,key:stage.key,layer:stage.layer,
+    walkX:Math.round(stage.walkX*UPX()+innerWidth/2),groundY:Math.round(stage.groundY*UPX()),
+    roll:+stage.roll.toFixed(3),pitch:+stage.pitch.toFixed(3),trace:stage.trace,hold:+stage.hold.toFixed(1)}:null}catch{}
   const tick=()=>{if(frozen)return; const now=Date.now(); tickN++;
     // The bag is a body in the same world as everything else: it integrates on the tick's own
     // clock, and while it is in the air the loop runs at the fast cadence so the fall reads.
     const tS=now/1000; world.step(Math.min(.25,tS-(tick.lastT||tS))); tick.lastT=tS;
     {const r=host.getBoundingClientRect(),cx=r.left+r.width/2; hisVx=(cx-(tick.lastCX||cx))/Math.max(.05,tS-(tick.lastCT||tS)); tick.lastCX=cx; tick.lastCT=tS}
     placeBag();
-    if(walk&&(jobs.length||running))stopWalk(); advanceJob(); advanceWalk(); beingTick(now); maybeVisit(now); maybeBag(now);
+    if(walk&&(jobs.length||running))stopWalk(); advanceJob(); advanceWalk(); beingTick(now);
+    // A commanded lean or walk is the desk's ask outranking his own stage: the
+    // machine is told to abandon gracefully rather than fight the new verb.
+    if(stage&&stage.state!=="floor"&&(leanAt||pendingLean||walk))stage.interrupt("cue-takeover");
+    stageTick(); maybeVisit(now); maybeBag(now);
     if(now>=trAt+trFor){ // the previous beat has finished travelling: choose the next one
       let frame=null; if(walk&&!walk.done&&!gestureQ.length)gestureQ.push(...SEQ.crawl);
       if(gestureQ.length){const head=gestureQ[0]; if(head&&head.__cueEnd!=null){gestureQ.shift(); endCue(head.__cueEnd,"done")} else {frame=gestureQ.shift(); if(frame&&frame.__bag)bagMark(frame.__bag,frame)}} else if(mode!=="dead"&&!dying){
@@ -940,7 +1016,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // a long quiet stretch, and goes back for it later — the prop's position is the story a viewer
   // who was away comes back to.
   const maybeBag=now=>{
-    if(mode!=="on"||dying||reduced||walk||leanAt||pendingLean||pondering||idleQ.length||gestureQ.length||running||jobs.length)return;
+    if(mode!=="on"||dying||reduced||walk||leanAt||pendingLean||pondering||idleQ.length||gestureQ.length||running||jobs.length||stageActive())return;
     if(bag.worn){if(now>=bucketThinkAt){bucketThinkAt=now+rand(200000,420000); if(Math.random()<.3)bagDrop(null)}}
     else if(bag.body&&world.settled(bag.body)&&now>=pickupThinkAt){pickupThinkAt=now+rand(60000,180000); if(Math.random()<.4)bagPickup(null)}};
   // ---- his inner life -------------------------------------------------------------------
@@ -958,34 +1034,40 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // hop). rest gets none: doze already holds the lids and suppresses emotion.
   const beingTick=now=>{
     const plan=being.step(now),it=plan.intent,key=it.key;
+    // The stage machine steps every tick he is free to be staged — the same busy
+    // list the verb guard below uses, so a cue flight pauses his decisions but
+    // never strands a sequence mid-pull. dt is the real gap since the last step.
+    const busy=!!(walk||running||jobs.length||pendingReact.length||pickupWalk||gestureQ.length||idleQ.length);
+    if(mode==="on"&&!dying&&!reduced){
+      const st=getStage(); stageSeed(); syncStageBoxes();
+      const dt=lastStageMs?Math.min(.1,Math.max(0,(now-lastStageMs)/1000)):.016; lastStageMs=now;
+      st.step(now,busy?null:it,dt)}
     if(key!==beingPrev){                              // the activity ended or turned over: let go of what it held
       if(beingPrev==="rest"&&mode==="doze")setMode("on");
       if(beingLean&&leanAt&&leanAt.layer===beingLean){ponder(!1);unlean()}
       beingLean=null;beingPrev=key;beingFired=!1}
+    if(stageActive())return;                          // approach/reach/climb/lean/seat owns him until floor
     if(!key||mode!=="on"||dying||beingFired)return;
     if(walk||running||jobs.length||pendingReact.length||pickupWalk||gestureQ.length||idleQ.length)return;
     if(key==="wander"){
-      // intent.x is 0..1 across the floor band he is allowed to roam (the same clamp startWalk
-      // applies), at the height he is already standing — the y convention crawlScreen uses.
+      // The stage machine owns the walk now: floor-state wander sets walking +
+      // targetX and stageTick carries him there. This branch only pays the feeling.
       if(reduced){beingFired=!0;being.interrupt("reduced-motion");return}
-      beingFired=!0;
-      const r=pct(host.getBoundingClientRect()),
-        ok=startWalk(minCenterX()+(Math.max(0,maxCenterX()-minCenterX()))*clamp(it.x,0,1),r.y);
-      if(!ok)being.interrupt("no-floor");else feel("curious",{faceOnly:!0})}
+      beingFired=!0;feel("curious",{faceOnly:!0})}
     else if(key==="lean-watch"||key==="sit-on"){
-      // /desk has no sittable top: sit-on degrades to the same panel lean — walkTo + the held
-      // lean, with lean()'s own side-pick and resettle doing the rest. Documented choice.
+      // sit-on is a real seat now — the stage climbs to the lip and sits. The
+      // begin() inside stage.step already validated the panel is in targets().
       if(reduced){beingFired=!0;being.interrupt("reduced-motion");return}
       beingFired=!0;
-      if(!it.layer||!lean(it.layer))being.interrupt("no-panel");
+      if(!it.layer)being.interrupt("no-panel");
       else{beingLean=it.layer;feel(key==="sit-on"?"smug":"curious",{faceOnly:!0})}}
     else if(key==="climb"){
-      // No climbable geometry on /desk yet (that is the staging page's job): he walks the
-      // panel's edge and does the climb beat — the closest honest verb he has.
+      // Real climb: approach → reach → pull → top → descend, with the slip
+      // chance physics.md §2 gives a bag-carrying lean body.
       if(reduced){beingFired=!0;being.interrupt("reduced-motion");return}
       beingFired=!0;
-      if(!it.layer||!walkTo(it.layer))being.interrupt("no-panel");
-      else{play(SEQ.climb);feel("flustered",{faceOnly:!0})}}
+      if(!it.layer)being.interrupt("no-panel");
+      else feel("flustered",{faceOnly:!0})}
     else if(key==="stretch"){beingFired=!0;play(SEQ.hop);feel("delighted",{faceOnly:!0})}   // the nearest "up and shake it out" beat he has
     else if(key==="rest"){beingFired=!0;setMode("doze")}     // tired is doze: the mode he already has for it
     // plan.fidgetEvery is deliberately unused: nextWait() is the idle-gesture gap, not a fidget

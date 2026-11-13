@@ -104,7 +104,6 @@ The owner supplied reference files for all of these; they are in `docs/reference
 ## Waiting on the owner
 
 - Which timestamp plate he wants (item 1) and which location readout (item 2).
-- The dual-camera split ratio (item 3).
 - What the "thoughts layer" refers to (item 6).
 - The React source for the X overlay, if its UI is to change at all (item 5).
 - `CRID_DESK_URL` + `DESK_OPERATOR_TOKEN` in the brain's environment to take the cue channel live,

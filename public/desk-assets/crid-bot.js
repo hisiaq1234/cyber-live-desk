@@ -1019,7 +1019,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
         acceleration:3.2,strength:heft,load});
     } else if(stage.state==="pull"&&cridBody.grip){
       world.climbCharacter(cridBody,{x:stage.lipX,feetY:-stage.topY},
-        {strength:heft,load,maxAcceleration:4.5,stiffness:18,damping:8});
+        {strength:heft,load,maxAcceleration:18,stiffness:18,damping:8});
     } else if(stage.state==="reach"&&!cridBody.grip){
       const box=stageBoxes[stage.layer],side=stage.side==="right"?-1:1;
       const anchored=box&&world.grabCharacter(cridBody,{id:stage.layer,x:side<0?box.right:box.left,y:-box.top},

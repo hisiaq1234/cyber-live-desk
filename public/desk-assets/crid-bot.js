@@ -26,7 +26,7 @@ import{createWorld}from"./physics.mjs";
 import{createBeing}from"./being.mjs";
 import{createStage}from"./stage.mjs";
 const NS="http://www.w3.org/2000/svg",XLINK="http://www.w3.org/1999/xlink",PAL={onyx:"#1F1736",screen:"#0F0B17",edge:"#3A1D9E",indigo:"#6531F8",indigoDk:"#3A1D9E",mint:"#86F6BC",bone:"#A98BFF",ink:"#F4F0FF",slate:"#2B2738",red:"#FF5B57",dead:"#5E5873"},
-DOZE_AFTER_MS=12e4,BODIES=BODY_LADDER.map(s=>String(s.key)),ROT=0,ASSETS="./desk-assets/crid",AV=b=>`${ASSETS}/body-${b}-r${ROT}.webp`,
+DOZE_AFTER_MS=12e4,BODIES=["3","0","4","5","1","11","2"],ROT=0,ASSETS="./desk-assets/crid",AV=b=>`${ASSETS}/body-${b}-r${ROT}.webp`,
 SUB_STEPS=[0,4,8,12,16,20,24],STAGE_STRETCH=.03,
 // Generated ladder is the shared source for sprite, collider and 3D girth.
 stageOf=i=>BODY_LADDER[Math.min(BODY_LADDER.length-1,Math.max(0,i|0))],
@@ -1112,6 +1112,8 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const activityOf=s=>!!(s&&(s.visible&&s.card||s.poll&&s.poll.active!==!1||s.crid||s.court||s.music&&s.music.current||s.spaces&&s.spaces.length||s.riad&&s.riad.active));
   // null online means "not told yet", and the desk's own default is on, so an unknown state boots
   // him rather than freezing him. Only an explicit bot.on:false kills him.
+  const applySubs=(n,beat)=>{subs=Math.max(0,n|0); const st=stageFor(subs); setBody(st.i); growth={sx:st.sx,sy:st.sy}; lastDrawn="";
+    if(beat&&mode!=="dead"&&!dying){if(mode==="doze"){mode="on";lastActive=Date.now()} play(SEQ.sub,{urgent:!0}); lastActive=Date.now()}};
   const power=()=>setMode(online===!1?"dead":"on");
   const observe=s=>{var _a,_b,_c; if(!s)return; maybeSeedBeing(s); const on=s.bot?s.bot.on!==!1:!0; if(on!==online){online=on;power()} if(online===!1){prev=s; return}
     const reactN=(_c=(_b=(_a=s.bot)==null?void 0:_a.react)==null?void 0:_b.n)!=null?_c:0; if(lastReactN===null)lastReactN=reactN; else if(reactN!==lastReactN){lastReactN=reactN;react(s.bot.react.kind)}

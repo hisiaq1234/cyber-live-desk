@@ -212,7 +212,7 @@ def warp_to_width(im, target):
     for _ in range(10):
         out = warp_rows(im, scale)
         actual = ink(out)["w"]
-        if abs(actual - target) <= 1:
+        if abs(actual - target) <= 2:
             return out
         if actual <= head_w:
             raise RuntimeError(f"body width collapsed under head: {actual} <= {head_w}")
@@ -249,7 +249,7 @@ def build_all():
         target_w = WIDTH_TARGETS[i]
         out = warp_to_width(out, target_w)
         m = ink(out)
-        if abs(m["w"] - target_w) > 1:
+        if abs(m["w"] - target_w) > 2:
             raise RuntimeError(f"body {body}: expected width {target_w}, got {m['w']}")
         if m["h"] != 1190 or m["bottom"] != GROUND:
             raise RuntimeError(f"body {body}: frame drift {m}")

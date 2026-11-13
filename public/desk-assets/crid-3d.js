@@ -473,8 +473,8 @@ export async function initCrid3D(host,getState,onReady,onFail){
       walkW+=((walking?1:0)-walkW)*Math.min(1,dt*5);
       if(walking){
         if(st.motorState&&Number.isFinite(st.motorState.screenX)){
-          const stridePx=Math.max(24,st.motorState.stridePx||100);
-          phase=(st.motorState.distanceTravelled/stridePx)%1;
+          const strideLength=Math.max(.08,st.motorState.strideLength||.3);
+          phase=(st.motorState.distanceTravelled/strideLength)%1;
         } else phase=(phase+dt*(reduced?3.4:5.2))%1;
       }
       const u=phase,gait=Math.sin(TAU*u),          // one full gait cycle per phase wrap

@@ -15,7 +15,7 @@ import { createCridAudioSync } from "./crid-audio.js";
      x.mode=trends|following   x.userId=      x.jpoll=10–3600
      swae=0 | 1                (force the snapshot-safe style off / on)
      theme=cyber|creative|torn-paper   (default cyber; the theme CSS is ./cyber-theme.js)
-     scene=pip                 pip.w=10–60 pip.h=10–60 (% of viewport)
+     scene=split|pip            split is the 50/50 two-feed HUD; pip reserves a corner for an inset
      bg=0                      (removes the room behind the desk — navy sky, grid, horizon glow
                                 and floor line — and leaves the transparent page OBS keys out)
      bot=0 | bl|bc|br          bot.x=0–100 bot.y=0–100  (CRID mascot; 0 restores the sound orb; default bc, the centre column)
@@ -85,10 +85,11 @@ import { createScene, SCENE_CSS } from "./scene.js";
   document.documentElement.dataset.theme = theme;
   document.documentElement.dataset.crop = P.get("crop") === "0" ? "false" : "true";
   if (P.get("power") === "low") document.documentElement.classList.add("low-power");
-  // ?scene=pip reserves the bottom-right corner for the renderer's dual-camera inset and lifts
-  // the right column above it. The inset itself is drawn by the renderer, so the page only has
-  // to know how much room to leave; the CSS carries a default for when no size is given.
-  const scene = pick("scene", ["pip"], "");
+  // The owner streams two cameras side by side. Split is the default HUD composition: the left
+  // half owns the timestamp and map, the right half owns the location readout, and the lockup
+  // moves off the centre seam. It does not create camera feeds; Swae/OBS supplies those. PiP
+  // remains available when a second feed is an inset instead.
+  const scene = pick("scene", ["split", "pip"], "split");
   if (scene) {
     document.documentElement.dataset.scene = scene;
     document.documentElement.style.setProperty("--pip-w", num("pip.w", 34, 10, 60) + "vw");
@@ -104,7 +105,15 @@ import { createScene, SCENE_CSS } from "./scene.js";
       html.dataset.scene = "pip";
       html.style.setProperty("--pip-w", `${s.w ?? 34}vw`);
       html.style.setProperty("--pip-h", `${s.h ?? 34}vh`);
-    } else delete html.dataset.scene;
+    } else if (s.mode === "split") {
+      html.dataset.scene = "split";
+      html.style.removeProperty("--pip-w");
+      html.style.removeProperty("--pip-h");
+    } else {
+      delete html.dataset.scene;
+      html.style.removeProperty("--pip-w");
+      html.style.removeProperty("--pip-h");
+    }
   };
   const xMode = P.get("x.mode") || "";
   const xJPos = "top";
@@ -558,6 +567,13 @@ html[data-theme="torn-paper"] #desk{
 .layout-alive .summary,.layout-alive .source,.layout-alive .court-viewpoint .v-text,.layout-alive .ledger-entry{font-family:var(--brand)}
 .layout-alive .music-wrap{max-height:28dvh;overflow:auto}
 .music-empty{font-size:.78em;color:#9d9587;margin-top:.4em}
+/* Split-screen HUD: each camera keeps its own half. The left side carries the Black Market
+   identity/map and the active story; the right side carries location and live modules. */
+html[data-scene="split"] #desk.layout-alive .slot{width:min(460px,calc(50vw - 2*var(--m)))}
+html[data-scene="split"] #desk.layout-alive #dock-right{width:min(360px,calc(50vw - 2*var(--m)));max-height:calc(100svh - 2*var(--m))}
+html[data-scene="split"] #desk #time-dock{min-width:0;width:min(390px,calc(50vw - 2*var(--m)));max-width:calc(50vw - 2*var(--m))}
+html[data-scene="split"] #desk #loc-map{max-width:calc(50vw - 2*var(--m))}
+
 /* The clock plate is the operator's own Black Market timestamp, ported rather than paraphrased
    (his index (2).html): crimson #dc143c on paper #f7f3ea, IBM Plex Mono digits at 2.35vw with
    -.045em tracking, a Space Grotesk topline and detail row, the 3px crimson left bar with the
@@ -1127,8 +1143,8 @@ html.swae #desk .letters{background:#0b0d12f5}
   const LOGO_ARG = P.get("logo");
   const lockup = LOGO_ARG === "0" ? null : createLogo({
     root,
-    position: LOGO_POSITIONS.includes(LOGO_ARG) ? LOGO_ARG : "tc",
-    width: num("logo.w", 24, 6, 46),
+    position: LOGO_POSITIONS.includes(LOGO_ARG) ? LOGO_ARG : (scene === "split" ? "tl" : "tc"),
+    width: num("logo.w", scene === "split" ? 18 : 24, 6, 46),
     x: P.get("logo.x") != null ? num("logo.x", 50, 0, 100) : null,
     y: P.get("logo.y") != null ? num("logo.y", 6, 0, 100) : null,
     // The goat is the operator's own artwork and it is what his animation was made for, so it is
@@ -1976,17 +1992,20 @@ html.swae #desk .letters{background:#0b0d12f5}
 
     const peekRect = () => {
       const m = marginPx();
-      const w = Math.min(430, innerWidth - 2 * m - 8);
+      const split = document.documentElement.dataset.scene === "split";
+      const available = split ? innerWidth / 2 : innerWidth;
+      const w = Math.min(430, available - 2 * m - 8);
       const hgt = Math.min(230, Math.max(150, innerHeight * 0.2));
       const dockTop = locDock.getBoundingClientRect().top;
       return { left: m, top: Math.max(m + 8, dockTop - hgt - 10), width: w, height: hgt };
     };
     // Near-fullscreen but not quite: the stream stays visible around the edges, and the plate's
     // own .9 alpha lets it show through the map area too.
-    const fullRect = () => ({
-      left: innerWidth * 0.03, top: innerHeight * 0.07,
-      width: innerWidth * 0.94, height: innerHeight * 0.86,
-    });
+    const fullRect = () => {
+      const split = document.documentElement.dataset.scene === "split";
+      return { left: innerWidth * 0.03, top: innerHeight * 0.07,
+        width: innerWidth * (split ? 0.44 : 0.94), height: innerHeight * 0.86 };
+    };
 
     const openLoc = (mode) => {
       if (!locEligible()) return false;

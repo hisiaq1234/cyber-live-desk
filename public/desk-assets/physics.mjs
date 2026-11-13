@@ -123,6 +123,7 @@ export function createWorld({ gravity = GRAVITY, fixedDt = 1 / 120 } = {}) {
     body.grip = {
       id: String(anchor.id ?? "ledge"),
       x: anchor.x, y: anchor.y, side: toward,
+      holdX: body.x, holdY: anchor.y + body.halfH * .9,
       reach: armReach, strength: Math.max(.05, strength),
       load: Math.max(0, load), strain: 0,
     };
@@ -134,7 +135,7 @@ export function createWorld({ gravity = GRAVITY, fixedDt = 1 / 120 } = {}) {
 
   const climbCharacter = (body, { x, feetY }, {
     strength = body?.strength ?? 1, load = 0,
-    maxAcceleration = 5200, stiffness = 18, damping = 8,
+    maxAcceleration = 18, stiffness = 18, damping = 8,
   } = {}) => {
     if (!hasBody(body) || !body.grip ||
         !Number.isFinite(x) || !Number.isFinite(feetY)) return false;
@@ -290,6 +291,19 @@ export function createWorld({ gravity = GRAVITY, fixedDt = 1 / 120 } = {}) {
         body.grip = null;
         body.climb = null;
       }
+    } else if (body.grip) {
+      const grip = body.grip;
+      let ax = (grip.holdX - body.x) * 18 - body.vx * 8;
+      let ay = (grip.holdY - body.y) * 18 - body.vy * 8;
+      const capacity = 18 * Math.max(.05, grip.strength) /
+        Math.max(.05, body.mass + grip.load);
+      const demand = Math.hypot(ax, ay);
+      if (demand > capacity) { const scale = capacity / demand; ax *= scale; ay *= scale; }
+      body.vx += ax * dt;
+      body.vy += (g + ay) * dt;
+      if (capacity < g * .9) grip.strain += dt;
+      else grip.strain = Math.max(0, grip.strain - dt * 1.5);
+      if (grip.strain >= .24) { body.gripFailed = true; body.grip = null; }
     } else {
       if (body.motor) {
         const m = body.motor;

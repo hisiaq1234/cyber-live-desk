@@ -399,6 +399,7 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 
 /* X feed (docks at top of #dock-right) */
 #x-feed {
+  position:relative;
   max-height: 20dvh; overflow: hidden;
   background:#111214f0;backdrop-filter:blur(16px) saturate(180%);
   -webkit-backdrop-filter:blur(16px) saturate(180%);
@@ -429,6 +430,13 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
    through /api/x-timeline/feed. Transparent body, so only its cards show. */
 #x-feed.x-overlay-panel{max-height:none;padding:.4em}
 #x-feed.x-overlay-panel iframe{display:block;width:100%;height:64dvh;border:0;background:transparent;pointer-events:none}
+/* Desk-level dismiss: the iframe is click-through, so the card carries its own ×. */
+.x-close{position:absolute;top:.35em;right:.45em;z-index:2;width:1.7em;height:1.7em;
+  display:flex;align-items:center;justify-content:center;border-radius:50%;
+  background:rgba(255,255,255,.08);border:.09em solid rgba(255,255,255,.25);
+  color:#f3f2f0;font-size:1em;line-height:1;cursor:pointer;pointer-events:auto;
+  font-family:inherit;padding:0}
+.x-close:hover{background:rgba(255,255,255,.18)}
 
 /* Module Component Styles — individual caps keep the dock total bounded */
 .court-wrap,.music-wrap,.space-wrap,.ledger-wrap,.riad-wrap {
@@ -1512,6 +1520,14 @@ html.swae #desk .letters{background:#0b0d12f5}
   let xKey = null;
   let xTimer = null;
   let xStarted = false;
+  let xOff = false;
+  const xCloseBtn = () => h("button", {
+    class: "x-close", type: "button", "aria-label": "Close X panel",
+    onclick: (e) => {
+      e.stopPropagation(); xOff = true; clearTimeout(xTimer);
+      xEl?.remove(); xEl = null;
+    },
+  }, "×");
 
   // The feed is down: say so on the card instead of leaving the corner blank. No stand-in
   // tweets — an empty panel that admits it is broken is honest, invented posts are not.
@@ -1523,9 +1539,9 @@ html.swae #desk .letters{background:#0b0d12f5}
       h("div", "x-item x-problem", h("span", "x-text", message)));
     const foot = h("div", "", h("span", "x-count", `Retrying every ${Math.round(xJPollMs / 1000)}s`));
     if (xEl) {
-      xEl.replaceChildren(head, list, foot);
+      xEl.replaceChildren(head, list, foot, xCloseBtn());
     } else {
-      xEl = h("div", { id: "x-feed" }, head, list, foot);
+      xEl = h("div", { id: "x-feed" }, head, list, foot, xCloseBtn());
       dockRight.prepend(xEl);
       bot?.summon(xEl);
       requestAnimationFrame(() => requestAnimationFrame(() => xEl?.classList.add("in")));
@@ -1592,9 +1608,9 @@ html.swae #desk .letters{background:#0b0d12f5}
     }
     const foot = h("div", "", h("span", "x-count", new Date(feed.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })));
     if (xEl) {
-      xEl.replaceChildren(head, list, foot);
+      xEl.replaceChildren(head, list, foot, xCloseBtn());
     } else {
-      xEl = h("div", { id: "x-feed" }, head, list, foot);
+      xEl = h("div", { id: "x-feed" }, head, list, foot, xCloseBtn());
       dockRight.prepend(xEl);
       bot?.summon(xEl);
       requestAnimationFrame(() => requestAnimationFrame(() => xEl?.classList.add("in")));
@@ -1615,7 +1631,7 @@ html.swae #desk .letters{background:#0b0d12f5}
       src: "/x-overlay/index.html?theme=dark&position=bottom-left&scale=.72&margin=8&count=5&refresh=30&interval=18&stack=1",
       title: "X Following timeline", loading: "lazy",
     });
-    const card = h("div", { id: "x-feed", class: "x-overlay-panel" }, frame);
+    const card = h("div", { id: "x-feed", class: "x-overlay-panel" }, frame, xCloseBtn());
     if (xEl) { xEl.replaceWith(card); xEl = card; }
     else {
       xEl = card;
@@ -1627,7 +1643,7 @@ html.swae #desk .letters{background:#0b0d12f5}
   };
 
   const fetchXfeed = async () => {
-    if (!xMode) return;
+    if (!xMode || xOff) return;
     clearTimeout(xTimer);
     if (xMode !== "trends" && !xUiClassic) { renderXoverlay(); return; }
     const result = await requestXFeed(globalThis.fetch, { mode: xMode, userId: xUserId });

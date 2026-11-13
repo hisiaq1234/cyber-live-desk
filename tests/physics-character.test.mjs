@@ -28,6 +28,17 @@ test("gravity lands the character on a platform and tracks its support id",()=>{
   assert.equal(body.y,-250);
 });
 
+test("jump applies a ballistic impulse and returns to floor support",()=>{
+  const {world,body,run}=make({gravity:1000});
+  assert.equal(world.jumpCharacter(body,{height:120,horizontal:30}),true);
+  assert.equal(body.grounded,false);
+  run(.8);
+  assert.equal(body.grounded,true);
+  assert.equal(body.supportId,"floor");
+  assert.equal(body.y,-50);
+  assert.ok(body.x>0);
+});
+
 test("platform underside blocks upward movement",()=>{
   const {world,body,run}=make({x:140,y:60,floor:300,grounded:false,supportId:null,vy:-700});
   world.setPlatforms([{id:"ledge",left:100,right:200,top:-200,bottom:0}]);

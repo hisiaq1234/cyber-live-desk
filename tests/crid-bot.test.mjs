@@ -156,6 +156,7 @@ test("the body ladder preserves the selected r7 face and seven ordered body buil
   const leanest = await readFile(new URL("../public/desk-assets/crid/body-3-r0.webp", import.meta.url));
   assert.deepEqual(leanest, reference, "the leanest production frame must be byte-identical to body-000-r7");
   assert.equal(doc.face_reference.source_path, "public/desk-assets/crid/body-000-r7.webp");
+  assert.equal(doc.face_reference.source_blob_sha, "864979d00e0e76de5ca87c30b6a99df57a33a417");
   assert.equal(doc.stages[0].ink.w, 307);
   assert.equal(doc.stages[0].ink.h, 1156);
   const heads = new Set(doc.stages.map((s) => s.ink.y0));

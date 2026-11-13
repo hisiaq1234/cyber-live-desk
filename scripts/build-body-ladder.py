@@ -40,6 +40,7 @@ Needs Pillow (not a runtime dependency — this is a one-off asset tool):
   python3 scripts/build-body-ladder.py --measure  # print the ink box of every shipped frame
   python3 scripts/build-body-ladder.py --sheet OUT.png   # comparison sheet at 336px and 150px
 """
+import hashlib
 import json
 import shutil
 import sys
@@ -69,7 +70,7 @@ WIDTH_TARGETS = [307, 366, 420, 486, 560, 676, 822]
 HEAD_LOCK_BOTTOM = 450
 HEAD_BLEND = 100
 LEG_TAPER = 0.35
-FACE_REFERENCE = {"url":"https://github.com/hisiaq1234/cyber-live-desk/blob/cc1902269b6d36a4d086af3f67241af79a5bcbb0/public/desk-assets/crid/body-000-r7.webp","source_commit":"cc1902269b6d36a4d086af3f67241af79a5bcbb0","source_path":"public/desk-assets/crid/body-000-r7.webp"}
+FACE_REFERENCE = {"url":"https://github.com/hisiaq1234/cyber-live-desk/blob/cc1902269b6d36a4d086af3f67241af79a5bcbb0/public/desk-assets/crid/body-000-r7.webp","source_commit":"cc1902269b6d36a4d086af3f67241af79a5bcbb0","source_path":"public/desk-assets/crid/body-000-r7.webp","source_blob_sha":"864979d00e0e76de5ca87c30b6a99df57a33a417"}
 WIDTH_REFERENCE = {"source_commit":"cc1902269b6d36a4d086af3f67241af79a5bcbb0","source_path":"public/desk-assets/crid/ladder.json","measured_widths":[307,366,420,486,560,676,822]}
 
 
@@ -133,11 +134,15 @@ def fetch():
         "https://raw.githubusercontent.com/hisiaq1234/cyber-live-desk/"
         + FACE_REFERENCE["source_commit"] + "/" + FACE_REFERENCE["source_path"]
     )
-    req = urllib.request.Request(reference_url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=90) as r:
-        reference_data = r.read()
     reference_file = VIEWS / "body-000-r7.webp"
-    reference_file.write_bytes(reference_data)
+    if not reference_file.exists():
+        req = urllib.request.Request(reference_url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=90) as r:
+            reference_file.write_bytes(r.read())
+    reference_data = reference_file.read_bytes()
+    git_blob = hashlib.sha1(f"blob {len(reference_data)}\\0".encode("ascii") + reference_data).hexdigest()
+    if git_blob != FACE_REFERENCE["source_blob_sha"]:
+        raise SystemExit(f"body-000-r7 source blob mismatch: {git_blob}")
     reference = Image.open(__import__("io").BytesIO(reference_data)).convert("RGBA")
     if reference.size != (FRAME_W, FRAME_H):
         raise SystemExit(f"approved body-000-r7 reference is {reference.size}, expected {(FRAME_W, FRAME_H)}")

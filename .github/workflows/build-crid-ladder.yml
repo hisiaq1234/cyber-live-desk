@@ -50,6 +50,7 @@ jobs:
           name: crid-body-ladder
           path: |
             out/crid-body-ladder.png
+            views/body-000-r7.webp
             public/desk-assets/crid/ladder.json
             public/desk-assets/crid/ladder.mjs
       - name: Commit generated assets after verification

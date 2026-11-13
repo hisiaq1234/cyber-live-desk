@@ -141,6 +141,7 @@
       "nose": 1482,
       "pupil_tone": "0x5b341c",
       "skin_tone": "0x935d37"
-    }
+    },
+    "source_blob_sha": "864979d00e0e76de5ca87c30b6a99df57a33a417"
   }
 }

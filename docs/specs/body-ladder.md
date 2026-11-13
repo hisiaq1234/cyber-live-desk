@@ -2,7 +2,7 @@
 
 ## Approved visual reference
 
-The user-selected face and lean reference is [body-000-r7](https://github.com/hisiaq1234/cyber-live-desk/blob/cc1902269b6d36a4d086af3f67241af79a5bcbb0/public/desk-assets/crid/body-000-r7.webp). Its source commit is `cc1902269b6d36a4d086af3f67241af79a5bcbb0`.
+The user-selected face and lean reference is [body-000-r7](https://github.com/hisiaq1234/cyber-live-desk/blob/cc1902269b6d36a4d086af3f67241af79a5bcbb0/public/desk-assets/crid/body-000-r7.webp). Its source commit is `cc1902269b6d36a4d086af3f67241af79a5bcbb0` and its verified Git blob is `864979d00e0e76de5ca87c30b6a99df57a33a417`.
 
 The old r7 set is **not** reused as the production ladder: its companion frames change camera angle/pose and include attached straps. The selected `000` frame is now the actual production leanest render: the build fetches its exact bytes from the pinned source commit, preserves it as `body-3-r0.webp`, and uses its decoded pixels as the canonical head/face source for all six heavier stages. The production bag remains a separate prop.
 

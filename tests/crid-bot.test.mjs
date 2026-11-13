@@ -155,23 +155,26 @@ test("the body ladder is seven builds of one render, not seven different drawing
     assert.ok(BODY_LADDER[i].slow >= BODY_LADDER[i - 1].slow && BODY_LADDER[i].heft >= BODY_LADDER[i - 1].heft,
       `stage ${i} must move at least as heavy as stage ${i - 1}`);
   }
-  // The point of the rebuild: the SAME man in the SAME pose at every weight. One render means one
-  // head top and one height — only the build may change — and the heavy stage has to be a step you
-  // can see (Snap gives 112px of extra ink width on the heaviest build; the six lighter ones differ
-  // mostly in mass, which is why the order is proven on area above).
+  // The first stage must be the exact user-selected image, not a re-render that merely
+  // approximates its face parameters. The build keeps the original bytes and uses its head crop
+  // as the canonical source for every heavier silhouette.
+  const reference = await readFile(new URL("../views/body-000-r7.webp", import.meta.url));
+  const leanest = await readFile(new URL("../public/desk-assets/crid/body-3-r0.webp", import.meta.url));
+  assert.deepEqual(leanest, reference, "the leanest production frame must be byte-identical to body-000-r7");
+  assert.equal(doc.face_reference.source_path, "public/desk-assets/crid/body-000-r7.webp");
+  assert.equal(doc.stages[0].ink.w, 307);
+  assert.equal(doc.stages[0].ink.h, 1156);
   const heads = new Set(doc.stages.map((s) => s.ink.y0));
-  assert.equal(heads.size, 1, "every stage must keep the same head top: one render, one pose");
-  assert.equal(new Set(doc.stages.map((s) => s.ink.h)).size, 1,
-    "every stage must be the same height: a weight change must not change his size");
+  assert.equal(heads.size, 1, "every stage must keep the selected reference head top");
   const heaviest = BODY_LADDER[BODY_LADDER.length - 1].w - BODY_LADDER[0].w;
   assert.ok(heaviest >= 90, `the heavy build is only ${heaviest}px wider than the lean one`);
-  // The invariants a body swap must never break: feet on one ground line, body on one axis. The
-  // worst measured offset is ~19px in a 1050px frame, i.e. under 4px of the 336px he is drawn at.
+  assert.deepEqual(doc.stages.map((s) => s.target_width), doc.width_targets,
+    "all seven historical width targets must be represented in the build report");
+  // Feet and torso axis remain anchored; body height is measured per stage because the original
+  // r7 ladder itself has different ink heights as the body grows.
+  assert.ok(Math.abs(doc.axis - 560) <= 1, "the shared torso axis must match the historical reference");
   for (const s of doc.stages) {
     assert.equal(s.ink.bottom, doc.ground, `stage ${s.key} must keep its feet on y=${doc.ground}`);
-    // The ink box centre is a crude proxy for the axis — the heavy build's arms flare further on
-    // one side than the other, which moves the box 29px without moving him: the mid-torso he stands
-    // on is measured onto x=560 by the build script and stays there.
     assert.ok(Math.abs(s.ink.cx - doc.axis) <= 32, `stage ${s.key} sits ${Math.abs(s.ink.cx - doc.axis)}px off the axis`);
   }
   // And the build has to move: the heavy stage is slower and lands harder than the lanky one.

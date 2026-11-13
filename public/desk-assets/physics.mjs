@@ -178,7 +178,7 @@ export function createWorld({ gravity = GRAVITY, fixedDt = 1 / 120 } = {}) {
       return;
     }
     const top = support.id === "floor" ? body.floor : support.top;
-    if (Math.abs(body.y + body.halfH - top) > 2) {
+    if (Math.abs(body.y + body.halfH - top) > Math.max(.01, body.halfH * .04)) {
       body.grounded = false;
       body.supportId = null;
       return;
@@ -225,7 +225,7 @@ export function createWorld({ gravity = GRAVITY, fixedDt = 1 / 120 } = {}) {
       // it in a downward step. Treat that as a valid support contact.
       if (!landing && body.vy >= 0) {
         landing = platforms.find(p =>
-          overlapsX(body, p) && Math.abs(body.y + body.halfH - p.top) <= 1.25) || null;
+          overlapsX(body, p) && Math.abs(body.y + body.halfH - p.top) <= Math.max(.01, body.halfH * .08)) || null;
       }
     } else if (oldVy < 0 && body.vy <= 0) {
       for (const p of platforms) {

@@ -100,6 +100,21 @@ test("a drop waits for the physics motor to confirm floor landing",()=>{
   assert.equal(stage.state,"floor");
 });
 
+test("a physical slip stays in the slip state until the floor contact is real",()=>{
+  let onFloor=false;
+  const {stage}=makeStage({slip:()=>true,canCompleteDrop:()=>onFloor});
+  drive(stage,climbIntent,12);
+  assert.equal(stage.state,"pull");
+  // Start the deterministic forced slip at the pull state.
+  drive(stage,{...climbIntent,phase:"middle"},1);
+  assert.equal(stage.state,"slip");
+  drive(stage,{...climbIntent,phase:"middle"},2);
+  assert.equal(stage.state,"slip");
+  onFloor=true;
+  drive(stage,{...climbIntent,phase:"middle"},.2);
+  assert.equal(stage.state,"recover");
+});
+
 test("a slip slides him back down and interrupts once, with reason 'slip'", () => {
   const { stage, interrupts } = makeStage({ slip: () => true });
   // begin on the start beat, then keep the same activity in its middle so floor doesn't restart it

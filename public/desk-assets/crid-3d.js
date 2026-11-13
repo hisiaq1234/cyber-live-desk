@@ -250,11 +250,20 @@ export async function initCrid3D(host,getState,onReady,onFail){
       return MORPH_CACHE[name]=morphs.filter(x=>x.k===want||x.k.endsWith("."+want))};
     const setMorph=(name,v)=>{for(const x of morph(name))if(x.m.morphTargetInfluences)x.m.morphTargetInfluences[x.i]=v};
 
-    // Delta rotation on top of each bone's rest pose (userData.q0).
+    // Delta rotation on top of each bone's rest pose (userData.q0), in WORLD axes —
+    // the same convention as applyStageChannels and crid3d.html's applyAcc: the
+    // euler triple names screen axes, P^-1·R·P rewrites it into the parent's
+    // frame, and the result premultiplies the rest quaternion. Bone-local euler
+    // deltas were the twisted-limb idle: a thigh's local Y runs down the bone,
+    // so "swing" written there was a twist, and easing three local slots is not
+    // a rotation near a bent joint.
     const E=new THREE.Euler(),Q=new THREE.Quaternion(),Q2=new THREE.Quaternion();
-    const rot=(n,x=0,y=0,z=0)=>{const b=B(n);if(!b)return;E.set(x,y,z,"XYZ");Q.setFromEuler(E);Q2.copy(b.userData.q0).multiply(Q);b.quaternion.copy(Q2)};
-    // Post-multiplied local delta — kept for one-off poses; stage channels use
-    // the world-axis applyStageChannels path instead.
+    const rot=(n,x=0,y=0,z=0)=>{const b=B(n);if(!b)return;
+      const P=restPQ.get(n);
+      if(!P){E.set(x,y,z,"XYZ");Q.setFromEuler(E);Q2.copy(b.userData.q0).multiply(Q);b.quaternion.copy(Q2);return}
+      E.set(x,y,z,"XYZ");Q.setFromEuler(E);
+      Q2.copy(P).invert().multiply(Q).multiply(P);
+      b.quaternion.copy(b.userData.q0).premultiply(Q2)};
 
     const J={
       pelvis:"C_pelvis0001_bind_JNT",spine2:"C_spine0002_bind_JNT",spine3:"C_spine0003_bind_JNT",
@@ -498,20 +507,22 @@ export async function initCrid3D(host,getState,onReady,onFail){
       const shift=Math.sin(t*.5);                         // hip to hip, about 12s
       const look=Math.sin(t*.33),look2=Math.sin(t*.19+1.4);
 
-      // Legs: local +Y is forward (toward the face). Knees still fold on +Y.
-      // Idle settles onto the weighted foot instead of locking both legs straight.
-      if(has("thighL"))pose("thighL",0,gait*.55*walkW+still*(shift*.04),0);
-      if(has("shinL"))pose("shinL",0,(kL*.85+still*Math.max(0,shift)*.12)*calm,0);
-      if(has("footL"))pose("footL",0,(wL-kL)*.22+still*shift*.03,0);
-      if(has("thighR"))pose("thighR",0,-gait*.55*walkW-still*(shift*.04),0);
-      if(has("shinR"))pose("shinR",0,-(kR*.85+still*Math.max(0,-shift)*.12)*calm,0);
-      if(has("footR"))pose("footR",0,-(wR-kR)*.22-still*shift*.03,0);
+      // Legs: world axes now — X is the swing/flex line (same convention as
+      // applyStageChannels: legFwd and knee bend on X, lift on Z). Knees still
+      // fold the same way; idle settles onto the weighted foot, not locked.
+      if(has("thighL"))pose("thighL",-(gait*.55*walkW+still*(shift*.04)),0,0);
+      if(has("shinL"))pose("shinL",(kL*.85+still*Math.max(0,shift)*.12)*calm,0,0);
+      if(has("footL"))pose("footL",-((wL-kL)*.22+still*shift*.03)*.5,0,0);
+      if(has("thighR"))pose("thighR",gait*.55*walkW+still*(shift*.04),0,0);
+      if(has("shinR"))pose("shinR",(kR*.85+still*Math.max(0,-shift)*.12)*calm,0,0);
+      if(has("footR"))pose("footR",((wR-kR)*.22+still*shift*.03)*.5,0,0);
 
-      // Arms hang and drift against the weight. They do not swing as one piece.
-      if(has("armL"))pose("armL",gait*.45*swing+still*(Math.sin(t*.7)*.1+shift*.05),0,RELAX.armL.z+still*w1*.04);
-      if(has("foreL"))pose("foreL",RELAX.foreL.x+still*Math.sin(t*.7+.8)*.08+gait*.16*swing,0,0);
-      if(has("armR"))pose("armR",-gait*.45*swing-still*(Math.sin(t*.7+1.2)*.1-shift*.05),0,RELAX.armR.z-still*w1*.04);
-      if(has("foreR"))pose("foreR",RELAX.foreR.x-still*Math.sin(t*.7+2)*.08-gait*.16*swing,0,0);
+      // Arms hang and drift against the weight. X is the swing line, Z the lift
+      // out to the side — mirrored signs on R exactly as applyStageChannels has.
+      if(has("armL"))pose("armL",-(gait*.45*swing+still*(Math.sin(t*.7)*.1+shift*.05)),0,RELAX.armL.z+still*w1*.04);
+      if(has("foreL"))pose("foreL",-(RELAX.foreL.x+still*Math.sin(t*.7+.8)*.08+gait*.16*swing),0,0);
+      if(has("armR"))pose("armR",gait*.45*swing+still*(Math.sin(t*.7+1.2)*.1-shift*.05),0,-RELAX.armR.z+still*w1*.04);
+      if(has("foreR"))pose("foreR",-(RELAX.foreR.x-still*Math.sin(t*.7+2)*.08-gait*.16*swing),0,0);
 
       // Fingers: a relaxed hand is not straight — base curl .14; a planted
       // grip (the IK lean, the stage machine's reach/seat) closes toward
@@ -536,8 +547,8 @@ export async function initCrid3D(host,getState,onReady,onFail){
       // step — dorsiflexed in swing, plantar-flexed at push-off — instead of
       // the whole foot pivoting like a board.
       const toe=((Math.sin(TAU*u+2.4)*.5-.15)*gait*.9)*walkW+still*.04;
-      if(has("toeL"))pose("toeL",0,toe,0);
-      if(has("toeR"))pose("toeR",0,-toe,0);
+      if(has("toeL"))pose("toeL",toe,0,0);
+      if(has("toeR"))pose("toeR",-toe,0,0);
 
       // Torso: breath lifts the chest, the pelvis carries the weight shift.
       if(has("spine2"))pose("spine2",(.07*br-pr*.55+(p.tr||0)*.004)*life,(look*.05)*life,

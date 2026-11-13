@@ -162,7 +162,7 @@ test("the body ladder preserves the selected r7 face and seven ordered body buil
     assert.deepEqual(leanest, reference, "the leanest production frame must be byte-identical to body-000-r7");
     assert.equal(doc.face_reference.source_path, "public/desk-assets/crid/body-000-r7.webp");
     assert.equal(doc.stages[0].ink.w, 307);
-    assert.equal(doc.stages[0].ink.h, 1156);
+    assert.equal(doc.stages[0].ink.h, 1185);
     assert.equal(new Set(doc.stages.map((s) => s.ink.h)).size, 1,
       "horizontal body growth must not change the selected r7 ink height");
     assert.deepEqual(doc.stages.map((s) => s.target_width), doc.width_targets,

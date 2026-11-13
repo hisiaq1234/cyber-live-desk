@@ -16,8 +16,7 @@ import { createCridAudioSync } from "./crid-audio.js";
      swae=0 | 1                (force the snapshot-safe style off / on)
      theme=cyber|creative|torn-paper   (default cyber; the theme CSS is ./cyber-theme.js)
      scene=split|pip            split is the 50/50 two-feed HUD; pip reserves a corner for an inset
-     bg=0                      (removes the room behind the desk — navy sky, grid, horizon glow
-                                and floor line — and leaves the transparent page OBS keys out)
+     bg=1                      (optional cyber room backdrop; default stays transparent over the camera feeds)
      bot=0 | bl|bc|br          bot.x=0–100 bot.y=0–100  (CRID mascot; 0 restores the sound orb; default bc, the centre column)
      bot.scale=0.4–2.5         (mascot size multiplier on top of the theme's broadcast size; default 1)
      headlines=1               (optional automatic RSS identity ticker; off by default)
@@ -1118,13 +1117,10 @@ html.swae #desk .letters{background:#0b0d12f5}
       return o;
     })(),
   });
-  // The room behind the desk. The page ships with a transparent body so the same /desk file can be
-  // loaded straight into OBS and keyed out, which in a browser left the cards on the browser's own
-  // white canvas. This draws the room inside the page instead, and prepends it so it paints before
-  // every panel. ?bg=0 drops it and gives back the transparent page an OBS source needs.
-  // It is the cyber theme's room only: the other two themes are paper, not a dark set.
-  const SCENE_OFF = ["0", "off", "false"].includes(String(P.get("bg") || "").toLowerCase());
-  if (theme === "cyber" && !SCENE_OFF) document.body.prepend(createScene({ bot }));
+  // The camera feeds are the world behind this HUD. Keep /desk transparent by default so OBS/Swae
+  // shows the real cameras; the optional synthetic cyber room is only enabled by ?bg=1.
+  const SCENE_ON = P.get("bg") === "1";
+  if (theme === "cyber" && SCENE_ON) document.body.prepend(createScene({ bot }));
 
   // The cue channel: one gesture, feeling or line the desk has been told to perform. It is read
   // off the same poll as everything else and drained once per stamp (see cue.mjs), then handed to
@@ -1920,17 +1916,16 @@ html.swae #desk .letters{background:#0b0d12f5}
     const FALLBACK_PLACE = "UNILAG";
     const MAP_ZOOM = 15.5;
     const SOURCE_LINE = "SOURCE: OSM VIA GEOFABRIK · SNAPSHOT";
-    const LOCPEEK_MS = num("locpeek", 300, 30, 3600) * 1000;
     const centreOf = (loc) => (loc ? [loc.lon, loc.lat] : FALLBACK_CENTER);
     const marginPx = () => Math.min(32, Math.max(12, 0.04 * Math.min(innerWidth, innerHeight)));
-    const placeName = h("span", "map-place", currentLocation?.place || FALLBACK_PLACE);
+.place || FALLBACK_PLACE);
     const readout = h("p", "map-readout", `MAP VIEW —— · Z${MAP_ZOOM} · ${SOURCE_LINE}`);
     const locStatus = h("p", "loc-status", "");
     const marker = h("div", "loc-marker");
     const canvas = h("div", "map-canvas", h("div", "cr-map"), marker);
     const locMap = h("section", { id: "loc-map", hidden: true, "aria-live": "off" },
       h("div", "map-top",
-        h("span", "map-name", "CRID // LOC"),
+        h("span", "map-name", "CYBER RADAR"),
         placeName),
       canvas,
       readout,
@@ -1939,13 +1934,10 @@ html.swae #desk .letters{background:#0b0d12f5}
 
     let map = null;
     let mapFailed = false;
-    let locMode = "compact"; // compact | peek | full
+    let locMode = "mini"; // mini | full
     let wantFull = P.get("locview") === "full";
     let animToken = 0;
-    let peekTimer = null;
-    let peekHideTimer = null;
     let fullTimer = null;
-    let nextPeekAt = 0;
     // The point the dock draws: the delayed feed fix first, then whatever the ranked location
     // sources already resolved (URL, operator point, browser fix). hidden never reaches here —
     // apply() nulls liveLoc and raises locHidden the moment the panic flag lands.
@@ -1956,13 +1948,10 @@ html.swae #desk .letters{background:#0b0d12f5}
       if (!map || !marker.isConnected) return;
       const p = dockPoint();
       if (!p || locMap.hidden) { marker.style.display = "none"; return; }
-      try {
-        // MapLibre's own project() — the marker rides the map's projection, so it stays glued
-        // through resizes and jumps. North-up only: desk state carries no heading to rotate by.
-        const pt = map.project([p.lon, p.lat]);
-        marker.style.display = "";
-        marker.style.transform = `translate(${Math.round(pt.x)}px,${Math.round(pt.y)}px)`;
-      } catch { marker.style.display = "none"; }
+      // GTA-style minimap behaviour: the player marker stays centred; the map recentres beneath it.
+      const r = canvas.getBoundingClientRect();
+      marker.style.display = "";
+      marker.style.transform = `translate(${Math.round(r.width / 2)}px,${Math.round(r.height / 2)}px)`;
     };
 
     const rectNow = () => {
@@ -2007,12 +1996,12 @@ html.swae #desk .letters{background:#0b0d12f5}
       requestAnimationFrame(step);
     };
 
-    const peekRect = () => {
+    const miniRect = () => {
       const m = marginPx();
       const split = document.documentElement.dataset.scene === "split";
       const available = split ? innerWidth / 2 : innerWidth;
-      const w = Math.min(430, available - 2 * m - 8);
-      const hgt = Math.min(230, Math.max(150, innerHeight * 0.2));
+      const w = Math.min(330, available - 2 * m - 8);
+      const hgt = Math.min(205, Math.max(126, w * .54));
       const dockTop = locDock.getBoundingClientRect().top;
       return { left: m, top: Math.max(m + 8, dockTop - hgt - 10), width: w, height: hgt };
     };
@@ -2024,84 +2013,63 @@ html.swae #desk .letters{background:#0b0d12f5}
         width: innerWidth * (split ? 0.44 : 0.94), height: innerHeight * 0.86 };
     };
 
-    const openLoc = (mode) => {
+    const openLoc = (mode = "full") => {
       if (!locEligible()) return false;
-      const wasOpen = locMode !== "compact";
-      locMode = mode;
+      const wasVisible = !locMap.hidden;
+      locMode = mode === "full" ? "full" : "mini";
       locMap.hidden = false;
       locMap.classList.add("loc-open");
       locDock.classList.add("loc-live");
       clearTimeout(fullTimer);
-      // Full view is a timed look, not a mode: 60 seconds and the dock goes back to the clock.
-      if (mode === "full") fullTimer = setTimeout(() => { if (locMode === "full") closeLoc(); }, 60000);
-      renderLocDock();
-      const to = mode === "full" ? fullRect() : peekRect();
-      if (wasOpen) animateRect(to, 460);
+      if (locMode === "full") fullTimer = setTimeout(() => { if (locMode === "full") closeLoc(); }, 60000);
+      const to = locMode === "full" ? fullRect() : miniRect();
+      if (wasVisible) animateRect(to, 420);
       else {
-        // Grow out of the clock: start as a zero-height sliver on the panel's bottom edge and
-        // let the tween carry it up into place.
         setRect({ ...to, top: to.top + to.height, height: 0 }, 0);
-        requestAnimationFrame(() => animateRect(to, mode === "full" ? 560 : 480));
+        requestAnimationFrame(() => animateRect(to, 360));
       }
       return true;
     };
     const closeLoc = () => {
-      if (locMode === "compact") return;
-      const r = rectNow();
-      const o = parseFloat(getComputedStyle(locMap).opacity) || 1;
-      // Retract the way it opened: collapse onto the bottom edge, which is the side touching
-      // the clock, then hide. A full-view close sweeps the same direction, just longer.
-      animateRect({ left: r.left, top: r.top + r.height, width: r.width, height: 0 },
-        locMode === "full" ? 540 : 400, () => {
+      if (locMode !== "full") return;
+      clearTimeout(fullTimer);
+      locMode = "mini";
+      const to = miniRect();
+      animateRect(to, 420, () => {
+        if (!locEligible()) {
           locMap.hidden = true;
           locMap.classList.remove("loc-open");
           locMap.style.opacity = "";
-          locMode = "compact";
-          clearTimeout(fullTimer);
-          armPeek();
-        }, r, o);
+        }
+      });
     };
-
-    // The peek schedule: one shot per eligibility window, jittered so two peeks never land on
-    // the same second of the hour twice. armPeek is the only place a peek timer is created.
-    const armPeek = () => {
-      clearTimeout(peekTimer);
-      peekTimer = null;
-      nextPeekAt = 0;
-      if (locMode !== "compact" || !locEligible()) return;
-      const wait = LOCPEEK_MS * (0.6 + Math.random() * 0.8);
-      nextPeekAt = Date.now() + wait;
-      peekTimer = setTimeout(firePeek, wait);
-    };
-    const firePeek = () => {
-      peekTimer = null;
-      nextPeekAt = 0;
-      if (locMode !== "compact" || !locEligible()) { armPeek(); return; }
-      openLoc("peek");
-      // CRID leans in: "peek" is his glance-up sequence, the lightest react that reads as
-      // "something just moved". Non-blocking — react() queues behind whatever he is doing.
-      try { bot?.react?.("peek"); } catch { /* a busy or dead bot simply does not react */ }
-      clearTimeout(peekHideTimer);
-      peekHideTimer = setTimeout(() => {
-        if (locMode === "peek") { closeLoc(); armPeek(); }
-      }, 20000 + Math.random() * 20000);
-    };
-    // Called on every poll via renderLocDock: keeps eligibility, the pending peek and any open
-    // mode honest against the freshest state. Cheap — it only arms timers on transitions.
-    const syncPeek = () => {
-      if (wantFull) {
-        wantFull = false;
-        if (locMode === "compact" && locEligible()) openLoc("full");
-      }
+    const syncMinimap = () => {
       if (!locEligible()) {
-        clearTimeout(peekTimer); clearTimeout(peekHideTimer);
-        peekTimer = null; nextPeekAt = 0;
-        if (locMode !== "compact") closeLoc();
+        clearTimeout(fullTimer);
+        locMode = "mini";
+        locMap.hidden = true;
+        locMap.classList.remove("loc-open");
+        locDock.classList.remove("loc-live");
+        locMap.style.opacity = "";
         return;
       }
-      if (locMode !== "compact") return; // peek and full own their own timers
-      if (!peekTimer && nextPeekAt === 0) armPeek();
+      locDock.classList.add("loc-live");
+      if (locMap.hidden) {
+        locMap.hidden = false;
+        locMap.classList.add("loc-open");
+        const to = miniRect();
+        setRect({ ...to, top: to.top + to.height, height: 0 }, 0);
+        requestAnimationFrame(() => animateRect(to, 360));
+      } else if (locMode === "mini") {
+        setRect(miniRect(), 1);
+      }
+      if (wantFull && locMode === "mini") {
+        wantFull = false;
+        openLoc("full");
+      }
     };
+
+    // The minimap is persistent and only appears while a privacy-safe coordinate exists.
 
     renderLocDock = () => {
       const p = dockPoint();
@@ -2121,15 +2089,17 @@ html.swae #desk .letters{background:#0b0d12f5}
       if (map && p) {
         const [lng, lat] = centreOf(p);
         const c = map.getCenter();
-        if (Math.abs(c.lng - lng) > 0.002 || Math.abs(c.lat - lat) > 0.002) map.jumpTo({ center: [lng, lat] });
-      } else if (map && !p) {
-        // No fix at all: an opened view shows the campus snapshot it always showed.
-        const c = map.getCenter();
-        if (Math.abs(c.lng - FALLBACK_CENTER[0]) > 0.002 || Math.abs(c.lat - FALLBACK_CENTER[1]) > 0.002)
-          map.jumpTo({ center: FALLBACK_CENTER });
+        // Location is the privacy-coarsened public fix. Recenter only when its cell changes, avoiding
+        // needless camera motion while keeping the player pinned to the centre of the minimap.
+        if (Math.abs(c.lng - lng) > 0.0001 || Math.abs(c.lat - lat) > 0.0001) {
+          const still = document.documentElement.classList.contains("swae") ||
+            (typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches);
+          if (still) map.jumpTo({ center: [lng, lat] });
+          else map.easeTo({ center: [lng, lat], duration: 520 });
+        }
       }
       updateMarker();
-      syncPeek();
+      syncMinimap();
     };
     // renderLocation() is the one place a resolved location lands; the dock listens through
     // this hook rather than growing a second render path (same contract the plate had).
@@ -2137,6 +2107,10 @@ html.swae #desk .letters{background:#0b0d12f5}
 
     // The dock itself is the click target: compact → full, full → compact, peek → full. It only
     // ever has pointer events while a fix exists — loc-live is the class that grants them.
+    window.addEventListener("resize", () => {
+      if (locMode === "mini" && !locMap.hidden && locEligible()) setRect(miniRect(), 1);
+      else if (locMode === "full" && !locMap.hidden) setRect(fullRect(), 1);
+    });
     locDock.addEventListener("click", () => {
       if (!locEligible()) return;
       if (locMode === "full") closeLoc(); else openLoc("full");
@@ -2195,7 +2169,7 @@ html.swae #desk .letters{background:#0b0d12f5}
       }, 12000);
     })().catch(() => {
       mapFailed = true;
-      syncPeek();
+      syncMinimap();
       canvas.remove();
       locMap.dataset.state = "unavailable";
       readout.textContent = `MAP VIEW —— · ${SOURCE_LINE} · UNAVAILABLE`;

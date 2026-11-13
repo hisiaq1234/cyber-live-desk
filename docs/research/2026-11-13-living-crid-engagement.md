@@ -98,6 +98,17 @@ Choose **A: The Ascent**, delivered in small, independently testable steps:
 3. What should a subscription/gift/Bits make visibly stronger: resolve for the next attempt, a recovery/save from a slip, or a temporary physical ability?
 4. When you are asleep, should CRID remain fully autonomous on the expedition, or only wake up around viewer-triggered decision windows?
 
+## Deployment-verification record — 2026-11-13
+
+- **Vercel is the canonical target.** The production `/desk` endpoint returned HTTP 200 when checked on 2026-11-13. It is the only hosted runtime that can exercise this project's Vercel serverless routes and rewrites.
+- **This branch has no Vercel preview by design.** `vercel.json` currently disables automatic Vercel deployments for `fix/crid-physical-mobility`; production therefore cannot prove this branch's unmerged overlay changes.
+- **Netlify is non-authoritative for this app.** Its commit-status preview was marked ready, but its `/desk` URL returned the host's 404 page because no Netlify function/rewrite configuration exists in this repository. Do not use that preview as a product verification signal.
+- **Local Vercel runtime was attempted without secrets.** Vercel CLI 65.15.0 linked the existing `crid/cyber-live-desk` project; development environment variables were explicitly not downloaded. The CLI then stopped before serving because its Windows builder cache could not create symlinks (`EPERM`). This is an environment/tooling blocker, not a repository build result, and left the Git working tree clean.
+
+### Consequence
+
+The startup-overlay change has passing source and integration coverage, but an interactive visual check of this exact branch still needs either a working Vercel local runtime or an explicitly enabled Vercel preview. No deployment was created while collecting this evidence.
+
 ## Confidence labels
 
 - **Fact:** platform delivery, Channel Points, state and code-path claims linked above or verified in the repository.

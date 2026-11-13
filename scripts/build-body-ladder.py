@@ -298,6 +298,9 @@ def build_all():
         areas.append(m["area"])
     if any(b <= a for a, b in zip(areas, areas[1:])):
         raise RuntimeError(f"body area must increase at every stage: {areas}")
+    heights = {s["ink"]["h"] for s in stages}
+    if heights != {1156}:
+        raise RuntimeError(f"all body stages must retain the selected r7 ink height of 1156px: {sorted(heights)}")
     diffs = [{"from":stages[i]["key"],"to":stages[i+1]["key"],
               "dw":stages[i+1]["ink"]["w"]-stages[i]["ink"]["w"],
               "dh":stages[i+1]["ink"]["h"]-stages[i]["ink"]["h"]}

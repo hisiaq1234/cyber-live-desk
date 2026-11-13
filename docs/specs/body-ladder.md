@@ -20,13 +20,13 @@ The r7 `ladder.json` at the same commit records these measured ink widths, in or
 | `1` | 676 px |
 | `2` — heaviest | 822 px |
 
-All reference frames were 1050×1400. The selected lean frame measures 307×1156 ink, with its floor at y=1325. The historical torso axis is x=560; the generator measures it from the pinned reference rather than assuming it from the image bounding-box centre. These widths are the seven production silhouette targets.
+All reference frames were 1050×1400. The selected lean frame measures 307×1156 ink, with its floor at y=1325. Its measured torso axis is x=559.9 (historical nominal x=560); the generator measures it from the pinned reference. These widths are the seven production silhouette targets.
 
 ## Production ladder rules
 
 - Render one front-facing pose at rotation 0 for body keys `3, 0, 4, 5, 1, 11, 2`.
 - Restore the historical r7 facial parameter values selected by the user. Keep the face identical across every body stage.
-- Keep all frames 1050×1400 and preserve the selected r7 head/face pixels exactly across stages. Align each body to the reference torso axis and floor y=1325. Measure ink height per stage; do not force a false shared height.
+- Keep all frames 1050×1400 and preserve the selected r7 head/face pixels exactly across stages. Align each body to the reference torso axis and floor y=1325. Preserve the 1156 px ink height; body growth is horizontal only and must not change the character's overall height.
 - Apply deterministic horizontal body-only deformation below the head lock line. Blend through the shoulders and taper the lower legs; never scale the head or move the feet.
 - Hit widths 307, 366, 420, 486, 560, 676 and 822 px in order. Every adjacent stage must be visibly wider.
 - Do not bake the backpack into the character. The bag stays a separate physical prop.

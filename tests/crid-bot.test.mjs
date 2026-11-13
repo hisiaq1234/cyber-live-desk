@@ -169,6 +169,9 @@ test("the body ladder preserves the selected r7 face and seven ordered body buil
   }
   const heads = new Set(doc.stages.map((s) => s.ink.y0));
   assert.equal(heads.size, 1, "every stage must keep the selected reference head top");
+  assert.equal(new Set(doc.stages.map((s) => s.ink.h)).size, 1,
+    "horizontal body growth must not change the selected r7 ink height");
+  assert.equal(doc.stages[0].ink.h, 1156);
   const heaviest = BODY_LADDER[BODY_LADDER.length - 1].w - BODY_LADDER[0].w;
   assert.ok(heaviest >= 90, `the heavy build is only ${heaviest}px wider than the lean one`);
   for (const s of doc.stages) {

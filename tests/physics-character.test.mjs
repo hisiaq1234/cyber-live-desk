@@ -32,7 +32,7 @@ test("jump applies a ballistic impulse and returns to floor support",()=>{
   const {world,body,run}=make({gravity:1000});
   assert.equal(world.jumpCharacter(body,{height:120,horizontal:30}),true);
   assert.equal(body.grounded,false);
-  run(.8);
+  run(1.2);
   assert.equal(body.grounded,true);
   assert.equal(body.supportId,"floor");
   assert.equal(body.y,-50);

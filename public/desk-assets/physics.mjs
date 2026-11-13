@@ -335,7 +335,11 @@ export function createWorld({ gravity = GRAVITY, fixedDt = 1 / 120 } = {}) {
     // snap only the remaining solver error onto that platform and end the pull.
     if (body.climb && body.grip && Math.abs(body.vy) < .25) {
       const tolerance = Math.max(.01, body.halfH * .08);
-      const support = platforms.find(p => overlapsX(body, p) &&
+      // The hips/body must actually clear the ledge edge before the mantle
+      // finishes. A toe/ankle overlap alone is not a stable standing support.
+      const support = platforms.find(p =>
+        body.x - body.halfW >= p.left - tolerance &&
+        body.x + body.halfW <= p.right + tolerance &&
         Math.abs(body.y + body.halfH - p.top) <= tolerance);
       if (support) {
         body.y = support.top - body.halfH;

@@ -43,6 +43,7 @@ export function createStage({
   slip = false,                    // boolean, or () => bool — the page's ?slip=1 forceSlip
   onInterrupt = () => {},
   canCompleteClimb = () => true,
+  canCompleteHop = () => true,
   walkX = 0,
   hisW = 0.55,
   hipY = 0.85,
@@ -312,6 +313,7 @@ export function createStage({
         stage.groundY = stage.topY * e;
         stage.walkX = stage.fromX + (stage.lipX - stage.fromX) * e;
         if (stage.t >= 0.55) {
+          if (!canCompleteHop(stage)) { stage.t = 0.55; break; }
           stage.walkX = stage.lipX; stage.seatY = stage.topY - hipY + 0.02; stage.groundY = stage.seatY;
           stage.surface = { name: stage.layer, top: stage.topY };
           stage.squashAt = nowMs; stage.hold = 3; go("seat");

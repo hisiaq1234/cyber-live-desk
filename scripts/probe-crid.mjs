@@ -63,7 +63,9 @@ console.log("[viewport]", WIDTH + "x" + HEIGHT, "[canvas]", probeInfo.result?.va
 if (probeInfo.result?.value?.includes('"canvas":false')) process.exitCode = 1;
 await capture("idle");
 if (process.env.PROBE_CLIMB === "1") {
-  await send("Runtime.evaluate", { expression: "window.lab.driveStage('climb','p-climb','start')" }, sessionId);
+  const drive = await send("Runtime.evaluate", { expression: "String(window.lab.driveStage('climb','p-climb','start'))", returnByValue: true }, sessionId);
+  console.log("[driveStage]", drive.result?.value);
+  if (drive.result?.value !== "true") process.exitCode = 1;
   await new Promise((r) => setTimeout(r, 5000));
   await capture("climb");
   for (let i = 0; i < 15; i++) {

@@ -283,7 +283,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     walkDir:walk&&walk.to?(walk.tx-walk.x<0?-1:1):(stage&&stage.targetX<cridBody.x?-1:1),fx,
     motorState:{x:cridBody.x,y:cridBody.y,vx:cridBody.vx,vy:cridBody.vy,
       grounded:cridBody.grounded,supportId:cridBody.supportId,distanceTravelled:cridBody.distanceTravelled,
-      screenX:cridBody.x*UPX(),active:!!(walk&&walk.to)||!!(stage&&stage.walking&&["approach","floor","top"].includes(stage.state)),
+      screenX:cridBody.x*UPX(),active:!!(walk&&walk.to)||!!(stage&&stage.walking&&["approach","floor","top"].includes(stage.state)),source:walk&&walk.to?"cue-layout":"stage-physics",kinematic:!!(walk&&walk.to),
       strideLength:Math.max(.08,cridBody.halfW*2.25),
       grip:cridBody.grip?{...cridBody.grip}:null},
     lean:leanAt||stageLean(),reduced,stage:BODIES[bodyI],face:faceNow,
@@ -1025,6 +1025,9 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     cridBody.halfW=Math.max(12,bodyWpx*.52)/UPX();cridBody.halfH=Math.max(30,bodyHpx*.5)/UPX();
     cridBody.floor=0;cridBody.gravity=2400/UPX();
     if(stage.state==="floor"&&(walk||leanAt||pendingLean)){
+      // A cue walk is screen-layout navigation, not game traversal. advanceWalk owns the
+      // percentage-positioned root for this short mode; the physical stage motor is bypassed.
+      // We only sample its actual displacement here so the 3D distance gait/foot lock stays live.
       const r=host.getBoundingClientRect(),nextX=stagePX(r.left+r.width/2),dx=nextX-cridBody.x;
       cridBody.distanceTravelled=(cridBody.distanceTravelled||0)+Math.abs(dx);
       cridBody.x=nextX;cridBody.y=-cridBody.halfH;cridBody.vx=0;cridBody.vy=0;

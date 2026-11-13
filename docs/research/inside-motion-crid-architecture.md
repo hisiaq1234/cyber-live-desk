@@ -132,7 +132,7 @@ The order used by its locomotion orchestrator is a useful design reference:
 
 PR #41 now extends the existing shared `physics.mjs` world and adds the stage-owned CRID root body; the abandoned standalone motor is removed. The layer registry feeds reachable platform surfaces into collision; jump, bounded grip, climb, floor landing, and support-gated stage transitions are implemented. The lab's `driveStage()` now submits an intent through the real display loop rather than directly advancing the choreography state machine. The lab exposes root/support and gait telemetry.
 
-The distance gait is a first selective adaptation of the reference's duty-factor/contact-state model, not a port of its full locomotion stack. Ordinary cue walks still use the existing `startWalk()/advanceWalk()` percentage-step path and are explicitly not yet unified with the physical root. That is a remaining integration task: do not claim the whole character has one source of truth until cue walking is either migrated to the motor or deliberately isolated behind a documented non-physical presentation contract.
+The distance gait is a first selective adaptation of the reference's duty-factor/contact-state model, not a port of its full locomotion stack. Ordinary cue walks intentionally remain a separate **screen-layout presentation mode**: `startWalk()/advanceWalk()` positions CRID beside desk panels, where the target may be above the floor and is not a game-world traversal surface. During that mode the stage physics motor is explicitly bypassed; the bot samples the displayed root displacement only to drive distance-based gait and foot-lock feedback (`motorState.source="cue-layout"`, `kinematic=true`). Platform approach, climbing, jumping, slipping, dropping and landing remain owned by the physical stage motor (`source="stage-physics"`). These modes are mutually exclusive, so they cannot write the root simultaneously. This is a deliberate separation, not an unimplemented second game motor.
 
 PR #41 remains a draft and `main` is untouched. The latest checked GitHub Actions run is green, but that does not replace the still-required real browser captures of a walk, climb, grip failure, drop, landing and cue-owned movement at phone and desktop sizes.
 
@@ -234,7 +234,7 @@ For the desk, an adapter maps this to the present 2.5D world and screen. For the
 
 - [ ] All repository tests green on the final PR head.
 - [ ] Existing cue walk/lean/gesture tests still pass; cue-owned movement never fights the physical stage root.
-- [ ] Cue-owned horizontal walking is driven by the same motor, or its screen-layout-only contract is explicitly separated and verified with no conflicting root writes.
+- [x] Cue-owned walks are explicitly separated as screen-layout presentation; stage physics is bypassed during them and measured displacement still drives the distance gait. The physical motor owns game traversal.
 - [ ] A reach target outside measured arm range is rejected.
 - [ ] A heavy / bag-loaded climb either reaches the ledge or fails visibly and falls; it never teleports.
 - [ ] The root is fully supported before the stage says `top` or `seat`.

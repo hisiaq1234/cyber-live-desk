@@ -438,7 +438,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     for(const name of names){
       const b=layerOf(name); if(!b||!b.edge)continue;
       const left=b.edge.left??(b.edge.x??0),right=b.edge.right??(left+(b.w||0));
-      stageBoxes[name]={left:stagePX(left),right:stagePX(right),top:(feet-(b.edge.top??0))/UPX(),w:b.w/UPX(),h:b.h/UPX(),z:b.z??0}}};
+      stageBoxes[name]={left:stagePX(left),right:stagePX(right),top:(feet-(b.edge.top??0))/UPX(),w:b.w/UPX(),h:b.h/UPX(),z:b.z??0}};
     // Mirror deskTargets' physical reach/occlusion checks without calling it
     // during boot (its responsive dimensions are initialized later in this file).
     const bodySpec=build(),wPx=(stageHW.w||host.offsetWidth||innerWidth*.175)*bodySpec.w/FRAME.w,hPx=(stageHW.h||host.offsetHeight||220)*bodySpec.h/FRAME.h;

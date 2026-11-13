@@ -444,6 +444,8 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const getStage=()=>stage||(stage=createStage({
     targets:deskTargets,boxes:stageBoxes,unit:UPX,worldX:px=>stagePX(px),screenWidth:()=>innerWidth,
     rand:Math.random,mass:()=>build().heft,bagOn:()=>bag.worn,
+    canCompleteClimb:()=>!!(cridBody.grounded&&cridBody.supportId===stage?.layer),
+    canCompleteHop:()=>!!(cridBody.grounded&&cridBody.supportId===stage?.layer),
     hisW:Math.max(40,(host.offsetWidth||innerWidth*.175))/UPX(),hipY:Math.max(50,(host.offsetHeight||220)*.5)/UPX(),
     walkX:0,   // seeded from his real centre-x on first step (stageSeed)
     onInterrupt:reason=>{try{being.interrupt(reason)}catch{}
@@ -1004,6 +1006,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     return m?{x:+m[1]/innerWidth*100,y:+m[2]/innerHeight*100}:null};
   const stageTick=()=>{
     if(!stage)return;
+    if(stageTick.lastState!==stage.state){stageTick.lastState=stage.state;if(stage.state==="hop")stageTick.hopStarted=false}
     if(!stageAnchored&&stage.state==="floor"&&!stage.walking&&!cridBody.motor&&!cridBody.grip)return;
     const now=Date.now(),dt=stageWalkMs?Math.min(.1,Math.max(0,(now-stageWalkMs)/1000)):.016;stageWalkMs=now;
     const heft=build().heft,load=bag.worn?BAG_MASS:0;
@@ -1019,8 +1022,9 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
         {strength:heft,load,maxAcceleration:4.5,stiffness:18,damping:8});
     } else if(stage.state==="reach"&&!cridBody.grip){
       const box=stageBoxes[stage.layer],side=stage.side==="right"?-1:1;
-      if(box)world.grabCharacter(cridBody,{id:stage.layer,x:side<0?box.right:box.left,y:-box.top},
+      const anchored=box&&world.grabCharacter(cridBody,{id:stage.layer,x:side<0?box.right:box.left,y:-box.top},
         {side,strength:heft,load,reach:cridBody.halfH*1.9});
+      if(!anchored)stage.gripFailed=true;
     } else if(["slip","drop","hop-down","crouch"].includes(stage.state)){
       world.releaseGrip(cridBody);world.stopCharacter(cridBody);
     } else if(stage.state==="hop"&&!stageTick.hopStarted){
@@ -1031,7 +1035,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     }
     stage.walkX=cridBody.x;
     stage.groundY=Math.max(0,-(cridBody.y+cridBody.halfH));
-    if(cridBody.gripFailed&&stage.state==="pull")world.releaseGrip(cridBody);
+    if(cridBody.gripFailed&&stage.state==="pull"){stage.gripFailed=true;world.releaseGrip(cridBody)}
     if(!stageAnchored){
       stageAnchored=true;host.classList.remove(...homeCls);host.classList.add("roam");
       host.style.left="0px";host.style.top="0px";host.style.marginLeft="0px";host.style.willChange="transform"}

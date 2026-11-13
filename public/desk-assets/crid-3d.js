@@ -16,6 +16,7 @@
 import{createFacial}from"./facial.mjs";
 import{TwoBoneIK}from"./ik.mjs";
 import{stageChannels}from"./stage.mjs";
+import{createDistanceGait}from"./gait.mjs";
 const GLB="/desk-assets/crid3d/crid.glb";
 const M={jaw:"ai_jawOpen",eyeShutL:"ai_eyeUpperClose_L",eyeShutR:"ai_eyeUpperClose_R",
   eyeShutLL:"ai_eyeLowerClose_L",eyeShutLR:"ai_eyeLowerClose_R",
@@ -413,6 +414,7 @@ export async function initCrid3D(host,getState,onReady,onFail){
     // A stance foot is stored in renderer world space until that foot enters swing.
     // Root translation is compensated in projected screen space so it cannot skate.
     const footPlant={L:null,R:null};let lastMotorScreenX=null;
+    const distanceGait=createDistanceGait({dutyFactor:.62});let gaitState=null;
     // Landing squash clock (pose-path landings) + head-turn rate for the blink scheduler.
     let sqAt=-9,prevBy=0,prevHeadYaw=0,prevHeadPitch=0,headTurnS=0;
     const ikSolver=new TwoBoneIK();let ikLast=null,ikDbg="";
@@ -420,6 +422,8 @@ export async function initCrid3D(host,getState,onReady,onFail){
       _ic=new THREE.Vector3(),_ip=new THREE.Vector3(),_io=new THREE.Vector3(),
       _idv=new THREE.Vector3(),_iq=new THREE.Quaternion(),_ih=new THREE.Vector3(),_aq=new THREE.Quaternion();
     try{window.__cridIk={w:()=>ikW,last:()=>ikLast,dbg:()=>ikDbg}}catch{}
+    try{window.__cridGait=()=>gaitState?{phase:gaitState.phase,duty:gaitState.dutyFactor,
+      left:gaitState.left,right:gaitState.right,events:gaitState.events,steps:gaitState.steps}:null}catch{}
     const face=createFacial();let lastFaceKey=null;
     // Read-only handle for visual QA: the shot harness polls channels() to catch
     // a blink at its peak, and morph() proves the weight actually reached the GLB.
@@ -471,14 +475,17 @@ export async function initCrid3D(host,getState,onReady,onFail){
       // Walk settle: the gait fades over ~200 ms instead of snapping off — a stop
       // is a settle, not a cut. Phase keeps its own clock; only amplitude blends.
       walkW+=((walking?1:0)-walkW)*Math.min(1,dt*5);
+      const motor=st.motorState||null;
+      gaitState=motor&&Number.isFinite(motor.distanceTravelled)
+        ?distanceGait.update(motor.distanceTravelled,motor.strideLength||.3,!!(walking&&motor.active))
+        :null;
       if(walking){
-        if(st.motorState?.active&&Number.isFinite(st.motorState.screenX)){
-          const strideLength=Math.max(.08,st.motorState.strideLength||.3);
-          phase=(st.motorState.distanceTravelled/strideLength)%1;
-        } else phase=(phase+dt*(reduced?3.4:5.2))%1;
+        if(gaitState?.active)phase=gaitState.phase;
+        else phase=(phase+dt*(reduced?3.4:5.2))%1;
       }
-      const u=phase,gait=Math.sin(TAU*u),          // one full gait cycle per phase wrap
-        kL=swingOf(((u*2)%1+.5)%1)*walkW,kR=swingOf(((u*2+.5)%1+.5)%1)*walkW;
+      const u=phase,gait=Math.sin(TAU*u),          // one cycle per left-foot-to-left-foot stride
+        kL=(gaitState?.active?gaitState.left.swing:swingOf(((u*2)%1+.5)%1))*walkW,
+        kR=(gaitState?.active?gaitState.right.swing:swingOf(((u*2+.5)%1+.5)%1))*walkW;
 
       // Facing: eased yaw toward travel direction; a lean pulls him toward the panel.
       const dir=st.walkDir||(st.fx<0?-1:1),

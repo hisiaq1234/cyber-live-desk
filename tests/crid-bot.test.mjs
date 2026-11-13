@@ -473,7 +473,7 @@ test("dropbag spills paper that falls under the same gravity and comes to rest (
 });
 
 
-test("the autonomous sit-on behaviour does not apply the rejected smug face", () => {
-  assert.ok(bot.includes('beingLean=it.layer;feel("curious",{faceOnly:!0})'));
+test("the autonomous sit-on behaviour keeps the approved neutral face", () => {
+  assert.ok(bot.includes('beingLean=it.layer;if(key==="lean-watch")feel("curious",{faceOnly:!0})'));
   assert.ok(!bot.includes('feel(key==="sit-on"?"smug":"curious"'));
 });

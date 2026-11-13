@@ -1280,7 +1280,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       if(reduced){beingFired=!0;being.interrupt("reduced-motion");return}
       beingFired=!0;
       if(!it.layer)being.interrupt("no-panel");
-      else{beingLean=it.layer;feel("curious",{faceOnly:!0})}}
+      else{beingLean=it.layer;if(key==="lean-watch")feel("curious",{faceOnly:!0})}}
     else if(key==="climb"){
       // Real climb: approach → reach → pull → top → descend, with the slip
       // chance physics.md §2 gives a bag-carrying lean body.

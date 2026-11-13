@@ -8,7 +8,7 @@ selected `body-000-r7.webp` as the exact leanest look and face. That file is now
 stage and is copied byte-for-byte into production. The other six stages use Snap's distinct
 front-facing body values, ordered lean -> heavy:
 
-    body=3  leanest    body=0  lean    body=4  light    body=5  average
+    body=3  exact r7 reference    body=0  lean    body=4  light    body=5  average
     body=1  full       body=11 heavy   body=2  heaviest
 
 The six heavier frames inherit the exact head/face crop from the selected r7 image. Their bodies are
@@ -35,7 +35,7 @@ or forced to a stale shared value.
 Needs Pillow (not a runtime dependency — this is a one-off asset tool):
   python3 -m pip install pillow
 
-  python3 scripts/build-body-ladder.py --fetch    # download the seven masters from Snap
+  python3 scripts/build-body-ladder.py --fetch    # pin r7 reference + fetch six Snap masters
   python3 scripts/build-body-ladder.py            # frame + measure: frames, ladder.json
   python3 scripts/build-body-ladder.py --measure  # print the ink box of every shipped frame
   python3 scripts/build-body-ladder.py --sheet OUT.png   # comparison sheet at 336px and 150px
@@ -341,7 +341,7 @@ def sheet(out_path):
     except OSError:
         font = bold = small = ImageFont.load_default()
 
-    d.text((pad, pad - 4), "Crid body ladder — one Snap render at rotation 0, seven builds",
+    d.text((pad, pad - 4), "Crid body ladder — exact r7 lean reference + six Snap builds",
            fill=(244, 240, 255, 255), font=bold)
     y = pad + 26
     for w, tiles in rows:

@@ -220,6 +220,16 @@ export async function initCrid3D(host,getState,onReady,onFail){
       tThighR:"R_legUpper0002_bind_JNT",tShinR:"R_legLower0002_bind_JNT"};
     const LIMB_TWIST=[["armL","tArmL"],["foreL","tForeL"],["armR","tArmR"],["foreR","tForeR"],
       ["thighL","tThighL"],["shinL","tShinL"],["thighR","tThighR"],["shinR","tShinR"]];
+    // Foot-lock bind data: where each ankle sits relative to the pelvis, and how
+    // high the ankle rides above the floor plane. Measured once at bind — the
+    // stage machine's surface states reuse it as the IK target every frame.
+    model.updateMatrixWorld(!0);
+    const bindPelvis=B(J.pelvis).getWorldPosition(new THREE.Vector3());
+    const footBind={};
+    for(const sd of["L","R"]){const f=B(J["foot"+sd]);if(!f)continue;
+      const fp=f.getWorldPosition(new THREE.Vector3());
+      footBind[sd]={x:fp.x-bindPelvis.x,z:fp.z-bindPelvis.z,ankleH:fp.y-shadowY()}}
+    function shadowY(){shadow.updateWorldMatrix(!0,!1);return shadow.getWorldPosition(new THREE.Vector3()).y}
     // Fingers: five chains per hand. Each entry carries its bone, its share of
     // the curl (middle joints fold furthest) and the side sign — the rig
     // mirrors L/R, so one axis angle closes both hands.
@@ -235,7 +245,7 @@ export async function initCrid3D(host,getState,onReady,onFail){
     // The bind pose holds his arms wide (A-pose); the relaxed hang is the baseline of every pose.
     const RELAX={armL:{z:1.12},armR:{z:-1.12},foreL:{x:.3},foreR:{x:-.3}};
 
-    let disposed=!1,raf=0,ready=!1,phase=0,heading=0,bagShown=true,ikW=0;
+    let disposed=!1,raf=0,ready=!1,phase=0,heading=0,bagShown=true,ikW=0,footW=0,footDbg=0;
     const ikSolver=new TwoBoneIK();let ikLast=null,ikDbg="";
     const _iv=new THREE.Vector3(),_id=new THREE.Vector3(),_it=new THREE.Vector3(),
       _ic=new THREE.Vector3(),_ip=new THREE.Vector3(),_io=new THREE.Vector3(),
@@ -384,7 +394,7 @@ export async function initCrid3D(host,getState,onReady,onFail){
       // decompose degrades, so extreme poses keep the procedural arm.
       const leanOn=!!(st.lean&&alive),uniform=Math.abs(bs-1)<.15;
       ikW+=((leanOn&&uniform?1:0)-ikW)*Math.min(1,dt*4);
-      ikDbg=`w=${ikW.toFixed(2)} lean=${!!st.lean} alive=${alive} uni=${uniform} bs=${bs} c=${!!(st.lean&&st.lean.contact)}`;
+      ikDbg=`w=${ikW.toFixed(2)} foot=${footW.toFixed(2)}${footDbg?" !reach":""} lean=${!!st.lean} alive=${alive} uni=${uniform} bs=${bs} c=${!!(st.lean&&st.lean.contact)}`;
       if(ikW>.02&&leanOn&&uniform){
         const sd=st.lean.dir>0?"R":"L";
         const sh=B(J["arm"+sd]),fo=B(J["fore"+sd]),ha=B(J["hand"+sd]),c=st.lean.contact;
@@ -415,6 +425,24 @@ export async function initCrid3D(host,getState,onReady,onFail){
             ikLast.hx=((_ip.x+1)/2*r.width+r.left).toFixed(1);ikLast.hy=((1-_ip.y)/2*r.height+r.top).toFixed(1);
           }
         }
+      }
+
+      // Foot-lock: while the stage machine has him standing on a surface (top,
+      // seat, lean — not mid-pull, not stepping), each ankle is IK'd onto its
+      // bind stance at floor height. This is what keeps his feet planted when
+      // the body rolls into a lean or drifts on a panel lip instead of skating.
+      const locked=!!(sp&&alive&&!sp.ref.walking&&["top","seat","lean","lean-in"].includes(sp.state));
+      footW+=((locked?1:0)-footW)*Math.min(1,dt*5);
+      if(footW>.02&&footBind.L&&footBind.R){
+        footDbg=0;B(J.pelvis).getWorldPosition(_ip);const floorY=shadowY();
+        for(const sd of["L","R"]){const fb=footBind[sd],th=B(J["thigh"+sd]),sn=B(J["shin"+sd]),ft=B(J["foot"+sd]);
+          if(!th||!sn||!ft)continue;
+          ft.getWorldPosition(_it);                                   // current ankle
+          _ic.set(_ip.x+fb.x,floorY+fb.ankleH,_ip.z+fb.z);            // planted target
+          _it.lerp(_ic,footW);                                        // eased reach, like the hand plant
+          _id.set(_it.x,_it.y+.5,_it.z+.5);                           // pole: knees back, away from camera
+          const r2=ikSolver.solve({rootBone:th,middleBone:sn,endBone:ft,target:_it,poleTarget:_id,preserveEndRotation:!0});
+          if(r2&&!r2.reachable)footDbg=1}
       }
 
       // Twist helpers: Snap's 0002 bones are children of their 0001 parents (via

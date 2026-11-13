@@ -280,7 +280,10 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     return null};
   init3d(host,()=>({p:lastPose,mode,dying,
     walking:!!(walk&&walk.to)||(stage?stage.walking&&Math.abs(stage.targetX-stage.walkX)>.015:!1),
-    walkDir:walk&&walk.to?(walk.tx-walk.x<0?-1:1):(stage&&stage.targetX<stage.walkX?-1:1),fx,
+    walkDir:walk&&walk.to?(walk.tx-walk.x<0?-1:1):(stage&&stage.targetX<cridBody.x?-1:1),fx,
+    motorState:{x:cridBody.x,y:cridBody.y,vx:cridBody.vx,vy:cridBody.vy,
+      grounded:cridBody.grounded,supportId:cridBody.supportId,distanceTravelled:cridBody.distanceTravelled,
+      grip:cridBody.grip?{...cridBody.grip}:null},
     lean:leanAt||stageLean(),reduced,stage:BODIES[bodyI],face:faceNow,
     stagePose:stage?{ref:stage,roll:stage.roll,pitch:stage.pitch,liftPx:stage.groundY*UPX(),
       state:stage.state,key:stage.key,trace:stage.trace,squash:stage.squashEnv||0,
@@ -298,6 +301,11 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // physics body that falls, bounces once and settles on the same floor line his feet use, and it
   // stays exactly where it landed — that is the continuity a returning viewer reads.
   const BAG_MASS=.5,world=createWorld();
+  // One weighted character body in the shared bag/paper world.
+  const cridBody=world.add({character:true,x:0,y:-1,vx:0,vy:0,
+    halfW:Math.max(20,(host.offsetWidth||innerWidth*.175)*.34)/UPX(),
+    halfH:Math.max(50,(host.offsetHeight||220)*.47)/UPX(),
+    floor:0,mass:build().heft,strength:build().heft,grounded:true,supportId:"floor"});
   const bagEl=document.createElement("div"); bagEl.id="crid-bag";
   const bagSvg=el("svg",{viewBox:"0 0 64 78","aria-hidden":"true",focusable:"false"});
   bagSvg.append(
@@ -429,6 +437,9 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       const b=layerOf(name); if(!b||!b.edge)continue;
       const left=b.edge.left??(b.edge.x??0),right=b.edge.right??(left+(b.w||0));
       stageBoxes[name]={left:stagePX(left),right:stagePX(right),top:(feet-(b.edge.top??0))/UPX(),w:b.w/UPX(),h:b.h/UPX(),z:b.z??0}}};
+    world.setPlatforms(Object.entries(stageBoxes).map(([id,b])=>({
+      id,left:b.left,right:b.right,top:-b.top,bottom:-b.top+b.h,solidSides:true
+    })));
   const getStage=()=>stage||(stage=createStage({
     targets:deskTargets,boxes:stageBoxes,unit:UPX,worldX:px=>stagePX(px),screenWidth:()=>innerWidth,
     rand:Math.random,mass:()=>build().heft,bagOn:()=>bag.worn,
@@ -440,7 +451,8 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       if(leanAt||pendingLean){pendingLean=null;leanAt=null;lastDrawn=""}}}));
   // Seed walkX from where he actually stands the first time the machine wakes.
   const stageSeed=()=>{if(stage&&stage.walkX===0){const r=host.getBoundingClientRect();
-    stage.walkX=stagePX(r.left+r.width/2)}};
+    stage.walkX=stagePX(r.left+r.width/2);cridBody.x=stage.walkX;
+    cridBody.y=-cridBody.halfH;cridBody.floor=0;cridBody.grounded=true;cridBody.supportId="floor"}};
   // His inner life (being.mjs is pure — drives in, an intent out; beingTick below is the body
   // half). The registry is read live on every decision, so a panel that moves or leaves simply
   // stops being offered. beingOpts is the test seam: rng/drives/cooldown can be pinned without
@@ -991,17 +1003,38 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     return m?{x:+m[1]/innerWidth*100,y:+m[2]/innerHeight*100}:null};
   const stageTick=()=>{
     if(!stage)return;
-    if(!stageAnchored&&stage.state==="floor"&&!stage.walking){stageWalkMs=0;return}
+    if(!stageAnchored&&stage.state==="floor"&&!stage.walking&&!cridBody.motor&&!cridBody.grip)return;
     const now=Date.now(),dt=stageWalkMs?Math.min(.1,Math.max(0,(now-stageWalkMs)/1000)):.016;stageWalkMs=now;
-    if(stage.walking&&Math.abs(stage.targetX-stage.walkX)>.015){
-      const speedPx=.76*(stageHW.w||host.offsetWidth||180)*(stage.groundY>.02?.7:1);
-      stage.walkX+=Math.sign(stage.targetX-stage.walkX)*Math.min(Math.abs(stage.targetX-stage.walkX),speedPx*dt/UPX())}
+    const heft=build().heft,load=bag.worn?BAG_MASS:0;
+    cridBody.mass=heft;cridBody.strength=heft;
+    cridBody.halfW=Math.max(20,(stageHW.w||host.offsetWidth||180)*.34)/UPX();
+    cridBody.halfH=Math.max(50,(stageHW.h||host.offsetHeight||220)*.47)/UPX();
+    cridBody.floor=0;
+    if(stage.walking&&["approach","floor","top"].includes(stage.state)){
+      world.moveCharacter(cridBody,stage.targetX,{maxSpeed:Math.max(.12,.76*(stageHW.w||180)/UPX()),
+        acceleration:3.2,strength:heft,load});
+    } else if(stage.state==="pull"&&cridBody.grip){
+      world.climbCharacter(cridBody,{x:stage.lipX,feetY:-stage.topY},
+        {strength:heft,load,maxAcceleration:4.5,stiffness:18,damping:8});
+    } else if(stage.state==="reach"&&!cridBody.grip){
+      const box=stageBoxes[stage.layer],side=stage.side==="right"?-1:1;
+      if(box)world.grabCharacter(cridBody,{id:stage.layer,x:side<0?box.right:box.left,y:-box.top},
+        {side,strength:heft,load,reach:cridBody.halfH*1.9});
+    } else if(["slip","drop","hop-down","crouch"].includes(stage.state)){
+      world.releaseGrip(cridBody);world.stopCharacter(cridBody);
+    } else if(stage.state==="hop"&&!stageTick.hopStarted){
+      stageTick.hopStarted=true;
+      world.jumpCharacter(cridBody,{height:Math.max(0,stage.topY),horizontal:(stage.lipX-cridBody.x)*.6});
+    } else if(!["top","approach","floor"].includes(stage.state)){
+      world.stopCharacter(cridBody);
+    }
+    stage.walkX=cridBody.x;
+    stage.groundY=Math.max(0,-(cridBody.y+cridBody.halfH));
+    if(cridBody.gripFailed&&stage.state==="pull")world.releaseGrip(cridBody);
     if(!stageAnchored){
-      stageAnchored=true;
-      host.classList.remove(...homeCls);host.classList.add("roam");
-      host.style.left="0px";host.style.top="0px";
-      host.style.marginLeft="0px";host.style.willChange="transform"}
-    const cxPx=stage.walkX*UPX()+innerWidth/2,gY=stage.groundY*UPX();
+      stageAnchored=true;host.classList.remove(...homeCls);host.classList.add("roam");
+      host.style.left="0px";host.style.top="0px";host.style.marginLeft="0px";host.style.willChange="transform"}
+    const cxPx=cridBody.x*UPX()+innerWidth/2,gY=stage.groundY*UPX();
     const w=stageHW.w||host.offsetWidth,h=stageHW.h||host.offsetHeight;
     host.style.transform=`translate3d(${(cxPx-w/2).toFixed(2)}px,${(deskFeet()-h-gY).toFixed(2)}px,0)`};
   // The stage machine itself runs on the display's clock, not the behaviour
@@ -1012,8 +1045,9 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const stageDrive=now=>{
     if(stage&&mode==="on"&&!dying&&!reduced){
       const dt=lastStageRAF?Math.min(.1,Math.max(0,(now-lastStageRAF)/1000)):.016; lastStageRAF=now;
-      try{stage.step(now,stageBusy?null:stageIntent,dt)}catch{}}
-    else lastStageRAF=0};
+      try{stage.step(now,stageBusy?null:stageIntent,dt)}catch{}
+      stageTick();
+    } else lastStageRAF=0};
   const stageRAF=()=>{
     if(frozen){requestAnimationFrame(stageRAF);return}
     stageDrive(Date.now());
@@ -1032,7 +1066,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const tick=()=>{if(frozen)return; const now=Date.now(); tickN++;
     // The bag is a body in the same world as everything else: it integrates on the tick's own
     // clock, and while it is in the air the loop runs at the fast cadence so the fall reads.
-    const tS=now/1000,fdt=Math.min(.25,tS-(tick.lastT||tS)); world.step(fdt); tick.lastT=tS;
+    const tS=now/1000,fdt=Math.min(.1,tS-(tick.lastT||tS)); world.step(fdt); tick.lastT=tS;
     if(!reduced)for(const p of papers)if(!world.settled(p.body))p.body.vx+=Math.sin(tS*6+p.phase)*150*fdt;
     {const r=host.getBoundingClientRect(),cx=r.left+r.width/2; hisVx=(cx-(tick.lastCX||cx))/Math.max(.05,tS-(tick.lastCT||tS)); tick.lastCX=cx; tick.lastCT=tS}
     placeBag(); placePapers(now);

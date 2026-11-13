@@ -94,7 +94,7 @@ export async function initCrid3D(host,getState,onReady,onFail){
     renderer.toneMapping=THREE.NoToneMapping;
 
     const scene=new THREE.Scene();
-    const cam=new THREE.PerspectiveCamera(32,1,.1,50);
+    const cam=new THREE.PerspectiveCamera(24,1,.1,50);
 
     // Camera sits at -Z. The bind pose faces +Z, so a half turn on the model
     // puts the face toward the camera. Turn group still carries walk yaw and lean.
@@ -316,17 +316,38 @@ export async function initCrid3D(host,getState,onReady,onFail){
     const stepSpring=(s,target,k,d,dt)=>{const n=Math.max(1,Math.ceil(dt/.008)),h=dt/n;
       for(let i=0;i<n;i++){const a=(target-s.v)*k-s.vel*d;s.vel+=a*h;s.v+=s.vel*h}return s.v};
     freezeChan();   // rest parent orientations at bind — the same reference frame the rig page froze
-    // Fingers: five chains per hand. Each entry carries its bone, its share of
-    // the curl (middle joints fold furthest) and the side sign — the rig
-    // mirrors L/R, so one axis angle closes both hands.
+    // Fingers: five chains per hand. The curl axis is MEASURED at bind, not
+    // guessed — each joint's direction to its child crossed with the palm's
+    // inward normal gives the anatomical hinge, brought into bone-local space.
+    // The old single local-Z angle curled some chains sideways; this closes
+    // every finger toward the palm on both hands (the _SSC mirror quirks cancel
+    // out because the axis comes from the real geometry, not a side sign).
     const FINGERS=[],FINGER_W=[.35,.6,.85,.6],THUMB_W=[.4,.7,.5];
-    for(const side of["L","R"])
-      for(const f of["Thumb","Pointer","Middle","Ring","Pinky"]){
-        // sgn is +1 for BOTH hands: the _SSC helper nodes break the L/R mirror
-        // assumption — FK verification showed -1 on L hyperextends the fingers.
-        const ws=f==="Thumb"?THUMB_W:FINGER_W,sgn=1;
-        for(let i=0;i<ws.length;i++)FINGERS.push({
-          b:`${side}_hand${f}000${i+1}_bind_JNT`,w:ws[i],s:sgn})}
+    {
+      const _fv=new THREE.Vector3(),_fq=new THREE.Quaternion(),
+        pv=b=>{b.getWorldPosition(_fv);return _fv.clone()};
+      for(const side of["L","R"]){
+        const hand=B(J["hand"+side]),mid1=B(`${side}_handMiddle0001_bind_JNT`),
+          ptr1=B(`${side}_handPointer0001_bind_JNT`),pnk1=B(`${side}_handPinky0001_bind_JNT`),
+          th1=B(`${side}_handThumb0001_bind_JNT`);
+        if(!hand||!mid1)continue;
+        const fwd=pv(mid1).sub(pv(hand)).normalize();
+        const across=(ptr1&&pnk1?pv(pnk1).sub(pv(ptr1)).normalize():new THREE.Vector3(1,0,0));
+        const palm=across.cross(fwd);
+        if(palm.lengthSq()>.25){palm.normalize();
+          if(th1){const toT=pv(th1).sub(pv(hand));if(toT.dot(palm)<0)palm.negate()}
+        }else palm.set(0,0,0);
+        for(const f of["Thumb","Pointer","Middle","Ring","Pinky"]){
+          const ws=f==="Thumb"?THUMB_W:FINGER_W;let dir=null;
+          for(let i=0;i<ws.length;i++){
+            const bn=`${side}_hand${f}000${i+1}_bind_JNT`,b=B(bn);if(!b)continue;
+            const ch=B(`${side}_hand${f}000${i+2}_bind_JNT`);
+            dir=ch?pv(ch).sub(pv(b)).normalize():(dir||fwd.clone());
+            if(palm.lengthSq()<.25)continue;
+            const axis=dir.clone().cross(palm).normalize();
+            b.getWorldQuaternion(_fq);axis.applyQuaternion(_fq.invert());
+            FINGERS.push({b:bn,w:ws[i],axis})}}}
+    }
     const has=k=>!!B(J[k]);
     // The bind pose holds his arms wide (A-pose); the relaxed hang is the baseline of every pose.
     const RELAX={armL:{z:1.12},armR:{z:-1.12},foreL:{x:.3},foreR:{x:-.3}};
@@ -337,7 +358,7 @@ export async function initCrid3D(host,getState,onReady,onFail){
     const ikSolver=new TwoBoneIK();let ikLast=null,ikDbg="";
     const _iv=new THREE.Vector3(),_id=new THREE.Vector3(),_it=new THREE.Vector3(),
       _ic=new THREE.Vector3(),_ip=new THREE.Vector3(),_io=new THREE.Vector3(),
-      _idv=new THREE.Vector3(),_iq=new THREE.Quaternion(),_ih=new THREE.Vector3();
+      _idv=new THREE.Vector3(),_iq=new THREE.Quaternion(),_ih=new THREE.Vector3(),_aq=new THREE.Quaternion();
     try{window.__cridIk={w:()=>ikW,last:()=>ikLast,dbg:()=>ikDbg}}catch{}
     const face=createFacial();let lastFaceKey=null;
     // Read-only handle for visual QA: the shot harness polls channels() to catch
@@ -453,7 +474,8 @@ export async function initCrid3D(host,getState,onReady,onFail){
       // grip (the IK lean, the stage machine's reach/seat) closes toward
       // .85; dying lets them go slack. st.grip is the stage machine's channel.
       // curlW eases the grip in — fingers are flesh on springs, not switches.
-      // TUNE: the curl axis is first-pass local Z — check a grip screenshot.
+      // The hinge is each joint's measured anatomical axis (bind pose), so the
+      // curl closes toward the palm instead of guessing local Z.
       const gripT=clamp(Math.max(ikW||0,(sp&&sp.grip)||st.grip||0,dying?.25:0),0,1);
       // Flesh on a spring: the curl trails the grip by a few frames and settles
       // with one small overshoot instead of snapping shut.
@@ -463,8 +485,9 @@ export async function initCrid3D(host,getState,onReady,onFail){
       // so it doesn't claw at air during a one-armed lean.
       const plantSide=st.lean?(st.lean.dir>0?"R":"L"):null;
       for(const f of FINGERS){
-        const a=.14+.78*(f.b[0]===plantSide?grip:grip*.35);
-        rot(f.b,0,0,f.s*f.w*a*.9)}
+        const a=.14+.78*(f.b[0]===plantSide?grip:grip*.35),b=B(f.b);if(!b)continue;
+        _aq.setFromAxisAngle(f.axis,a*f.w*.9);
+        b.quaternion.copy(b.userData.q0).multiply(_aq)}
 
       // Toes: the foot has a real toe joint (foot0002). It rolls through the
       // step — dorsiflexed in swing, plantar-flexed at push-off — instead of
@@ -499,12 +522,16 @@ export async function initCrid3D(host,getState,onReady,onFail){
         lookBias:st.lookBias,headTurn:headTurnS});
       const fc=face.channels();
       for(const k in fc)setMorph(k,fc[k]);
+      // Weight shows in the face too: the heavier builds carry a touch of cheek
+      // fullness through the authored morphs — eyes, nose and brows untouched.
+      const chub=clamp((curK-1)/.28,0,1)*.22;
+      setMorph("cheekPuffL",clamp((fc.cheekPuffL||0)+chub,0,1));
+      setMorph("cheekPuffR",clamp((fc.cheekPuffR||0)+chub,0,1));
 
-      // The pack: Snap's bag mesh rides his back only while the snapshot says he
-      // wears it — a dropped bag leaves the floor prop as the only bag in the room.
-      // The lag pivot (ported from the rig page) swings it on two springs: sway
-      // from his root velocity, pitch from the stage lean channel.
-      const showBag=st.bag!==false;
+      // Identity is bag=-1 (docs/crid-avatar-params.json): the 2D ladder never
+      // wears the pack, so the GLB's outfit_bag stays hidden on this path — the
+      // only bag in the room is the SVG floor prop when he drops it.
+      const showBag=false;
       if(showBag!==bagShown){bagShown=showBag;if(bagPivot)bagPivot.visible=showBag;
         for(const m of bagMeshes)m.visible=false}   // the skinned original is gone; the pivot carries the bag
       if(bagLag){

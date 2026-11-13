@@ -27,12 +27,12 @@ export function createCharacterMotor({gravity=GRAVITY,fixedDt=1/120,maxSteps=24}
     actor.width=Math.max(1,width);actor.height=Math.max(1,height);
     actor.mass=Math.max(.05,mass);actor.strength=Math.max(.05,strength);
   };
-  const reset=({x,feetY=floorY,width,height,mass=1,strength=mass}={})=>{
+  const reset=({x,feetY=floorY,width,height,mass=1,strength=mass,supportId="floor"}={})=>{
     if(Number.isFinite(width))actor.width=Math.max(1,width);
     if(Number.isFinite(height))actor.height=Math.max(1,height);
     actor.x=Number.isFinite(x)?x:0;actor.feetY=Number.isFinite(feetY)?feetY:floorY;
     actor.vx=0;actor.vy=0;actor.mass=Math.max(.05,mass);actor.strength=Math.max(.05,strength);
-    actor.grounded=true;actor.supportId="floor";actor.distance=0;actor.deltaX=0;actor.grip=null;
+    actor.grounded=true;actor.supportId=supportId;actor.distance=0;actor.deltaX=0;actor.grip=null;
     command=null;climb=null;acc=0;return snapshot();
   };
   const moveTo=(x,{maxSpeed=160,acceleration=520,strength=actor.strength,load=0}={})=>{

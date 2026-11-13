@@ -191,7 +191,7 @@ ${T} #desk{
 ${T} #desk :is(.card,.court-wrap,.music-wrap,.space-wrap,.ledger-wrap,.riad-wrap,#x-feed){
   background:var(--gta-panel);border:1px solid var(--gta-line-soft);border-left:3px solid var(--gta-amber);
   border-radius:2px;box-shadow:0 5px 18px rgba(0,0,0,.34);backdrop-filter:none;-webkit-backdrop-filter:none;
-  color:var(--ink-1);rotate:0deg;--lean:0deg;--chaos-radius:2px
+  color:var(--ink-1);--chaos-radius:2px
 }
 
 ${T} #desk .card{padding:.78em .95em .82em;max-height:32dvh}

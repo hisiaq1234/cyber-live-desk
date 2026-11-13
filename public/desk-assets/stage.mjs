@@ -42,6 +42,7 @@ export function createStage({
   bagOn = () => false,
   slip = false,                    // boolean, or () => bool — the page's ?slip=1 forceSlip
   onInterrupt = () => {},
+  canCompleteClimb = () => true,
   walkX = 0,
   hisW = 0.55,
   hipY = 0.85,
@@ -50,7 +51,7 @@ export function createStage({
     state: "floor", key: null, layer: null, side: "right", t: 0,
     targetX: 0, groundY: 0, roll: 0, pitch: 0, topY: 0, lipX: 0, seatY: 0,
     fromX: 0, fromY: 0, fromRoll: 0, fromPitch: 0, surface: null, walking: false, hold: 0,
-    abandoned: false, trace: "floor", reason: "",
+    abandoned: false, trace: "floor", reason: "", gripFailed: false,
     slipFromX: 0, slipFromY: 0, slipRolled: false, stumble: 0,
     walkX,
     // The move he is winding up for: "anticipate" is a 130 ms opposite dip that
@@ -221,6 +222,10 @@ export function createStage({
         break;
       }
       case "pull": {                               // the feet leave the floor and land on the top
+        if (stage.gripFailed) {
+          stage.slipFromX = stage.walkX; stage.slipFromY = stage.groundY;
+          stage.trace = "climb · grip lost"; go("slip"); break;
+        }
         // Committed a third of the way up, the lip gets one verdict. A slip is a state,
         // not a glitch: he slides back down and pays a recovery beat before the trace moves on.
         if (!stage.slipRolled && stage.t >= 0.22) {
@@ -234,6 +239,7 @@ export function createStage({
         stage.groundY = stage.topY * e;
         stage.walkX = stage.fromX + (stage.lipX - stage.fromX) * e;
         if (stage.t >= 0.75) {
+          if (!canCompleteClimb(stage)) { stage.t = 0.75; break; }
           stage.groundY = stage.topY; stage.walkX = stage.lipX;
           stage.surface = { name: stage.layer, top: stage.topY };
           stage.squashAt = nowMs; stage.hold = 2.5; go("top");

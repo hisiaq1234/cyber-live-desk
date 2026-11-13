@@ -291,7 +291,7 @@ export function createWorld({ gravity = GRAVITY, fixedDt = 1 / 120 } = {}) {
       const shoulderX = body.x + anchor.side * body.halfW * .18;
       const shoulderY = body.y - body.halfH * .25;
       const reachError = Math.hypot(anchor.x - shoulderX, anchor.y - shoulderY) - anchor.reach;
-      if (reachError > Math.max(8, anchor.reach * .07) || capacity < g) anchor.strain += dt;
+      if (reachError > Math.max(.01, anchor.reach * .07) || capacity < g) anchor.strain += dt;
       else anchor.strain = Math.max(0, anchor.strain - dt * 1.5);
       if (anchor.strain >= .24) {
         body.gripFailed = true;

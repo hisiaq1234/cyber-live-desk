@@ -46,12 +46,26 @@ const send = (method, params = {}, sessionId) => new Promise((res, rej) => {
 });
 const { targetId } = await send("Target.createTarget", { url: "about:blank" });
 const { sessionId } = await send("Target.attachToTarget", { targetId, flatten: true });
+const capture = async (suffix) => {
+  const shot = await send("Page.captureScreenshot", { format: "png" }, sessionId);
+  const dir = path.join(ROOT, "outputs"); fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "crid-lab-" + PROBE_NAME + "-" + suffix + ".png"), Buffer.from(shot.data, "base64"));
+};
 await send("Page.enable", {}, sessionId);
 await send("Runtime.enable", {}, sessionId);
 await send("Page.navigate", { url: "http://127.0.0.1:8124/crid-lab.html?scale=1.5" }, sessionId);
 await new Promise((r) => setTimeout(r, 8000));
-if (process.env.PROBE_CLIMB) {
+const probeInfo = await send("Runtime.evaluate", {
+  expression: "JSON.stringify({canvas:!!document.querySelector('canvas'),size:document.querySelector('canvas')?{w:document.querySelector('canvas').width,h:document.querySelector('canvas').height}:null})",
+  returnByValue: true
+}, sessionId);
+console.log("[viewport]", WIDTH + "x" + HEIGHT, "[canvas]", probeInfo.result?.value);
+if (probeInfo.result?.value?.includes('"canvas":false')) process.exitCode = 1;
+await capture("idle");
+if (process.env.PROBE_CLIMB === "1") {
   await send("Runtime.evaluate", { expression: "window.lab.driveStage('climb','p-climb','start')" }, sessionId);
+  await new Promise((r) => setTimeout(r, 5000));
+  await capture("climb");
   for (let i = 0; i < 15; i++) {
     await new Promise((r) => setTimeout(r, 1000));
     const s = await send("Runtime.evaluate", { expression: "JSON.stringify(window.__cridStage?{state:window.__cridStage().state,groundY:window.__cridStage().groundY,roll:+window.__cridStage().roll.toFixed(2)}:null)", returnByValue: true }, sessionId);
@@ -59,6 +73,7 @@ if (process.env.PROBE_CLIMB) {
   }
   await send("Runtime.evaluate", { expression: "window.lab.driveStage('climb','p-climb','end')" }, sessionId);
   await new Promise((r) => setTimeout(r, 4000));
+  await capture("recovery");
 } else {
   await new Promise((r) => setTimeout(r, 7000));
 }

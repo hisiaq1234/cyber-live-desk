@@ -29,7 +29,7 @@ test("gravity lands the character on a platform and tracks its support id",()=>{
 });
 
 test("platform underside blocks upward movement",()=>{
-  const {world,body,run}=make({x:140,y:40,grounded:false,supportId:null,vy:-700});
+  const {world,body,run}=make({x:140,y:60,grounded:false,supportId:null,vy:-700});
   world.setPlatforms([{id:"ledge",left:100,right:200,top:-200,bottom:0}]);
   run(.5);
   assert.ok(body.y>=50,"passed through underside, centre y="+body.y);
@@ -44,7 +44,7 @@ test("solid platform side blocks horizontal travel",()=>{
 });
 
 test("a reachable ledge grip drives a weighted mantle onto the platform",()=>{
-  const {world,body,run}=make({x:70,y:-50});
+  const {world,body,run}=make({x:70,y:-50,gravity:8});
   world.setPlatforms([{id:"ledge",left:100,right:200,top:-200,bottom:0}]);
   assert.equal(world.grabCharacter(body,{id:"ledge",x:100,y:-200},{side:-1,reach:180}),true);
   assert.equal(world.climbCharacter(body,{x:140,feetY:-200},{strength:1,load:.5}),true);

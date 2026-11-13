@@ -267,7 +267,7 @@ export function createWorld({ gravity = GRAVITY, fixedDt = 1 / 120 } = {}) {
     if (body.climb && body.grip) {
       const targetY = body.climb.feetY - body.halfH;
       let ax = (body.climb.x - body.x) * body.climb.stiffness - body.vx * body.climb.damping;
-      let ay = (targetY - body.y) * body.climb.stiffness - body.vy * body.climb.damping;
+      let ay = (targetY - body.y) * body.climb.stiffness - body.vy * body.climb.damping - g;
       const demand = Math.hypot(ax, ay);
       const capacity = body.climb.maxAcceleration * mobility;
       if (demand > capacity) {

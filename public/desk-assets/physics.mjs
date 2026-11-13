@@ -79,6 +79,7 @@ export function createWorld({ gravity = GRAVITY, fixedDt = 1 / 120 } = {}) {
     maxSpeed = 180, acceleration = 640, strength = body?.strength ?? 1, load = 0,
   } = {}) => {
     if (!hasBody(body) || !Number.isFinite(targetX)) return false;
+    if (body.grip && body.grounded) { body.grip = null; body.climb = null; }
     body.motor = {
       targetX,
       maxSpeed: Math.max(0, maxSpeed),
@@ -323,6 +324,19 @@ export function createWorld({ gravity = GRAVITY, fixedDt = 1 / 120 } = {}) {
     resolveHorizontal(body, oldX, oldY);
     body.y += body.vy * dt;
     resolveVertical(body, oldY, oldVy);
+    // A mantle target is a real support contact, not an animation timer. Once
+    // the feet are within a small contact tolerance and vertical speed is low,
+    // snap only the remaining solver error onto that platform and end the pull.
+    if (body.climb && body.grip && Math.abs(body.vy) < .25) {
+      const tolerance = Math.max(.01, body.halfH * .08);
+      const support = platforms.find(p => overlapsX(body, p) &&
+        Math.abs(body.y + body.halfH - p.top) <= tolerance);
+      if (support) {
+        body.y = support.top - body.halfH;
+        body.vy = 0; body.grounded = true; body.supportId = support.id;
+        body.climb = null;
+      }
+    }
     body.deltaX = body.x - oldX;
     body.distanceTravelled += Math.abs(body.deltaX);
   };

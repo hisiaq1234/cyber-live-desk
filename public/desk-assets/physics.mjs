@@ -131,6 +131,8 @@ export function createWorld({ gravity = GRAVITY, fixedDt = 1 / 120 } = {}) {
     body.gripFailed = false;
     body.climb = null;
     body.motor = null;
+    body.grounded = false;
+    body.supportId = null;
     return true;
   };
 
@@ -334,7 +336,7 @@ export function createWorld({ gravity = GRAVITY, fixedDt = 1 / 120 } = {}) {
       if (support) {
         body.y = support.top - body.halfH;
         body.vy = 0; body.grounded = true; body.supportId = support.id;
-        body.climb = null;
+        body.climb = null; body.grip = null;
       }
     }
     body.deltaX = body.x - oldX;

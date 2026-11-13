@@ -120,3 +120,10 @@ test("carried load reduces attainable motor speed",()=>{
   a.run(.5);b.run(.5);
   assert.ok(a.body.x>b.body.x,"unloaded="+a.body.x+", loaded="+b.body.x);
 });
+
+
+test("grip stores a normalized world-space surface normal",()=>{
+  const {world,body}=make({x:0,y:-50,halfW:10,halfH:50});
+  assert.equal(world.grabCharacter(body,{id:"wall",x:10,y:-50,normal:{x:3,y:-4,z:0}},{reach:20}),true);
+  assert.deepEqual(body.grip.normal,{x:0.6,y:-0.8,z:0});
+});

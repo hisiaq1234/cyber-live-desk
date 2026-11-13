@@ -482,7 +482,7 @@ export async function initCrid3D(host,getState,onReady,onFail){
         :null;
       if(walking){
         if(gaitState?.active)phase=gaitState.phase;
-        else phase=(phase+dt*(reduced?3.4:5.2))%1;
+        else if(!motor)phase=(phase+dt*(reduced?3.4:5.2))%1;
       }
       const u=phase,gait=Math.sin(TAU*u),          // one cycle per left-foot-to-left-foot stride
         kL=(gaitState?.active?gaitState.left.swing:swingOf(((u*2)%1+.5)%1))*walkW,

@@ -159,7 +159,7 @@ def master(body):
 
 def frame(im, dx, dy):
     canvas = Image.new("RGBA", (FRAME_W, FRAME_H), (0, 0, 0, 0))
-    canvas.paste(im, (dx, dy))
+    canvas.paste(im, (int(round(dx)), int(round(dy))))
     return canvas
 
 

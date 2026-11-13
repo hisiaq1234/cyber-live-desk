@@ -199,7 +199,7 @@ def measure(img):
             gap = rr[0] - l[1]
             # the leg split is a narrow gap around the axis; a hand beside the torso leaves
             # a wider one, and its inner edge never comes near x=560
-            if gap < 2 or gap > 45 or l[1] > AXIS + 30 or rr[0] < AXIS - 30:
+            if gap < 2 or gap > 90 or l[1] > AXIS + 30 or rr[0] < AXIS - 30:
                 continue
             mid = (l[1] + rr[0]) / 2
             d = abs(mid - AXIS)

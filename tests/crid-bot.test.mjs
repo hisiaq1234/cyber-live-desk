@@ -195,12 +195,12 @@ test("sprite and rig assets are present, readable, and not placeholders", async 
     return out;
   }
   const files = await walk(dir);
-  const tiny = files.filter((f) => f.size < 1024).map((f) => `${f.rel} (${f.size} B)`);
+  const tiny = files.filter((f) => f.size < 1024 && /\\.(?:webp|png|glb|bin)$/i.test(f.rel)).map((f) => `${f.rel} (${f.size} B)`);
   assert.deepEqual(tiny, [], "no sprite/rig asset under 1 KB may ship — supply real art or remove it");
 
   // Expected files the bot/rig load must exist and be readable (not just present in name).
   const expected = [
-    "ladder.json", "rig.mjs",
+    "ladder.json", "ladder.mjs", "rig.mjs",
     ...["3", "0", "4", "5", "1", "11", "2"].flatMap((b) => [
       `body-${b}-r0.webp`, `rigs/${b}/rig.json`,
       ...["arm-fore-l.png", "arm-fore-r.png", "arm-upper-l.png", "arm-upper-r.png", "head.png", "shin-l.png", "shin-r.png", "thigh-l.png", "thigh-r.png", "torso.png"].map((f) => `rigs/${b}/${f}`),

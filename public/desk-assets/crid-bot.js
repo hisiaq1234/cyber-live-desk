@@ -798,7 +798,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       world.stopCharacter(cridBody);
     }
     stage.walkX=cridBody.x;
-    stage.groundY=Math.max(0,-(cridBody.y+cridBody.halfH));
+    stage.groundY=Math.max(0,-(cridBody.y+cridBody.halfH));stage.grounded=!!cridBody.grounded;stage.supportId=cridBody.supportId;
     if(cridBody.gripFailed&&["reach","anticipate","pull"].includes(stage.state)){
       stage.gripFailed=true;world.releaseGrip(cridBody)}
     if(!stageAnchored){
@@ -838,7 +838,8 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   try{window.__cridStage=()=>stage?{state:stage.state,key:stage.key,layer:stage.layer,
     walkX:Math.round(stage.walkX*UPX()+innerWidth/2),groundY:Math.round(stage.groundY*UPX()),
     roll:+stage.roll.toFixed(3),pitch:+stage.pitch.toFixed(3),trace:stage.trace,hold:+stage.hold.toFixed(1),
-    grounded:cridBody.grounded,supportId:cridBody.supportId,vx:+cridBody.vx.toFixed(3),vy:+cridBody.vy.toFixed(3)}:null}catch{}
+    grounded:cridBody.grounded,supportId:cridBody.supportId,vx:+cridBody.vx.toFixed(3),vy:+cridBody.vy.toFixed(3),handContact:stageLean()?.contact||null,worldAnchor:stageLean()?.worldAnchor||null}:null}catch{}
+  try{window.__crid3D=()=>({active:!!(crid3d&&crid3d.active),failed:!!crid3dFailed})}catch{}
   try{window.__cridMotor=()=>({x:+cridBody.x.toFixed(4),y:+cridBody.y.toFixed(4),
     vx:+cridBody.vx.toFixed(4),vy:+cridBody.vy.toFixed(4),grounded:cridBody.grounded,
     supportId:cridBody.supportId,distanceTravelled:+cridBody.distanceTravelled.toFixed(4),
@@ -1123,6 +1124,33 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const mo=typeof MutationObserver=="function"?new MutationObserver(watch):null; mo==null||mo.observe(host,{attributes:!0,attributeFilter:["class"]});
   // Boot him on the way in (the desk default), place him clear of the lower third, and keep the
   // placement honest across resizes and strip content changes.
+  
+  const get3DState=()=>{
+    const p=advancePose(Date.now());
+    const walking=!!(walk&&walk.to)||!!(stage&&stage.walking&&["approach","floor","top"].includes(stage.state));
+    const b=build();
+    return {p,mode,dying,walking,reduced,grooving,fx:p.fx,walkDir:walk?.dir||1,
+      lean:leanAt||stageLean(),stage:b.key,
+      stagePose:stage?{ref:stage,pitch:stage.pitch||0,roll:stage.roll||0,squash:stage.squashEnv||0}:null,
+      grip:!!cridBody.grip,bag:{worn:bag.worn},
+      motorState:{active:walking,distanceTravelled:cridBody.distanceTravelled||0,
+        strideLength:Math.max(.08,cridBody.halfW*2.25),velocity:cridBody.vx,
+        grounded:!!cridBody.grounded,supportId:cridBody.supportId,
+        grip:cridBody.grip?{...cridBody.grip}:null}};
+  };
+  if(typeof init3d==="function"&&!lowPower){
+    try{
+      Promise.resolve(init3d(host,get3DState,()=>{},()=>{crid3dFailed=true}))
+        .then(instance=>{
+          if(!instance)return;
+          if(disposed3d){instance.dispose();return}
+          crid3d=instance;
+          if(instance.active)hideFigure();
+        })
+        .catch(()=>{crid3dFailed=true;crid3d=null});
+    }catch{crid3dFailed=true}
+  }
+
   applySubs(0,!1); power(); place(); placeBag(); render(advancePose(Date.now())); timer=setTimeout(tick,STEP);
   let placeFrame=0,stripWatch=null;
   const replace=()=>{home=null; if(placeFrame)return; placeFrame=(typeof requestAnimationFrame=="function"?requestAnimationFrame:setTimeout)(()=>{placeFrame=0; place(); resettle()},0)};
@@ -1161,5 +1189,5 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       return{v:1,savedAt:Date.now(),drives:being.peek().drives,
         floorX:hi>lo?clamp((cx-lo)/(hi-lo),0,1):.5,
         bag:{worn:bag.worn,...(bag.worn?{}:{x:clamp((bag.body?bag.body.x:r.left+r.width/2)/innerWidth,0,1),
-          y:clamp((bag.body?bag.body.y:r.top+r.height*.22)/innerHeight,0,1)})}}},freeze(pose={}){frozen=!0;clearTimeout(timer); if(pose.mode)mode=pose.mode; if(pose.tag!==void 0)tagText=pose.tag; if(pose.subs!=null)applySubs(pose.subs,!1); lastDrawn=""; render({...REST[mode],tag:tagText,fx:pose.fx||1,sx:growth.sx,sy:growth.sy,...pose})},destroy(){clearTimeout(timer); clearTimeout(feelTimer); mo==null||mo.disconnect(); stripWatch==null||stripWatch.disconnect(); if(typeof removeEventListener=="function")removeEventListener("resize",replace); cancelJobs(); goHome(); crid3d&&crid3d.dispose(); host.remove()}}
+          y:clamp((bag.body?bag.body.y:r.top+r.height*.22)/innerHeight,0,1)})}}},freeze(pose={}){frozen=!0;clearTimeout(timer); if(pose.mode)mode=pose.mode; if(pose.tag!==void 0)tagText=pose.tag; if(pose.subs!=null)applySubs(pose.subs,!1); lastDrawn=""; render({...REST[mode],tag:tagText,fx:pose.fx||1,sx:growth.sx,sy:growth.sy,...pose})},destroy(){disposed3d=true;clearTimeout(timer); clearTimeout(feelTimer); mo==null||mo.disconnect(); stripWatch==null||stripWatch.disconnect(); if(typeof removeEventListener=="function")removeEventListener("resize",replace); cancelJobs(); goHome(); crid3d&&crid3d.dispose(); host.remove()}}
 }

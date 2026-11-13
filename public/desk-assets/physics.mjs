@@ -124,7 +124,7 @@ export function createWorld({ gravity = GRAVITY, fixedDt = 1 / 120 } = {}) {
     body.grip = {
       id: String(anchor.id ?? "ledge"),
       x: anchor.x, y: anchor.y, side: toward,
-      holdX: body.x, holdY: anchor.y + body.halfH * .9,
+      holdX: anchor.x - toward * body.halfW * .18, holdY: anchor.y + body.halfH * .25,
       reach: armReach, strength: Math.max(.05, strength),
       load: Math.max(0, load), strain: 0,
     };

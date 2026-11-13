@@ -1072,11 +1072,16 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // tick's: step() advances groundY/roll/pitch through climbs and lens, and at
   // 22Hz those stepped visibly under the 60fps rig. The intent is the one
   // beingTick last computed — it only ever changed at that cadence anyway.
-  let stageIntent=null,stageBusy=false,lastStageRAF=0;
+  let stageIntent=null,stageBusy=false,lastStageRAF=0,stageManual=false;
   const stageDrive=now=>{
     if(stage&&mode==="on"&&!dying&&!reduced){
       const dt=lastStageRAF?Math.min(.1,Math.max(0,(now-lastStageRAF)/1000)):.016; lastStageRAF=now;
-      try{stage.step(now,stageBusy?null:stageIntent,dt)}catch{}
+      try{
+        stage.step(now,stageBusy?null:stageIntent,dt);
+        if(stageManual&&stageIntent?.phase==="end"&&stage.state==="floor"){
+          stageManual=false;stageIntent=null;stageBusy=false;
+        }
+      }catch{}
     } else lastStageRAF=0};
   let lastWorldRAF=0;
   const stageRAF=()=>{
@@ -1248,7 +1253,8 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       // step() itself moved to the rAF loop (stageRAF) — it advances the climb,
       // the lean and the seat on the display's clock. What stays here is the
       // intent it consumes, refreshed at the behaviour tick's own cadence.
-      stageIntent=it||null; stageBusy=busy}
+      if(!stageManual){stageIntent=it||null;stageBusy=busy}}
+    if(stageManual)return;
     if(key!==beingPrev){                              // the activity ended or turned over: let go of what it held
       if(beingPrev==="rest"&&mode==="doze")setMode("on");
       if(beingLean&&leanAt&&leanAt.layer===beingLean){ponder(!1);unlean()}
@@ -1391,8 +1397,21 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     setLayers(v){getLayer=typeof v=="function"?v:v&&typeof v.layer=="function"?n=>v.layer(n):null; return !0},
     // QA hook (crid-lab): hand the stage machine one intent the way beingTick would.
     // On air only being's intents reach begin(); the lab page uses this to film a climb.
-    driveStage:(key,layerName,phase="start")=>{stageSeed();syncStageBoxes();
-      return getStage().step(Date.now(),{key,phase,layer:layerName,x:.5},.05)},
+    driveStage:(key,layerName,phase="start")=>{
+      if(mode!=="on"||dying||reduced)return false;
+      stageSeed();syncStageBoxes();getStage();
+      if(!stageManual&&phase==="start"){
+        stageManual=true;being.interrupt("lab-stage");
+      }
+      if(!stageManual)return false;
+      stageIntent={key,phase,layer:layerName,x:.5};stageBusy=false;
+      return true},
+    stopStageDrive:()=>{
+      if(!stageManual)return false;
+      stageManual=false;stageIntent=null;stageBusy=false;
+      if(stage&&stage.state!=="floor")stage.interrupt("lab-stop");
+      being.interrupt("lab-stage-stop");
+      return true},
     setSubs:n=>{lastSubN=n|0;applySubs(n,!1)},setOnline(v){online=!!v;power()},get mode(){return mode},get subs(){return subs},get stage(){return build()},setMood,say,nudge,randomLine,place:replace,
     // What being-sync.mjs posts back to the desk: the drives as they stand, where he is on the
     // floor band (0..1 between the clock and the strip, the same band wander walks), and the

@@ -242,12 +242,11 @@ def build_all():
     base = masters[BODIES[0]]
     dx = int(round(AXIS - mid_torso_axis(base)))
     dy = GROUND - ink(base)["bottom"]
-    # Correct the shared frame against the measured torso axis after integer-pixel placement.
-    # This keeps the approved face and every body stage on one identical vertical axis.
-    provisional = frame(base, dx, dy)
-    dx += int(round(AXIS - mid_torso_axis(provisional)))
+    # The same integer translation is used for every stage. Do not recenter each
+    # silhouette independently: the face and feet must remain pixel-locked.
     canonical = frame(base, dx, dy)
     canonical_height = ink(canonical)["h"]
+    canonical_axis = mid_torso_axis(canonical)
     stages, areas = [], []
     for i, body in enumerate(BODIES):
         out = lock_head(canonical, frame(masters[body], dx, dy))
@@ -258,8 +257,8 @@ def build_all():
             raise RuntimeError(f"body {body}: expected width {target_w}, got {m['w']}")
         if m["h"] != canonical_height or m["bottom"] != GROUND:
             raise RuntimeError(f"body {body}: frame drift {m}")
-        if abs(mid_torso_axis(out) - AXIS) > 3:
-            raise RuntimeError(f"body {body}: torso axis drift {mid_torso_axis(out):.1f}")
+        if abs(mid_torso_axis(out) - canonical_axis) > 3:
+            raise RuntimeError(f"body {body}: torso axis drift {mid_torso_axis(out):.1f} (canonical {canonical_axis:.1f})")
         if out.crop((0, 0, FRAME_W, HEAD_LOCK_BOTTOM)).tobytes() != canonical.crop((0, 0, FRAME_W, HEAD_LOCK_BOTTOM)).tobytes():
             raise RuntimeError(f"body {body}: head/face pixels differ from canonical")
         png, webp = CRID / f"body-{body}-r0.png", CRID / f"body-{body}-r0.webp"

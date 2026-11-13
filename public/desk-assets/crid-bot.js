@@ -229,6 +229,11 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // rather than as three jumps. The fast cadence only runs while something is actually travelling:
   // a still character costs the same as before.
   ANIM=Math.max(16,Math.min(STEP,45)),{svg,parts}=draw(),host=document.createElement("div");
+  // The flat drawing and the cut-out rig are gone for good — the 3D GLB is the
+  // only body. figG hidden once here; every later display toggle lands on its
+  // children and can never un-hide it. If WebGL fails he is simply absent
+  // rather than a second, lesser Crid.
+  parts.figG.setAttribute("display","none");
   host.id="crid-bot",host.setAttribute("aria-hidden","true"),host.dataset.mode="dead";
   if(x!=null&&y!=null){host.classList.add("pos-custom");host.style.setProperty("--bx",`${x}%`);host.style.setProperty("--by",`${y}%`)}
   else if(position=="bl"||position=="br")host.classList.add(`pos-${position}`);

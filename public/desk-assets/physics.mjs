@@ -284,7 +284,7 @@ export function createWorld({ gravity = GRAVITY, fixedDt = 1 / 120 } = {}) {
       const shoulderX = body.x + anchor.side * body.halfW * .18;
       const shoulderY = body.y - body.halfH * .25;
       const reachError = Math.hypot(anchor.x - shoulderX, anchor.y - shoulderY) - anchor.reach;
-      if (reachError > Math.max(8, anchor.reach * .07)) anchor.strain += dt;
+      if (reachError > Math.max(8, anchor.reach * .07) || capacity < g) anchor.strain += dt;
       else anchor.strain = Math.max(0, anchor.strain - dt * 1.5);
       if (anchor.strain >= .24) {
         body.gripFailed = true;
@@ -295,13 +295,13 @@ export function createWorld({ gravity = GRAVITY, fixedDt = 1 / 120 } = {}) {
       const grip = body.grip;
       let ax = (grip.holdX - body.x) * 18 - body.vx * 8;
       let ay = (grip.holdY - body.y) * 18 - body.vy * 8;
-      const capacity = 18 * Math.max(.05, grip.strength) /
+      const capacity = 12 * Math.max(.05, grip.strength) /
         Math.max(.05, body.mass + grip.load);
       const demand = Math.hypot(ax, ay);
       if (demand > capacity) { const scale = capacity / demand; ax *= scale; ay *= scale; }
       body.vx += ax * dt;
       body.vy += (g + ay) * dt;
-      if (capacity < g * .9) grip.strain += dt;
+      if (capacity < g) grip.strain += dt;
       else grip.strain = Math.max(0, grip.strain - dt * 1.5);
       if (grip.strain >= .24) { body.gripFailed = true; body.grip = null; }
     } else {

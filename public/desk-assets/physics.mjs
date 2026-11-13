@@ -125,7 +125,12 @@ export function createWorld({ gravity = GRAVITY, fixedDt = 1 / 120 } = {}) {
     const shoulderX = body.x + toward * body.halfW * .18;
     const shoulderY = body.y - body.halfH * .25;
     if (Math.hypot(anchor.x - shoulderX, anchor.y - shoulderY) > armReach * 1.35) return false;
-    body.grip = {
+    const normal = anchor.normal || {x:0,y:-1,z:0};
+      const nx = Number.isFinite(Number(normal.x)) ? Number(normal.x) : 0;
+      const ny = Number.isFinite(Number(normal.y)) ? Number(normal.y) : -1;
+      const nz = Number.isFinite(Number(normal.z)) ? Number(normal.z) : 0;
+      const nl = Math.hypot(nx, ny, nz) || 1;
+      body.grip = {normal:{x:nx/nl,y:ny/nl,z:nz/nl},
       id: String(anchor.id ?? "ledge"),
       x: anchor.x, y: anchor.y, side: toward,
       holdX: anchor.x - toward * body.halfW * .18, holdY: anchor.y + body.halfH * .25,

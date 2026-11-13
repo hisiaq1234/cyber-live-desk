@@ -1,6 +1,7 @@
 name: Build CRID body ladder
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - fix/crid-physical-mobility
@@ -8,8 +9,6 @@ on:
       - public/desk-assets/crid-bot.js
       - public/desk-assets/crid-3d.js
       - public/desk-assets/physics.mjs
-      - scripts/build-body-ladder.py
-      - scripts/build-crid-rig.py
 
 permissions:
   contents: write

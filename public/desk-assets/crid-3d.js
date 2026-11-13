@@ -15,6 +15,7 @@
    ?crid3d=off forces the 2D path for A/B checks. */
 import{createFacial}from"./facial.mjs";
 import{TwoBoneIK}from"./ik.mjs";
+import{BODY_LADDER}from"./crid/ladder.mjs";
 import{stageChannels}from"./stage.mjs";
 import{createDistanceGait}from"./gait.mjs";
 const GLB="/desk-assets/crid3d/crid.glb";
@@ -194,7 +195,7 @@ export async function initCrid3D(host,getState,onReady,onFail){
     // body axis grow by k, masked by height so feet, legs and the head keep their own
     // measure while chest, waist, belly and arms all take the same concurrent change.
     // y is never touched: height and head size are fixed on every stage.
-    const STAGE_K={"3":.82,"0":.95,"4":.95,"5":1.10,"1":1.03,"11":1.13,"2":1.28};
+    const STAGE_K=Object.fromEntries(BODY_LADDER.map(s=>[String(s.key),s.girth]));
     const girth=[];
     root.traverse(o=>{
       if(!o.isMesh||!o.geometry)return;

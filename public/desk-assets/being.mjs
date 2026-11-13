@@ -64,7 +64,7 @@ export function seeded(seed = 1) {
   };
 }
 
-export function createBeing({ rng = Math.random, now = 0, drives: seedDrives = {}, cooldownMs = COOLDOWN_MS, settleMs = 2500, targets = null } = {}) {
+export function createBeing({ rng = Math.random, now = 0, drives: seedDrives = {}, cooldownMs = COOLDOWN_MS, settleMs = 2500, targets = null, lastX: seedLastX = null } = {}) {
   const drives = {
     energy: Number.isFinite(seedDrives.energy) ? seedDrives.energy : 62,
     boredom: Number.isFinite(seedDrives.boredom) ? seedDrives.boredom : 70,
@@ -75,7 +75,11 @@ export function createBeing({ rng = Math.random, now = 0, drives: seedDrives = {
   let lastDecision = -Infinity;
   let cooldownUntil = now + settleMs;   // he settles in before the first decision
   let activity = null;               // { key, startedAt, endsAt, target }
-  let lastX = 0.5;                   // the floor spot he is standing on, 0..1
+  // The floor spot he is standing on, 0..1 across the roam band. A saved snapshot can hand it
+  // back in (state.bot.being.floorX is the same number the page measured off his host element);
+  // peek()/step() already expose it as intent.x, so seeding it here keeps the brain's idea of
+  // where he is and the body's actual spot telling the same story.
+  let lastX = Number.isFinite(seedLastX) ? clamp(seedLastX, 0, 1) : 0.5;
 
   const pick = (a, b) => a + rng() * (b - a);
 

@@ -103,3 +103,13 @@ test("a long gap does not teleport his state", () => {
     assert.ok(v >= 0 && v <= 100, `drive left its range: ${v}`);
   }
 });
+
+test("a saved floor spot seeds where he is standing, clamped to the band", () => {
+  // state.bot.being.floorX is the same 0..1 number the page measured off his host element;
+  // seeding it keeps the brain's idea of where he stands in step with the body's.
+  const settle = { now: 0, rng: seeded(1), cooldownMs: 1e9, settleMs: 1e9 };
+  assert.equal(createBeing({ ...settle, lastX: 0.8 }).peek().intent.x, 0.8);
+  assert.equal(createBeing({ ...settle, lastX: 4 }).peek().intent.x, 1, "over-range clamps high");
+  assert.equal(createBeing({ ...settle, lastX: -2 }).peek().intent.x, 0, "under-range clamps low");
+  assert.equal(createBeing(settle).peek().intent.x, 0.5, "no floorX keeps the old default");
+});

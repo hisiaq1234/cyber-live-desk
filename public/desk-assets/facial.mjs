@@ -25,54 +25,74 @@ const back=(x,s=1.9)=>1+(s+1)*Math.pow(x-1,3)+s*Math.pow(x-1,2); // pop with set
    heavy-lidded, not blink-shut. */
 const EMO={
   curious:{w:{browInnerUpL:.55,browInnerUpR:.55,browUpL:.3,browUpR:.3,
+    browOuterUpL:.3,browOuterUpR:.3,browMidUpL:.2,browMidUpR:.2,
     smileL:.16,smileR:.22,mouthLeft:.18},onset:.28,release:.55},
   delighted:{w:{smileL:.85,smileR:.85,lipCornerSmileL:.7,lipCornerSmileR:.7,
+    mouthDimpleL:.55,mouthDimpleR:.55,lipRoundL:.4,lipRoundR:.4,
     cheekSquintL:.35,cheekSquintR:.35,eyeLoSmileL:.5,eyeLoSmileR:.5,
     browUpL:.45,browUpR:.45,browInnerUpL:.3,browInnerUpR:.3,
+    browOuterUpL:.3,browOuterUpR:.3,mouthStretchL:.15,mouthStretchR:.15,
     eyeWideUpL:.22,eyeWideUpR:.22,eyeWideLoL:.2,eyeWideLoR:.2},
     onset:.22,release:.6,over:.12},
   smug:{w:{smileR:.55,lipCornerSmileR:.6,mouthRight:.3,browUpR:.5,
-    browInnerUpL:.35,eyeHeavyL:.25,eyeHeavyR:.15},onset:.3,release:.7},
+    browOuterUpR:.45,mouthDimpleR:.3,browInnerUpL:.35,
+    eyeHeavyL:.25,eyeHeavyR:.15},onset:.3,release:.7},
   flustered:{w:{browUpL:.7,browUpR:.7,browInnerUpL:.6,browInnerUpR:.6,
+    browMidUpL:.3,browMidUpR:.3,mouthStretchL:.45,mouthStretchR:.45,
+    lipLowerUpC:.3,
     eyeWideUpL:.4,eyeWideUpR:.4,eyeWideLoL:.3,eyeWideLoR:.3,
     jaw:.18,lipPuckerL:.4,lipPuckerR:.4,cheekPuffL:.15,cheekPuffR:.15,
     noseSneerL:.2,noseSneerR:.2},onset:.18,release:.5,over:.1},
-  sleepy:{w:{eyeHeavyL:.5,eyeHeavyR:.5,browInnerDnL:.4,browInnerDnR:.4,
+  sleepy:{w:{eyeHeavyL:.5,eyeHeavyR:.5,eyeLow25L:.45,eyeLow25R:.45,
+    browInnerDnL:.4,browInnerDnR:.4,browMidDownL:.3,browMidDownR:.3,
     browDownL:.3,browDownR:.3,mouthDn:.2},onset:.5,release:.8},
   startled:{w:{eyeWideUpL:.7,eyeWideUpR:.7,eyeWideLoL:.55,eyeWideLoR:.55,
     browUpL:.8,browUpR:.8,browInnerUpL:.7,browInnerUpR:.7,
+    browOuterUpL:.6,browOuterUpR:.6,lipLowerUpC:.5,
     jaw:.55,mouthUp:.3},onset:.12,release:.4,over:.25},
   proud:{w:{smileL:.4,smileR:.45,lipCornerSmileL:.3,lipCornerSmileR:.35,
+    mouthDimpleL:.3,mouthDimpleR:.3,browOuterUpL:.25,browOuterUpR:.25,
     browInnerUpL:.15,browInnerUpR:.15,eyeHeavyL:.1,eyeHeavyR:.1},
     onset:.35,release:.6},
-  sulky:{w:{mouthFrownL:.6,mouthFrownR:.6,mouthDn:.25,
-    browInnerUpL:.5,browInnerUpR:.5,browDownL:.3,browDownR:.3,
+  sulky:{w:{mouthFrownL:.6,mouthFrownR:.6,mouthDn:.25,lipUpperDownC:.55,
+    browInnerUpL:.5,browInnerUpR:.5,browInnerInL:.4,browInnerInR:.4,
+    browDownL:.3,browDownR:.3,
     eyeHeavyL:.2,eyeHeavyR:.2,lipPuckerL:.15,lipPuckerR:.15},onset:.4,release:.8}
 };
 /* Channel weights the face idles at — near-zero, alive. Micro-drift is added
    per-frame so the resting face breathes instead of freezing. */
 const IDLE={smileL:.04,smileR:.05,browInnerUpL:.05,browInnerUpR:.05};
+// Smile-family channels that take the 60/40 asymmetry (see channel assembly).
+const SMILE_L=["smileL","lipCornerSmileL","eyeLoSmileL","mouthDimpleL","lipRoundL"];
 
 export function createFacial({rand=Math.random}={}){
   const cur={};                 // smoothed channel weights
   let lastT=0;                  // clock of the last update() — cue() timestamps on it
   let envName=null,envAt=0,envHold=1.4;   // active emotion envelope
-  // blink engine: every 2.5–4.5 s (×1.5 under reduced motion), ~0.14 s close,
-  // eyes 1 frame (~16 ms) apart, ~12% asymmetric half-blinks.
-  let nextBlink=rand(1.5,3),blinkT=-1,blinkAsym=0,blinkDur=.14;
-  // gaze: saccades on a 1.4–3.2 s clock plus slow drift; eyes lead the head.
-  let sacAt=rand(.8,2),sacFrom={x:0,y:0},sacTo={x:0,y:0},sacT=1,sacDur=.16;
+  // blink engine: every 2–6 s (×1.5 under reduced motion), ~0.12 s close,
+  // eyes 1 frame (~16 ms) apart, ~7% double-blinks, ~14% asymmetric half-blinks.
+  // A due blink waits a few frames for a head turn — humans blink as the eyes
+  // move, so the scheduler prefers a moment the head is already going somewhere.
+  let nextBlink=rand(1.5,3),blinkT=-1,blinkAsym=0,blinkDur=.14,blinkDefer=0,dblAt=-1;
+  // gaze: macro-saccades on a 1.4–3.2 s clock (a real re-fixation), micro-saccades
+  // every ~0.3–0.5 s (fixational jitter, suppressed inside a hold), slow drift.
+  let sacAt=rand(.8,2),sacFrom={x:0,y:0},sacTo={x:0,y:0},sacT=1,sacDur=.16,fixUntil=0;
+  let microAt=rand(.2,.5);
+  const micro={x:0,y:0},microTgt={x:0,y:0};
   const drift={x:0,y:0};
   const attend={x:0,y:0};   // fixation target, smoothed — see gaze block
+  const bias={x:0,y:0},lastBias={x:0,y:0};   // where the body is about to go — eyes lead it
 
   const smooth=(k,v,dt,rate)=>{cur[k]=(cur[k]||0)+(v-(cur[k]||0))*Math.min(1,dt*rate);if(Math.abs(cur[k])<.001)cur[k]=0};
 
-  function envelope(t){
+  // k<1 speeds the onset — brows lead the emotion (k=.55), everything else rides it.
+  function envelope(t,k=1){
     if(!envName)return 0;
     const e=EMO[envName]; if(!e)return 0;
     const el=t-envAt;   // both on the update() clock, seconds
     if(el<0)return 0;
-    if(el<e.onset)return e.over?back(clamp(el/e.onset,0,1),1+e.over*8):out3(el/e.onset);
+    const onset=e.onset*k;
+    if(el<onset)return e.over?back(clamp(el/onset,0,1),1+e.over*8):out3(el/onset);
     if(el<e.onset+envHold)return 1;
     const r=clamp((el-e.onset-envHold)/e.release,0,1);
     return 1-inOut3(r);
@@ -88,11 +108,20 @@ export function createFacial({rand=Math.random}={}){
     const e=EMO[envName]||{w:{}};
 
     // ---- scheduled events -------------------------------------------------
-    // Blink: never on the beat of an action — it just has its own clock.
+    // A pending double-blink fires its second close a beat after the first.
+    if(dblAt>0&&t>=dblAt){dblAt=-1;blinkT=t;blinkDur=.08+rand(0,.04);blinkAsym=0}
+    // Blink: never on the beat of an action — it just has its own clock, but a
+    // due blink defers a few frames for a head turn (input.headTurn) so it
+    // lands while the eyes are already going somewhere. After four deferrals
+    // it fires anyway; a blink must never be starved.
     if(t>=nextBlink){
-      blinkT=t;blinkDur=.12+rand(0,.08);
-      blinkAsym=rand()<.12?(rand()<.5?-1:1):0;   // which eye leads, if asymmetric
-      nextBlink=t+(2.5+rand(0,2))*(input.reduced?1.6:1)*(mode==="doze"?.5:1);
+      if((input.headTurn||0)>.05||blinkDefer>=4||rand()<.25){
+        blinkT=t;blinkDur=.10+rand(0,.06);
+        blinkAsym=rand()<.14?(rand()<.5?-1:1):0;
+        nextBlink=t+rand(2,4)*(input.reduced?1.6:1)*(mode==="doze"?.5:1);
+        if(rand()<.07)dblAt=t+blinkDur+.14+rand(0,.1);
+        blinkDefer=0;
+      }else{blinkDefer++;nextBlink=t+.12}
     }
     const bt=t-blinkT;
     // blink curve: 35% close, 30% hold, 35% open — ~3-4 frames of real closure
@@ -116,10 +145,10 @@ export function createFacial({rand=Math.random}={}){
     // ---- gaze -------------------------------------------------------------
     // saccade scheduler: pick a small offset, snap there fast (eyes lead the
     // head), hold, drift. gx/gy from the pose bias the target.
-    if(t>=sacAt&&sacT>=1){
+    if(t>=sacAt&&sacT>=1&&t>=fixUntil){
       sacFrom={...sacTo};
       sacTo={x:rand(-.35,.35),y:rand(-.3,.3)};
-      sacT=0;sacDur=.1+rand(0,.12);sacAt=t+rand(1.4,3.2);
+      sacT=0;sacDur=.1+rand(0,.12);sacAt=t+rand(1.4,3.2);fixUntil=t+rand(.35,.8);
       // Humans blink as the eyes move — ~a third of saccades carry a blink.
       // It lands ON the saccade, not on the blink clock's beat.
       if(rand()<.34){blinkT=t;blinkDur=.09+rand(0,.05);
@@ -139,10 +168,31 @@ export function createFacial({rand=Math.random}={}){
     const sacScale=1-attMag*.65;
     drift.x+= (rand(-.02,.02)-drift.x)*Math.min(1,dt*.5);
     drift.y+= (rand(-.015,.015)-drift.y)*Math.min(1,dt*.5);
+    // Micro-saccades: 2–4 per second of tiny fixational jumps, held between
+    // events. A fixation (just after a macro-saccade or a look-bias pull) stills
+    // them — the eyes settle on the new target instead of jittering off it.
+    if(t>=microAt&&t>=fixUntil){
+      microAt=t+rand(.28,.48);
+      microTgt.x=clamp(micro.x+rand(-.055,.055),-.13,.13);
+      microTgt.y=clamp(micro.y+rand(-.04,.04),-.11,.11);
+    }
+    micro.x+=(microTgt.x-micro.x)*Math.min(1,dt*24);
+    micro.y+=(microTgt.y-micro.y)*Math.min(1,dt*24);
+    // Look-bias: where the body is about to go (a walk's heading, a panel he's
+    // reaching for). A changed bias fires an immediate saccade so the eyes land
+    // on the target BEFORE the body covers ground — gaze leads motion.
+    const bx=clamp(input.lookBias?.x||0,-1,1),by=clamp(input.lookBias?.y||0,-1,1);
+    const bk=Math.min(1,dt*3.5);
+    bias.x+=(bx-bias.x)*bk;bias.y+=(by-bias.y)*bk;
+    if(Math.hypot(bias.x,bias.y)>.3&&sacT>=1
+      &&Math.hypot(bias.x-lastBias.x,bias.y-lastBias.y)>.35){
+      sacFrom={...sacTo};sacTo={x:clamp(bias.x*.9,-1,1),y:clamp(bias.y*.9,-1,1)};
+      sacT=0;sacDur=.12;fixUntil=t+.55}
+    lastBias.x=bias.x;lastBias.y=bias.y;
     const sacX=(sacFrom.x+(sacTo.x-sacFrom.x)*se)*sacScale;
     const sacY=(sacFrom.y+(sacTo.y-sacFrom.y)*se)*sacScale;
-    const lookX=sacX+gx*.8+attend.x*.85+drift.x;
-    const lookY=sacY+gy*.8+attend.y*.85+drift.y;
+    const lookX=sacX+gx*.8+attend.x*.85+bias.x*.9+drift.x+micro.x;
+    const lookY=sacY+gy*.8+attend.y*.85+bias.y*.9+drift.y+micro.y;
     const lx=clamp(lookX,-1,1),ly=clamp(lookY,-1,1);
 
     // ---- channel assembly ---------------------------------------------------
@@ -151,8 +201,9 @@ export function createFacial({rand=Math.random}={}){
     // idle life: barely-there asymmetry so the resting face is never a mask
     const life=alive?1:.3;
     for(const[k,v]of Object.entries(IDLE))put(k,v*life);
-    // emotion envelope over the recipe
-    for(const[k,w]of Object.entries(e.w))put(k,w*emo);
+    // emotion envelope over the recipe — brows lead it (onset ×.55), the rest follow
+    const emoB=alive?envelope(t,.55):0;
+    for(const[k,w]of Object.entries(e.w))put(k,w*(k.startsWith("brow")?emoB:emo));
     // lids from blink/doze/death + emotion (emotion lid keys are eyeShut*/eyeShut25*)
     put("eyeShutL",lidL);put("eyeShutR",lidR);
     put("eyeShutLL",lidLL*.8);put("eyeShutLR",lidLR*.8);   // lower lids trail the upper
@@ -175,6 +226,10 @@ export function createFacial({rand=Math.random}={}){
     if(mode==="doze")put("mouthDn",.25*shutBase);
     if(mode==="dead")put("mouthDn",.4);
 
+    // A real smile is never symmetric: his left side runs ~60% of the right.
+    // Applied to the smile family only — asymmetry is a smile tell, not a
+    // licence to crooked every channel on the face.
+    for(const k of SMILE_L)if(tgt[k]>0)tgt[k]*=.62;
     // Lids run hot: the blink curve is already the easing (35/30/35), so the
     // smoother only needs to track it — at rate 10 a .14 s blink peaked at .6.
     for(const[k,v]of Object.entries(tgt))

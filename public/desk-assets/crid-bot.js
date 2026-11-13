@@ -82,7 +82,7 @@ paid:[{eyes:"half",hy:-6,hr:-6,mR:"up"},{eyes:"happy",hy:8,mR:"slam",tag:"PAID",
 due:[{eyes:"mad",hy:-4,mR:"up"},{eyes:"mad",hy:8,mR:"slam",tag:"DUE",tr:-16},{hy:6,mR:"slam",tag:"DUE"},{hy:0,mR:"down",tag:"DUE"},{eyes:"open",tr:0}],
 nod:[{hy:5,hr:2},{hy:0,hr:0}],
 wave:[{eyes:"happy",mouth:"smile",mR:"up",hy:-2,hr:3},{mR:"wave",hr:4},{mR:"up",hr:-3},{mR:"wave",hr:4},{mR:"up",hr:-3},{eyes:"happy",mouth:"grin",mR:"up",hr:0},{mR:"down",eyes:"open",mouth:"smile",hy:0,hr:0}],
-hop:[{by:-3,bs:.95,hy:2},{by:-14,bs:1.05,hy:-4},{by:2,bs:.93,hy:3},{by:0,bs:1,hy:0}],
+hop:[{by:5,bs:.9,hy:3},{by:-3,bs:.95,hy:2},{by:-14,bs:1.05,hy:-4},{by:2,bs:.93,hy:3},{by:0,bs:1,hy:0}],
 jump:[{by:5,bs:.88,hy:4},{by:-30,bs:1.08,hy:-6,mL:"up",mR:"up"},{by:-26,bs:1.06,hy:-4},{by:4,bs:.9,hy:3},{by:0,bs:1,hy:0,mL:"down",mR:"down"}],
 sit:[{by:12,hy:6,bs:.9,hr:2},{by:12,hy:6,bs:.9,hr:2},{by:12,hy:6,bs:.9,hr:0}],
 stand:[{by:0,hy:0,bs:1,hr:0}],
@@ -102,7 +102,7 @@ bits:[{hr:-4,hy:-2,tr:8,bs:1.03},{hr:5,hy:1,tr:-8,bs:.97},{hr:-2,hy:-1,tr:4},{hr
 salute:[{hy:-4,mR:"up"},{hy:-2},{hy:0,mR:"down"}],
 // The bag beats (docs/specs/backpack.md). The __bag marker is picked up by the tick loop the
 // same way __cueEnd is: the frame plays as a pose and the marker does the prop's physics.
-dropbag:[{mR:"up",hy:-3,hr:-4,eyes:"open"},{mR:"down",hy:1,hr:3,tr:8,by:2},{__bag:"drop",eyes:"open",hy:0,hr:0,tr:0}],
+dropbag:[{by:6,bs:.92,hy:2,mR:"down"},{mR:"up",hy:-3,hr:-4,eyes:"open"},{mR:"down",hy:1,hr:3,tr:8,by:2},{__bag:"drop",eyes:"open",hy:0,hr:0,tr:0}],
 pickup:[{by:10,hy:4,bs:.92,eyes:"open"},{by:12,mR:"down",hr:2},{__bag:"wear",by:0,bs:1,hy:0,hr:0,tr:0}]};
 SEQ.sub=[...SEQ.cheer.slice(0,-1).map(f=>({...f,tag:"+SUB"})),...SEQ.pushup];
 // Everything he can be told to do in one word: every sequence, every micro-emotion, and "say" for
@@ -261,17 +261,35 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     return{angle:stage.roll*57.3,dir,layer:stage.layer,
       contact:{x:dir>0?b.edge.right-8:b.edge.left+8,y:b.edge.top+(host.offsetHeight||220)*.3}}};
   const STAGE_GRIP={reach:.85,pull:.85,"lean-in":.8,lean:.8,seat:.7,slip:.9,hop:.4,top:.4};
+  // Where the body is about to go, for the face: the eyes fixate the target
+  // BEFORE the body covers ground (facial.mjs lookBias fires a saccade on a
+  // changed bias). Panel commits look up at the lip; a walk looks down-range.
+  // stage.side "right" means he stands on the panel's right edge — the panel
+  // (and the look) is screen-left, so the sign flips against attend's lean dir.
+  const lookBiasNow=()=>{
+    if(stage&&stageActive()){
+      const s=stage.state,dir=stage.side==="right"?-1:1;
+      if(s==="anticipate"||s==="reach"||s==="pull")return{x:dir*.7,y:-.55};
+      if(s==="lean"||s==="lean-in")return{x:dir*.6,y:.1};
+      if(s==="top"||s==="seat")return{x:0,y:-.3};
+      if(s==="hop"||s==="hop-down")return{x:0,y:-.45};
+      if(s==="slip"||s==="recover")return{x:0,y:.5};
+      if(s==="drop"||s==="settle"||s==="crouch")return{x:0,y:.3};
+      return{x:dir*.4,y:-.2}}
+    if(walk&&walk.to)return{x:(walk.tx-walk.x<0?-1:1)*.6,y:0};
+    return null};
   init3d(host,()=>({p:lastPose,mode,dying,
     walking:!!(walk&&walk.to)||(stage?stage.walking&&Math.abs(stage.targetX-stage.walkX)>.015:!1),
     walkDir:walk&&walk.to?(walk.tx-walk.x<0?-1:1):(stage&&stage.targetX<stage.walkX?-1:1),fx,
     lean:leanAt||stageLean(),reduced,stage:BODIES[bodyI],face:faceNow,
     stagePose:stage?{ref:stage,roll:stage.roll,pitch:stage.pitch,liftPx:stage.groundY*UPX(),
-      state:stage.state,key:stage.key,trace:stage.trace,
+      state:stage.state,key:stage.key,trace:stage.trace,squash:stage.squashEnv||0,
       grip:STAGE_GRIP[stage.state]||0}:null,
     // Phase B attention: eyes fixate what the body is engaged with — the panel
     // he's touching while leaning (dir=+1 is screen-right), a down-glance while
     // pondering. null hands gaze back to the saccade/drift scheduler.
     attend:leanAt?{x:leanAt.dir*.8,y:.15}:pondering?{x:0,y:.4}:null,
+    lookBias:lookBiasNow(),
     talking:host.classList.contains("is-active"),grooving:host.classList.contains("music-playing"),mood,bag:bag.worn}),hideFigure)
     .then(h=>{crid3d=h}).catch(err=>{try{console.warn("[crid-3d] not started:",err&&err.message||err)}catch{}});
   // ---- the backpack: a prop with mass (docs/specs/backpack.md + physics.md) ---------------
@@ -854,16 +872,24 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // the gesture beats, which are interpolated (below), and a continuous layer that never stops —
   // breathing, a slow weight shift, and the walk cycle.
   const EASE={linear:u=>u,smooth:u=>u*u*(3-2*u),out:u=>1-Math.pow(1-u,3),settle:u=>1-Math.pow(1-u,4.2),
+      // Damped spring, ratio ~0.45: one small overshoot then rest — the settle
+      // every stop owes. w=12 keeps the tail inside ~0.5% of target at u=1.
+      damped:u=>{const z=.45,w=12,wd=w*Math.sqrt(1-z*z);
+        return 1-Math.exp(-z*w*u)*(Math.cos(wd*u)+(z*w/wd)*Math.sin(wd*u))},
       anticipate:u=>{const c=1.35;return (c+1)*u*u*u-c*u*u},
       overshoot:u=>{const c=1.70158;return 1+(c+1)*Math.pow(u-1,3)+c*Math.pow(u-1,2)}},
     NUMS=["gx","gy","hy","hr","by","bs","pr","tr"],BOOT=Date.now();
   // Every beat knows where it sits in its own sequence, so the first beat can wind up before the
   // move and the last one can settle after it. One frame per tick, every frame the same length,
   // was the metronome that made him skip like a robot.
-  const FPOS=new WeakMap,FLEN=new WeakMap;
-  for(const k in SEQ){const arr=SEQ[k]; arr.forEach((f,i)=>{if(!FPOS.has(f))FPOS.set(f,i)}); for(const f of arr)if(!FLEN.has(f))FLEN.set(f,arr.length)}
-  const beatMs=f=>{const i=FPOS.get(f)??1,n=FLEN.get(f)??3; return STEP*(i===0?2.6:i===n-1?3.1:2.0)*(.82+Math.random()*.5)*(reduced?1.3:1)};
-  const beatEase=f=>{const i=FPOS.get(f)??1,n=FLEN.get(f)??3; return i===0?"anticipate":i===n-1?"settle":(Math.random()<.5?"out":"smooth")};
+  const FPOS=new WeakMap,FLEN=new WeakMap,FPSEQ=new WeakMap;
+  // Sequences whose first beat IS the anticipation: a ~140 ms opposite dip
+  // before the move, not the usual long wind-up.
+  const ANTICIPATE=new Set(["hop","jump","climb","dropbag"]);
+  for(const k in SEQ){const arr=SEQ[k]; arr.forEach((f,i)=>{if(!FPOS.has(f))FPOS.set(f,i);if(!FPSEQ.has(f))FPSEQ.set(f,k)}); for(const f of arr)if(!FLEN.has(f))FLEN.set(f,arr.length)}
+  const beatMs=f=>{const i=FPOS.get(f)??1,n=FLEN.get(f)??3,anti=i===0&&ANTICIPATE.has(FPSEQ.get(f));
+    return STEP*(i===0?(anti?1.0:2.6):i===n-1?3.1:2.0)*(.82+Math.random()*.5)*(reduced?1.3:1)};
+  const beatEase=f=>{const i=FPOS.get(f)??1,n=FLEN.get(f)??3; return i===0?"anticipate":i===n-1?"damped":(Math.random()<.5?"out":"smooth")};
   const breath=now=>Math.sin((now-BOOT)/1000*2*Math.PI/4.6)*(reduced?.35:1);
   // A person standing still is never square to the camera: a small lean that moves every few
   // seconds, biased to one side, is what stops him reading as a sprite pinned to a grid.
@@ -961,13 +987,14 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // 22Hz those stepped visibly under the 60fps rig. The intent is the one
   // beingTick last computed — it only ever changed at that cadence anyway.
   let stageIntent=null,stageBusy=false,lastStageRAF=0;
-  const stageRAF=()=>{
-    if(frozen){requestAnimationFrame(stageRAF);return}
-    const now=Date.now();
+  const stageDrive=now=>{
     if(stage&&mode==="on"&&!dying&&!reduced){
       const dt=lastStageRAF?Math.min(.1,Math.max(0,(now-lastStageRAF)/1000)):.016; lastStageRAF=now;
       try{stage.step(now,stageBusy?null:stageIntent,dt)}catch{}}
-    else lastStageRAF=0;
+    else lastStageRAF=0};
+  const stageRAF=()=>{
+    if(frozen){requestAnimationFrame(stageRAF);return}
+    stageDrive(Date.now());
     try{stageTick()}catch{}
     if(typeof requestAnimationFrame=="function")requestAnimationFrame(stageRAF)};
   if(typeof requestAnimationFrame=="function")requestAnimationFrame(stageRAF);
@@ -986,7 +1013,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // A commanded lean or walk is the desk's ask outranking his own stage: the
     // machine is told to abandon gracefully rather than fight the new verb.
     if(stage&&stage.state!=="floor"&&(leanAt||pendingLean||walk))stage.interrupt("cue-takeover");
-    if(typeof requestAnimationFrame!="function")stageTick(); maybeVisit(now); maybeBag(now);
+    if(typeof requestAnimationFrame!="function"){stageDrive(now);stageTick()} maybeVisit(now); maybeBag(now);
     if(now>=trAt+trFor){ // the previous beat has finished travelling: choose the next one
       let frame=null; if(walk&&!walk.done&&!gestureQ.length)gestureQ.push(...SEQ.crawl);
       if(gestureQ.length){const head=gestureQ[0]; if(head&&head.__cueEnd!=null){gestureQ.shift(); endCue(head.__cueEnd,"done")} else {frame=gestureQ.shift(); if(frame&&frame.__bag)bagMark(frame.__bag,frame)}} else if(mode!=="dead"&&!dying){

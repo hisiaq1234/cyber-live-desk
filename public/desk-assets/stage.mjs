@@ -53,6 +53,12 @@ export function createStage({
     abandoned: false, trace: "floor", reason: "",
     slipFromX: 0, slipFromY: 0, slipRolled: false, stumble: 0,
     walkX,
+    // The move he is winding up for: "anticipate" is a 130 ms opposite dip that
+    // runs between the reach/wind-up and the commit (pull, hop, lean-in).
+    next: null,
+    // Landing squash clock: set on every state entry that ends a descent
+    // (top, seat, settle), read as stage.squashEnv by the renderer.
+    squashAt: null, squashEnv: 0,
   };
   let lastSurfaceCheck = 0;
   let lastNow = null;
@@ -81,6 +87,7 @@ export function createStage({
     if (!stage.abandoned && stage.key) stage.trace = stage.key + " · done";
     stage.abandoned = false; stage.key = null; stage.layer = null; stage.surface = null;
     stage.roll = 0; stage.pitch = 0; stage.groundY = 0; stage.walking = false;
+    stage.next = null; stage.squashAt = null; stage.squashEnv = 0;
     go("floor");
   }
 
@@ -119,6 +126,7 @@ export function createStage({
     stage.topY = s.top; stage.targetX = s.x; stage.fromX = s.x; stage.fromY = 0;
     stage.lipX = s.side === "right" ? s.r - lip : s.l + lip;
     stage.abandoned = false; stage.reason = ""; stage.slipRolled = false; stage.stumble = 0;
+    stage.next = null; stage.squashAt = null; stage.squashEnv = 0;
     go("approach");
     return true;
   }
@@ -165,6 +173,16 @@ export function createStage({
       : Math.min(5, Math.max(0, (nowMs - lastNow) / 1000));
     lastNow = nowMs;
     stage.t += dt;
+    // Landing squash envelope: ~8% for the first 80 ms of contact, then a
+    // damped recovery whose cosine lobe lets him stretch a hair past rest
+    // once before settling — the same "one small overshoot" the settle ease gives.
+    if (stage.squashAt != null) {
+      const s = (nowMs - stage.squashAt) / 1000;
+      stage.squashEnv = s < 0 ? 0
+        : s < 0.08 ? 0.08
+        : Math.max(-0.02, 0.08 * Math.exp(-6 * (s - 0.08)) * Math.cos((s - 0.08) * 14));
+      if (s > 1.2) { stage.squashAt = null; stage.squashEnv = 0; }
+    }
     checkSurface(nowMs);
 
     if (stage.state === "floor") {
@@ -185,12 +203,21 @@ export function createStage({
         stage.walking = true;
         if (Math.abs(stage.targetX - stage.walkX) <= 0.02) {
           stage.walking = false;
-          go(stage.key === "lean-watch" ? "lean-in" : stage.key === "sit-on" ? "hop" : "reach");
+          // Every commit gets its anticipation beat first: 130 ms of opposite
+          // dip (stageChannels "anticipate") before the pull, the hop or the lean.
+          // A climb keeps its longer wind-up: approach -> reach (hands on the lip)
+          // -> anticipate -> pull, so the dip lands right before the commit.
+          if (stage.key === "climb") go("reach");
+          else { stage.next = stage.key === "lean-watch" ? "lean-in" : "hop"; go("anticipate"); }
         }
+        break;
+      case "anticipate":                            // the wind-up: eyes already on target, body dips opposite
+        stage.walking = false;
+        if (stage.t >= 0.13) go(stage.next || "floor");
         break;
       case "reach": {                              // hands on the lip, weight down
         stage.walking = false;
-        if (stage.t >= 0.5) go("pull");
+        if (stage.t >= 0.5) { stage.next = "pull"; go("anticipate"); }
         break;
       }
       case "pull": {                               // the feet leave the floor and land on the top
@@ -209,7 +236,7 @@ export function createStage({
         if (stage.t >= 0.75) {
           stage.groundY = stage.topY; stage.walkX = stage.lipX;
           stage.surface = { name: stage.layer, top: stage.topY };
-          stage.hold = 2.5; go("top");
+          stage.squashAt = nowMs; stage.hold = 2.5; go("top");
         }
         break;
       }
@@ -217,7 +244,7 @@ export function createStage({
         const e = ease(stage.t / 0.8);
         stage.groundY = stage.slipFromY * (1 - e);
         stage.walkX = stage.slipFromX + (stage.fromX - stage.slipFromX) * e;
-        if (stage.t >= 0.8) { stage.groundY = 0; stage.walkX = stage.fromX; stage.surface = null; go("recover"); }
+        if (stage.t >= 0.8) { stage.groundY = 0; stage.walkX = stage.fromX; stage.surface = null; stage.squashAt = nowMs; go("recover"); }
         break;
       }
       case "recover":                              // the scramble: a beat on the floor, then done
@@ -249,7 +276,7 @@ export function createStage({
         const e = ease(stage.t / 0.4);
         stage.groundY = stage.fromY * (1 - e);
         stage.walkX = stage.lipX + (stage.fromX - stage.lipX) * e;
-        if (stage.t >= 0.4) { stage.groundY = 0; stage.walkX = stage.fromX; stage.surface = null; go("settle"); }
+        if (stage.t >= 0.4) { stage.groundY = 0; stage.walkX = stage.fromX; stage.surface = null; stage.squashAt = nowMs; go("settle"); }
         break;
       }
       case "settle":
@@ -281,7 +308,7 @@ export function createStage({
         if (stage.t >= 0.55) {
           stage.walkX = stage.lipX; stage.seatY = stage.topY - hipY + 0.02; stage.groundY = stage.seatY;
           stage.surface = { name: stage.layer, top: stage.topY };
-          stage.hold = 3; go("seat");
+          stage.squashAt = nowMs; stage.hold = 3; go("seat");
         }
         break;
       }
@@ -294,7 +321,7 @@ export function createStage({
         const e = ease(stage.t / 0.5);
         stage.groundY = stage.fromY * (1 - e);
         stage.walkX = stage.lipX + (stage.fromX - stage.lipX) * e;
-        if (stage.t >= 0.5) { stage.groundY = 0; stage.walkX = stage.fromX; go("settle"); }
+        if (stage.t >= 0.5) { stage.groundY = 0; stage.walkX = stage.fromX; stage.squashAt = nowMs; go("settle"); }
         break;
       }
       default: endStage();
@@ -320,6 +347,16 @@ export function stageChannels(stage, t) {
     kneeL: 0, kneeR: 0, legFwdL: 0, legFwdR: 0,
     leanFwd: 0, headPitch: 0, elbowL: 0, elbowR: 0, rootY: 0,
   };
+  // anticipation: 130 ms of the opposite move before every commit — crouch down,
+  // lean back, arms drop — while the eyes are already on the target (the gaze
+  // bias lives in crid-bot's lookBias, not here).
+  if (stage.state === "anticipate") {
+    const u = clamp(stage.t / 0.13, 0, 1), dip = Math.sin(Math.PI * u);
+    C.rootY -= 0.05 * dip; C.kneeL += 0.5 * dip; C.kneeR += 0.5 * dip;
+    C.leanFwd -= 0.12 * dip;
+    C.armLiftL -= 0.3 * dip; C.armLiftR -= 0.3 * dip;
+    C.headPitch += 0.10 * dip;
+  }
   if (stage.state === "reach" || stage.state === "pull") {
     const reach = stage.state === "reach" ? clamp(stage.t / 0.5, 0, 1) : 1 - clamp(stage.t / 0.75, 0, 1) * 0.6;
     C.armLiftL += 1.9 * reach; C.armLiftR += 1.9 * reach;
@@ -328,7 +365,11 @@ export function stageChannels(stage, t) {
     C.leanFwd += 0.16 * reach;
   }
   if (stage.state === "crouch" || stage.state === "drop" || stage.state === "settle") {
-    const dip = stage.state === "settle" ? Math.max(0, 1 - stage.t / 0.6) : 1;
+    // settle is a damped stop, not a linear fade: the crouch overshoots a touch
+    // past rest once (negative dip = a small rise) before he stands square.
+    const dip = stage.state === "settle"
+      ? Math.max(-0.18, Math.exp(-4 * stage.t) * Math.cos(stage.t * 8))
+      : 1;
     C.kneeL += 0.55 * dip; C.kneeR += 0.55 * dip; C.leanFwd += 0.18 * dip;
     C.armLiftL += 0.35 * dip; C.armLiftR += 0.35 * dip;
   }

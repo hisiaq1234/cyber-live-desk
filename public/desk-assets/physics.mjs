@@ -28,9 +28,9 @@ export function createWorld({ gravity = GRAVITY, fixedDt = 1 / 120 } = {}) {
     body.mass ??= 1; body.drag ??= 0;
     body.restitution ??= .22; body.floor ??= 0; body.halfH ??= 0;
     if (body.character) {
-      body.halfW ??= Math.max(1, body.halfH * .38);
+      body.halfW ??= Math.max(EPS, body.halfH * .38);
       body.strength ??= 1;
-      body.grounded ??= body.y + body.halfH >= body.floor - .5;
+      body.grounded ??= body.y + body.halfH >= body.floor - Math.max(.01, body.halfH * .04);
       body.supportId ??= body.grounded ? "floor" : null;
       body.distanceTravelled ??= 0;
       body.grip ??= null;

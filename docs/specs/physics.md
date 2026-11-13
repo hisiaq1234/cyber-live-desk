@@ -15,9 +15,11 @@ maths. No element gets to cheat for looks.
 - **One gravity.** A single downward acceleration for every body, in screen units per second².
   A dropped bag, a slipping foot and a falling sheet of paper all accelerate by the same value; only
   air drag and mass change how they *look*.
-- **One floor.** The scene's floor line (`--bot-floor`) is the only ground. Anything resting on it
-  has a contact shadow; anything in the air has none. No body may rest above the floor without a
-  reason, and nothing may pass through it.
+- **One floor, plus explicit solid surfaces.** The scene's floor line (`--bot-floor`) is the base
+  ground plane. Registered climbable layers become static platform/ledge collision rectangles;
+  a visual layer is not solid unless it is in that collision map. Anything resting on the floor or
+  a platform has support/contact; anything in the air has none. Nothing may pass through a floor,
+  platform top, platform underside or solid side.
 - **Mass is real.** Every body has a mass. Crid's mass follows his body stage (lean → heavy), the
   bag has a fixed mass, paper has almost none.
 
@@ -36,12 +38,21 @@ maths. No element gets to cheat for looks.
    with low restitution, settles and stops. Nothing floats, nothing fades out mid-air.
 
 ## How it is built (small, cheap, no library)
-- A new `public/desk-assets/physics.mjs`: bodies `{x, y, vx, vy, mass, drag, restitution}`, one
-  gravity constant, one floor plane, a fixed-step integrator driven by the existing rAF loop.
-  Collisions are floor-only plus one simple constraint (hand ↔ bag). No third-party engine, no
-  canvas, no per-frame allocation.
-- Crid's own motion goes through the same integrator: walk speed = strength / total mass, climb is an
-  attempt resolved against a mass ratio, stumble is an impulse the body then recovers from.
+- `public/desk-assets/physics.mjs` is the single world: ordinary bodies
+  `{x, y, vx, vy, mass, drag, restitution}` and one character body with a capsule-like AABB
+  (`halfW/halfH`), velocity, strength, grounded/support id, motor intent and optional hand grip.
+  One gravity constant, one fixed-step accumulator (1/120 s), one body set and one floor plane.
+  The existing bag and loose paper stay in this same integrator. No third-party engine, no canvas,
+  no second character simulation loop.
+- The layer registry supplies static platform rectangles to that world. The motor resolves solid
+  sides, platform tops and undersides; the stage planner requests movement but cannot write root
+  trajectories. Walk speed/acceleration and grip capacity use strength divided by character mass
+  plus carried load. Jump impulses use the same gravity. A ledge grip is a bounded world-space
+  anchor; climbing is a force-limited motor toward a target, and sustained overload releases it.
+- The DOM host is positioned from the physics body's root. `crid-3d.js` remains a pose renderer:
+  gait phase comes from measured root distance / stride length, stance ankles retain screen-space
+  anchors while the root moves, and the existing two-bone IK solves the leg/arm chains. The stage
+  state machine only completes a climb/hop after the physics body reports support on that layer.
 - Budget: 60 fps on a phone with the bag plus at most a handful of loose bodies. If the frame budget
   is tight, the physics steps at a lower fixed rate and the drawing interpolates.
 

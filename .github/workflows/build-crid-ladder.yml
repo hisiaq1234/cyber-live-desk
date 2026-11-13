@@ -13,6 +13,11 @@ on:
       - scripts/build-crid-rig.py
       - scripts/probe-crid.mjs
       - public/crid-lab.html
+      - tests/crid-bot.test.mjs
+      - tests/crid-rig-ladder.test.mjs
+      - tests/physics-character.test.mjs
+      - tests/stage.test.mjs
+      - tests/gait.test.mjs
       - .github/workflows/build-crid-ladder.yml
 
 permissions:

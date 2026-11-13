@@ -128,7 +128,7 @@ function draw(){
   // are always the same build as the body he is wearing. The ten piece <image>s are shared; a
   // stage swap re-points them at that stage's crops and pivots.
   let rigStage="3";
-  const rigNow=()=>RIGS[rigStage]||RIGS["3"],rigImgs={};
+  const rigNow=()=>{const rig=RIGS[rigStage];if(!rig)throw new Error(`Missing generated cutout rig for CRID body stage ${rigStage}`);return rig},rigImgs={};
   const syncRig=()=>{const t=rigNow(); for(const n in rigImgs){const b=t.pieces[n],im=rigImgs[n];
     im.setAttribute("x",b.x); im.setAttribute("y",b.y); im.setAttribute("width",b.w); im.setAttribute("height",b.h);
     im.setAttribute("href",b.src); im.setAttributeNS(XLINK,"href",b.src)}};

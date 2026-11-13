@@ -14,9 +14,9 @@
  *   rand/mass/bagOn/slip -> the physics.md §2 slip dice and the bag's drag
  *   onInterrupt(reason)   -> what being.interrupt(reason) did on the rig page
  *
- * `walkX` lives on the returned object as `walkX`. The renderer integrates it during floor
- * states (the wander walk); the machine owns it during every panel phase — the same split the
- * original had, where `walkX` was a page-level `let` both sides wrote.
+ * `walkX` and `groundY` are motor-owned snapshots on the returned object. The planner writes
+ * targets and action states only; physics updates root position, grounding and support after
+ * every fixed step. This prevents scripted trajectories and the physical motor from fighting.
  *
  * `state` stays a readable string property (it was `stage.state` in the original), so there is
  * no `state()` method — read `stage.state`.
@@ -53,7 +53,7 @@ export function createStage({
     state: "floor", key: null, layer: null, side: "right", t: 0,
     targetX: 0, groundY: 0, roll: 0, pitch: 0, topY: 0, lipX: 0, seatY: 0,
     fromX: 0, fromY: 0, fromRoll: 0, fromPitch: 0, surface: null, walking: false, hold: 0,
-    abandoned: false, trace: "floor", reason: "", gripFailed: false,
+    abandoned: false, trace: "floor", reason: "", gripFailed: false, grounded: true, supportId: "floor",
     slipFromX: 0, slipFromY: 0, slipRolled: false, stumble: 0,
     walkX,
     // The move he is winding up for: "anticipate" is a 130 ms opposite dip that
@@ -85,7 +85,7 @@ export function createStage({
   function endStage() {
     if (!stage.abandoned && stage.key) stage.trace = stage.key + " · done";
     stage.abandoned = false; stage.key = null; stage.layer = null; stage.surface = null;
-    stage.roll = 0; stage.pitch = 0; stage.groundY = 0; stage.walking = false;
+    stage.roll = 0; stage.pitch = 0; stage.walking = false;
     stage.next = null; stage.squashAt = null; stage.squashEnv = 0;
     go("floor");
   }
@@ -233,37 +233,34 @@ export function createStage({
             stage.trace = "climb · slipping"; go("slip"); break;
           }
         }
-        const e = ease(stage.t / 0.75);
-        stage.groundY = stage.topY * e;
-        stage.walkX = stage.fromX + (stage.lipX - stage.fromX) * e;
+
         if (stage.t >= 0.75) {
-          if (!canCompleteClimb(stage)) { stage.t = 0.75; break; }
-          stage.groundY = stage.topY; stage.walkX = stage.lipX;
+          if (!canCompleteClimb(stage)) {
+            if (stage.t >= 2.5) { stage.gripFailed = true; stage.reason = "stalled"; stage.trace = "climb · stalled"; go("slip"); }
+            break;
+          }
           stage.surface = { name: stage.layer, top: stage.topY };
           stage.squashAt = nowMs; stage.hold = 2.5; go("top");
         }
         break;
       }
       case "slip": {                               // hands lose the lip: slide back down the face
-        const e = ease(stage.t / 0.8);
-        stage.groundY = stage.slipFromY * (1 - e);
-        stage.walkX = stage.slipFromX + (stage.fromX - stage.slipFromX) * e;
+
         if (stage.t >= 0.8) {
-          if (!canCompleteDrop(stage)) { stage.t = 0.8; break; }
-          stage.groundY = 0; stage.walkX = stage.fromX; stage.surface = null; stage.squashAt = nowMs; go("recover");
+          if (!canCompleteDrop(stage)) break;
+          stage.surface = null; stage.squashAt = nowMs; go("recover");
         }
         break;
       }
       case "recover":                              // the scramble: a beat on the floor, then done
         stage.walking = false;
         if (stage.t >= 1.0) {
-          stage.abandoned = true; stage.reason = "slip";
-          stage.trace = "climb · abandoned (slip)";
-          onInterrupt("slip"); stage.surface = null; endStage();
+          stage.abandoned = true; stage.reason = stage.reason || "slip";
+          stage.trace = (stage.key || "activity") + " · abandoned (" + stage.reason + ")";
+          onInterrupt(stage.reason); stage.surface = null; endStage();
         }
         break;
       case "top": {                                // standing on it, drifting along the top
-        stage.groundY = stage.topY;
         const b = boxOf(stage.layer);
         if (b) {
           const lo = leftOf(b) + hisW / 2 + 4 * pxW(), hi = rightOf(b) - hisW / 2 - 4 * pxW();
@@ -280,12 +277,10 @@ export function createStage({
         if (stage.t >= 0.28) go("drop");
         break;
       case "drop": {                               // a controlled drop with a landing, not a fall
-        const e = ease(stage.t / 0.4);
-        stage.groundY = stage.fromY * (1 - e);
-        stage.walkX = stage.lipX + (stage.fromX - stage.lipX) * e;
+
         if (stage.t >= 0.4) {
-          if (!canCompleteDrop(stage)) { stage.t = 0.4; break; }
-          stage.groundY = 0; stage.walkX = stage.fromX; stage.surface = null; stage.squashAt = nowMs; go("settle");
+          if (!canCompleteDrop(stage)) break;
+          stage.surface = null; stage.squashAt = nowMs; go("settle");
         }
         break;
       }
@@ -312,13 +307,13 @@ export function createStage({
         break;
       }
       case "hop": {                                // up onto the panel to sit on its lip
-        const e = ease(stage.t / 0.55);
-        stage.groundY = stage.topY * e;
-        stage.walkX = stage.fromX + (stage.lipX - stage.fromX) * e;
+
         if (stage.t >= 0.55) {
-          if (!canCompleteHop(stage)) { stage.t = 0.55; break; }
-          stage.walkX = stage.lipX; stage.seatY = stage.topY - hipY + 0.02; stage.groundY = stage.seatY;
-          stage.surface = { name: stage.layer, top: stage.topY };
+          if (!canCompleteHop(stage)) {
+            if (stage.t >= 2.5 && canCompleteDrop(stage)) { stage.reason = "missed"; stage.abandoned = true; stage.surface = null; stage.squashAt = nowMs; go("recover"); }
+            break;
+          }
+          stage.seatY = stage.topY - hipY + 0.02; stage.surface = { name: stage.layer, top: stage.topY };
           stage.squashAt = nowMs; stage.hold = 3; go("seat");
         }
         break;
@@ -329,12 +324,10 @@ export function createStage({
         if (stage.hold <= 0 && ((intent && intent.phase === "end") || !intent || intent.key !== stage.key)) { stage.surface = null; finishStage(); }
         break;
       case "hop-down": {
-        const e = ease(stage.t / 0.5);
-        stage.groundY = stage.fromY * (1 - e);
-        stage.walkX = stage.lipX + (stage.fromX - stage.lipX) * e;
+
         if (stage.t >= 0.5) {
-          if (!canCompleteDrop(stage)) { stage.t = 0.5; break; }
-          stage.groundY = 0; stage.walkX = stage.fromX; stage.squashAt = nowMs; go("settle");
+          if (!canCompleteDrop(stage)) break;
+          stage.squashAt = nowMs; go("settle");
         }
         break;
       }

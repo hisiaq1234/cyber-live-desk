@@ -197,7 +197,7 @@ def warp_rows(im, scale):
         if abs(k - 1.0) > 0.0001:
             inv = 1.0 / k
             row = row.transform((FRAME_W, 1), Image.Transform.AFFINE,
-                                (inv, 0, AXIS * (1.0 - inv), 0),
+                                (inv, 0, AXIS * (1.0 - inv), 0, 1, 0),
                                 resample=Image.Resampling.BICUBIC)
         out.paste(row, (0, y))
     return out

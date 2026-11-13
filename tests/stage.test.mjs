@@ -20,30 +20,66 @@ function makeStage(over = {}) {
     unit: () => 100,
     worldX: (px) => px / 100,
     screenWidth: 1920,
-    rand: () => 0.99,               // the slip dice never fire unless a test says so
+    rand: () => 0.99,
     mass: 1,
     bagOn: () => false,
     onInterrupt: (r) => interrupts.push(r),
+    canCompleteClimb: s => s.grounded && s.supportId === s.layer,
+    canCompleteHop: s => s.grounded && s.supportId === s.layer,
+    canCompleteDrop: s => s.grounded && s.supportId === "floor",
     ...over,
   });
   return { stage, interrupts };
 }
 
-// Drive the machine like the renderer would: fixed dt, and during a floor walk he closes on
-// targetX at the rig page's walk speed (0.42 u/s).
+// Deterministic test motor: only it moves the root and reports contacts.
+function motorStep(stage, dt) {
+  if (stage.walking && ["approach", "floor", "top"].includes(stage.state)) {
+    const d = stage.targetX - stage.walkX;
+    stage.walkX += Math.sign(d) * Math.min(Math.abs(d), 0.42 * dt);
+  }
+  if (stage.state === "pull") {
+    if (stage.t + dt >= 0.75) {
+      stage.walkX = stage.lipX; stage.groundY = stage.topY;
+      stage.grounded = true; stage.supportId = stage.layer;
+    } else { stage.grounded = false; stage.supportId = null; }
+  }
+  if (stage.state === "hop") {
+    if (stage.t + dt >= 0.55) {
+      stage.walkX = stage.lipX; stage.groundY = stage.topY;
+      stage.grounded = true; stage.supportId = stage.layer;
+    } else { stage.grounded = false; stage.supportId = null; }
+  }
+  if (["slip", "drop", "hop-down"].includes(stage.state)) {
+    const contactAt = stage.state === "slip" ? 0.8 : stage.state === "drop" ? 0.4 : 0.5;
+    if (stage.t + dt >= contactAt) {
+      stage.walkX = stage.fromX; stage.groundY = 0;
+      stage.grounded = true; stage.supportId = "floor";
+    } else { stage.grounded = false; stage.supportId = null; }
+  }
+}
+
 function drive(stage, intent, seconds, dt = 0.05) {
   const seen = [];
   let now = 0;
   for (let i = 0; i < Math.round(seconds / dt); i++) {
     now += dt * 1000;
+    motorStep(stage, dt);
     stage.step(now, intent, dt);
-    if (stage.walking && stage.state !== "top" && stage.state !== "seat") {
-      const d = stage.targetX - stage.walkX;
-      stage.walkX += Math.sign(d) * Math.min(Math.abs(d), 0.42 * dt);
-    }
     seen.push(stage.state);
   }
   return seen;
+}
+
+function driveUntil(stage, intent, predicate, seconds, dt = 0.05) {
+  let now = 0;
+  for (let i = 0; i < Math.round(seconds / dt); i++) {
+    now += dt * 1000;
+    motorStep(stage, dt);
+    stage.step(now, intent, dt);
+    if (predicate(stage)) return;
+  }
+  throw new Error("stage did not reach expected state before timeout");
 }
 
 const climbIntent = { key: "climb", phase: "start", layer: "panel-r", x: 0.5 };
@@ -81,8 +117,8 @@ test("he stands on the panel during 'top' and the trace says done", () => {
 
 test("a climb waits for the physics motor to confirm platform support",()=>{
   let supported=false;
-  const {stage}=makeStage({canCompleteClimb:()=>supported});
-  drive(stage,climbIntent,12);
+  const {stage}=makeStage({canCompleteClimb:()=>supported,canCompleteDrop:()=>false});
+  driveUntil(stage,climbIntent,s=>s.state==="pull"&&s.t>=0.5,12);
   assert.equal(stage.state,"pull");
   supported=true;
   drive(stage,climbIntent,1);
@@ -104,24 +140,20 @@ test("a physical slip stays in the slip state until the floor contact is real",(
   let forceSlip=false,onFloor=false,now=0;
   const {stage}=makeStage({slip:()=>forceSlip,canCompleteDrop:()=>onFloor});
   for(let i=0;i<320&&stage.state!=="pull";i++){
-    now+=50;stage.step(now,climbIntent,.05);
-    if(stage.walking&&stage.state!=="top"&&stage.state!=="seat"){
-      const d=stage.targetX-stage.walkX;
-      stage.walkX+=Math.sign(d)*Math.min(Math.abs(d),.42*.05);
-    }
+    motorStep(stage,.05);now+=50;stage.step(now,climbIntent,.05);
   }
   assert.equal(stage.state,"pull");
   forceSlip=true;
   for(let i=0;i<20&&stage.state!=="slip";i++){
-    now+=50;stage.step(now,{...climbIntent,phase:"middle"},.05);
+    motorStep(stage,.05);now+=50;stage.step(now,{...climbIntent,phase:"middle"},.05);
   }
   assert.equal(stage.state,"slip");
   for(let i=0;i<50;i++){
-    now+=50;stage.step(now,{...climbIntent,phase:"middle"},.05);
+    motorStep(stage,.05);now+=50;stage.step(now,{...climbIntent,phase:"middle"},.05);
   }
   assert.equal(stage.state,"slip");
   onFloor=true;
-  now+=50;stage.step(now,{...climbIntent,phase:"middle"},.05);
+  motorStep(stage,.05);now+=50;stage.step(now,{...climbIntent,phase:"middle"},.05);
   assert.equal(stage.state,"recover");
 });
 
@@ -227,4 +259,23 @@ test("stageChannels gives the reach its arms and the recover its crouch", () => 
   // a plain floor frame is all zeros
   const c0 = stageChannels({ ...stage, state: "floor", t: 0, stumble: 0 }, 1);
   for (const v of Object.values(c0)) assert.equal(v, 0);
+});
+
+
+test("a stalled climb times out to slip and waits for real floor contact",()=>{
+  let onFloor=false;
+  const {stage}=makeStage({canCompleteClimb:()=>false,canCompleteDrop:()=>onFloor});
+  drive(stage,climbIntent,12);
+  assert.equal(stage.state,"slip");
+  onFloor=true;
+  drive(stage,climbIntent,1);
+  assert.equal(stage.state,"floor");
+});
+
+test("the stage planner never writes motor-owned root coordinates",()=>{
+  const {stage}=makeStage();
+  const x=stage.walkX,y=stage.groundY;
+  stage.step(50,climbIntent,.05);
+  assert.equal(stage.walkX,x);
+  assert.equal(stage.groundY,y);
 });

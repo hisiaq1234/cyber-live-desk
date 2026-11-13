@@ -838,7 +838,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   try{window.__cridStage=()=>stage?{state:stage.state,key:stage.key,layer:stage.layer,
     walkX:Math.round(stage.walkX*UPX()+innerWidth/2),groundY:Math.round(stage.groundY*UPX()),
     roll:+stage.roll.toFixed(3),pitch:+stage.pitch.toFixed(3),trace:stage.trace,hold:+stage.hold.toFixed(1),
-    grounded:cridBody.grounded,supportId:cridBody.supportId,vx:+cridBody.vx.toFixed(3),vy:+cridBody.vy.toFixed(3),handContact:stageLean()?.contact||null,worldAnchor:stageLean()?.worldAnchor||null}:null}catch{}
+    grounded:cridBody.grounded,supportId:cridBody.supportId,handContact:stageLean()?.contact||null,worldAnchor:stageLean()?.worldAnchor||null,vx:+cridBody.vx.toFixed(3),vy:+cridBody.vy.toFixed(3),handContact:stageLean()?.contact||null,worldAnchor:stageLean()?.worldAnchor||null}:null}catch{}
   try{window.__crid3D=()=>({active:!!(crid3d&&crid3d.active),failed:!!crid3dFailed})}catch{}
   try{window.__cridMotor=()=>({x:+cridBody.x.toFixed(4),y:+cridBody.y.toFixed(4),
     vx:+cridBody.vx.toFixed(4),vy:+cridBody.vy.toFixed(4),grounded:cridBody.grounded,
@@ -1132,7 +1132,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     return {p,mode,dying,walking,reduced,grooving,fx:p.fx,walkDir:walk?.dir||1,
       lean:leanAt||stageLean(),stage:b.key,
       stagePose:stage?{ref:stage,pitch:stage.pitch||0,roll:stage.roll||0,squash:stage.squashEnv||0}:null,
-      grip:!!cridBody.grip,bag:{worn:bag.worn},
+      grip:!!cridBody.grip,bag:{...bag},
       motorState:{active:walking,distanceTravelled:cridBody.distanceTravelled||0,
         strideLength:Math.max(.08,cridBody.halfW*2.25),velocity:cridBody.vx,
         grounded:!!cridBody.grounded,supportId:cridBody.supportId,

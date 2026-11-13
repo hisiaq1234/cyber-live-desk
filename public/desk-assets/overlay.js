@@ -106,6 +106,9 @@ import { createScene, SCENE_CSS } from "./scene.js";
   const xJPos = "top";
   const xJPollMs = num("x.jpoll", 60, 10, 3600) * 1000;
   const xUserId = P.get("x.userId") || "";
+  // ?xui=classic keeps the old text-list renderer for timeline modes; the
+  // default is the extracted Larix overlay app iframed into the same card.
+  const xUiClassic = P.get("xui") === "classic";
 
   // ---------- location ----------
   // Where the creator is. One source, several consumers — the readout top-right, the clock's
@@ -155,6 +158,17 @@ import { createScene, SCENE_CSS } from "./scene.js";
   }, "url");
   let currentLocation = URL_LOCATION;
   let locationRank = URL_LOCATION ? LOCATION_RANK.url : 0;
+
+  // The desk's live fix, kept apart from currentLocation: the ranked sources still decide what
+  // the readout and the clock topline say, while the location dock's map reads this feed
+  // directly so the delayed `at` and the panic `hidden` flag reach the panel intact. liveLoc
+  // is the coarse public view only — never a precise fix, never anything the state did not
+  // already publish.
+  let liveLoc = null;
+  let locHidden = false;
+  // Assigned by the map block below (a no-op under ?map=0): the one render path for everything
+  // the location dock draws beyond the clock plate itself.
+  let renderLocDock = () => {};
 
   // Only a source that outranks what is already on screen can replace it: a browser fix that lands
   // after the operator's own point must not overwrite it, and nothing overwrites the URL. The same
@@ -353,21 +367,22 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 /* Timestamp-filtered RSS headlines run automatically in a compact lower-third ticker. */
 #auto-headlines{position:fixed;right:var(--m);bottom:calc(var(--m) + env(safe-area-inset-bottom,0px));z-index:25;
   width:var(--identity-w);max-width:calc(100vw - 2*var(--m));
-  display:grid;grid-template-columns:minmax(0,1fr);align-items:center;gap:.28em;
-  padding:.42em .68em;background:rgba(7,9,14,.88);border:1px solid rgba(102,139,179,.32);
-  border-left:.28em solid #ff334d;border-radius:.9em;box-shadow:0 8px 24px rgba(0,0,0,.4);
+  display:grid;grid-template-columns:minmax(0,1fr);align-items:center;gap:.4em;
+  padding:.6em .85em;background:rgba(7,9,14,.9);border:1px solid rgba(102,139,179,.4);
+  border-left:.3em solid #ff334d;border-radius:.9em;box-shadow:0 8px 24px rgba(0,0,0,.4);
   font-size:var(--feed-fs);pointer-events:none;opacity:0;transform:translateY(8px);
   transition:opacity .25s ease,transform .25s ease}
 #auto-headlines[data-status="ready"],#auto-headlines[data-status="empty"],#auto-headlines[data-status="error"]{opacity:1;transform:none}
-.headline-feed-kicker{font-size:.68em;font-weight:900;letter-spacing:.08em;color:#ff5368;text-transform:uppercase;white-space:nowrap}
+.headline-feed-kicker{font-size:.74em;font-weight:900;letter-spacing:.08em;color:#ff8090;text-transform:uppercase;white-space:nowrap}
 .identity-row{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:baseline;gap:.12em .5em;min-width:0}
-.identity-row .headline-feed-title{grid-column:2;min-width:0;color:#f3f2f0;font-size:.82em;font-weight:750;line-height:1.15;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
-.identity-row .headline-feed-meta{grid-column:2;font-size:.6em;color:#a9bacb;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+.identity-row .headline-feed-title{grid-column:2;min-width:0;color:#fff;font-size:.95em;font-weight:800;line-height:1.2;
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.identity-row .headline-feed-meta{grid-column:2;font-size:.64em;color:#c4d2e2;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
 .identity-music{padding-bottom:.25em;border-bottom:1px solid rgba(102,139,179,.26)}
 .identity-music .headline-feed-kicker{color:#75b9e8}
 .news-drop-card{position:fixed;left:calc(var(--m) + 2.2em);bottom:calc(var(--m) + 4.2em + env(safe-area-inset-bottom,0px));
   width:min(calc(100vw - 2*var(--m) - 2.2em),32em);max-height:20dvh;z-index:30;padding:.8em 1em}
-@media(max-width:520px){#desk{--identity-w:min(58vw,32rem)}#auto-headlines{width:var(--identity-w);gap:.15em;padding:.32em .5em}.headline-feed-kicker{font-size:.58em}.identity-row .headline-feed-title{font-size:.72em}.identity-row .headline-feed-meta{font-size:.54em}}
+@media(max-width:520px){#desk{--identity-w:min(58vw,32rem)}#auto-headlines{width:var(--identity-w);gap:.2em;padding:.45em .6em}.headline-feed-kicker{font-size:.62em}.identity-row .headline-feed-title{font-size:.8em}.identity-row .headline-feed-meta{font-size:.58em}}
 
 /* Right dock (Top-Right docked) — hard height cap so it never reaches Swae's
    bottom and right-edge controls. Modules cap individually; shadows are kept
@@ -409,6 +424,11 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
    room than the trend list and keeps its "retrying" footer on screen. */
 #x-feed.x-problem-panel{max-height:28dvh}
 .x-item.x-problem{font-size:.86em;-webkit-line-clamp:4}
+/* The X Following timeline runs the extracted Larix overlay app
+   (public/x-overlay/) in an iframe — its own React UI, its own feed poll
+   through /api/x-timeline/feed. Transparent body, so only its cards show. */
+#x-feed.x-overlay-panel{max-height:none;padding:.4em}
+#x-feed.x-overlay-panel iframe{display:block;width:100%;height:64dvh;border:0;background:transparent}
 
 /* Module Component Styles — individual caps keep the dock total bounded */
 .court-wrap,.music-wrap,.space-wrap,.ledger-wrap,.riad-wrap {
@@ -432,7 +452,7 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 .music-track.current{border-color:var(--accent);background:rgba(255,69,58,.15)}
 .music-title{flex:1;font-size:.85em;color:#f3f2f0}
 .music-artist-small{font-size:.75em;color:#c7c7cc}
-#dock-right .music-wrap{width:min(42vw,24em);max-height:32dvh;overflow:hidden;padding:.65em}
+#music-plate .music-wrap{width:100%;max-height:36dvh;overflow:hidden;padding:.65em .85em}
 .music-video{display:block;width:100%;aspect-ratio:16/9;height:auto;max-height:26dvh;border:0;border-radius:.65em;background:#05070b;pointer-events:none}
 .music-empty{margin:.35em 0 0;font-size:.72em;color:#9A90B8}
 .space-title{font-size:1em;font-weight:800;color:#f3f2f0;margin:0 0 .2em}
@@ -639,34 +659,72 @@ html.swae .scale-wrap{display:none}
   #location-readout .loc-fix{font-size:9px;gap:6px}
   #location-readout .loc-coords,#location-readout .loc-sep{display:none}}
 
-/* The Cyber Radar location plate: the radar's own map, in the desk's frame. Lower-right, sitting
-   directly on top of the news ticker, drawn in the clock plate's Black Market language — onyx
-   plate, crimson edge, IBM Plex Mono readout — because it is the same fact about the same moment
-   as the timestamp. It is geography and never a position: this overlay has no GPS, so the plate
-   carries no marker, no accuracy circle and no rotation, and its one readout line names the MAP
-   VIEW centre (where the map is looking), not where anybody is. */
-#map-plate{position:fixed;right:var(--m);bottom:calc(var(--m) + 5.4em + env(safe-area-inset-bottom,0px));
-  z-index:24;box-sizing:border-box;width:min(342px,calc(100vw - 2*var(--m)));
-  padding:11px 13px 12px 15px;overflow:hidden;isolation:isolate;pointer-events:none;
-  border:1px solid rgba(247,243,234,.14);border-right:3px solid #dc143c;border-radius:12px 0 0 12px;
-  background:rgba(8,11,16,.84);color:#f7f3ea;
-  box-shadow:0 14px 40px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.05)}
-#map-plate[hidden]{display:none}
-#map-plate::after{position:absolute;z-index:-1;right:-30px;bottom:-44px;width:170px;height:110px;
-  border:1px solid rgba(220,20,60,.2);border-radius:50%;content:"";transform:rotate(-18deg)}
-#map-plate .map-top{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:8px;
+/* The location dock owns the bottom-left corner: the clock plate plus, on a timer or a tap,
+   the radar's map grown out of the same spot. Compact is byte-for-byte the clock it always
+   was — #loc-dock adds no pixels of its own, it only gives the clock a parent the map panel
+   can anchor to. The panel itself is position:fixed and every move is stepped in JS
+   (html.swae kills CSS transitions), so its rect is written inline, never transitioned. */
+#loc-dock{position:absolute;left:var(--m);bottom:var(--m);z-index:20;pointer-events:none}
+#loc-dock:empty{display:none}
+#loc-dock>#time-dock{position:static}
+#loc-dock.loc-live{pointer-events:auto;cursor:pointer}
+#loc-map{position:fixed;z-index:23;box-sizing:border-box;display:flex;flex-direction:column;
+  padding:11px 13px 12px 15px;overflow:hidden;isolation:isolate;
+  border:1px solid rgba(247,243,234,.14);border-left:3px solid #dc143c;border-radius:12px;
+  background:rgba(8,11,16,.9);color:#f7f3ea;
+  box-shadow:0 14px 40px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.05);
+  opacity:0;pointer-events:none}
+#loc-map[hidden]{display:none}
+#loc-map.loc-open{pointer-events:auto}
+#loc-map .map-top{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:8px;
   color:rgba(247,243,234,.62);font-family:"Space Grotesk",var(--brand),sans-serif;
   font-size:clamp(9px,.66vw,12px);font-weight:600;letter-spacing:.18em;line-height:1;text-transform:uppercase}
-#map-plate .map-name{color:#dc143c}
-#map-plate .map-canvas{position:relative;height:clamp(108px,14vh,168px);border-radius:8px;overflow:hidden;
+#loc-map .map-name{color:#dc143c}
+#loc-map .map-canvas{position:relative;flex:1 1 auto;min-height:0;border-radius:8px;overflow:hidden;
   border:1px solid rgba(247,243,234,.12);background:#0b0c0a}
-#map-plate .map-canvas .cr-map{position:absolute;inset:0}
-#map-plate .map-readout{margin:9px 0 0;color:rgba(247,243,234,.66);
+#loc-map .map-canvas .cr-map{position:absolute;inset:0}
+/* The fix marker: a north-up arrow over a dot, drawn in CSS so it costs no image budget and
+   no request. No heading exists in desk state, so the arrow never rotates — it is a pointer,
+   not a compass. */
+#loc-map .loc-marker{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none}
+#loc-map .loc-marker::before{content:"";position:absolute;left:-8px;top:-27px;width:0;height:0;
+  border:8px solid transparent;border-top:14px solid #dc143c}
+#loc-map .loc-marker::after{content:"";position:absolute;left:-6px;top:-6px;width:12px;height:12px;
+  border-radius:50%;background:#f7f3ea;border:2px solid #dc143c;box-shadow:0 1px 4px rgba(0,0,0,.6)}
+#loc-map .map-readout{margin:9px 0 0;color:rgba(247,243,234,.66);
   font-family:"IBM Plex Mono","Courier New",var(--mono);font-size:clamp(9px,.6vw,11px);
   font-weight:500;letter-spacing:.03em;line-height:1.45;text-transform:uppercase;
   font-variant-numeric:tabular-nums lining-nums}
-@media(max-width:520px){#map-plate{width:calc(100vw - 2*var(--m));padding:8px 10px 9px 12px}
-  #map-plate .map-canvas{height:clamp(92px,13vh,130px)}}
+#loc-map .loc-status{margin:5px 0 0;color:#dc143c;
+  font-family:"Space Grotesk",var(--brand),sans-serif;font-size:clamp(9px,.62vw,11px);
+  font-weight:700;letter-spacing:.14em;line-height:1;text-transform:uppercase}
+@media(max-width:520px){#loc-map{padding:9px 11px 10px 12px}
+  /* The clock keeps its raised seat above the ticker at phone width; the dock carries the lift
+     now that the plate itself is static inside it. */
+  #loc-dock{bottom:calc(var(--m) + 3.4em + env(safe-area-inset-bottom,0px))}}
+
+/* The music panel took the radar plate's old slot: bottom-right, sitting on the news ticker,
+   measured against it rather than guessed at. It keeps the module look — the wrap's own glass
+   border and fill — inside a plain fixed slot so the ticker can never be covered or covered. */
+#music-plate{position:fixed;right:var(--m);bottom:calc(var(--m) + 5.4em + env(safe-area-inset-bottom,0px));
+  z-index:24;width:min(342px,calc(100vw - 2*var(--m)));pointer-events:none}
+#music-plate:empty{display:none}
+#music-plate .music-wrap{width:100%;max-height:36dvh;overflow:hidden;padding:.65em .85em}
+
+/* GTA mode (state.gta): the desk goes phosphor green. The accent tokens do most of the work,
+   the location plates get green edges, the marker goes green, and the map canvas is pushed
+   monochrome-green with a filter until a dedicated GTA style JSON lands as a later slice.
+   The class is toggled from the poll, so the frame reverts the moment gta goes false. */
+html.gta #desk{--accent:#4dff6a;--accent-glow:rgba(77,255,106,.4);--ink:#ecfff3;
+  --glass:#0a130cf2;--surface-soft:#4dff6a14;--surface-line:#4dff6a30;color:#ecfff3}
+html.gta #desk #loc-map,html.gta #desk #time-dock{border-color:rgba(77,255,106,.42)}
+html.gta #desk #loc-map{border-left-color:#4dff6a;background:rgba(6,15,9,.92)}
+html.gta #desk #loc-map .map-name,html.gta #desk #loc-map .loc-status{color:#4dff6a}
+html.gta #desk #loc-map .loc-marker::before{border-top-color:#4dff6a}
+html.gta #desk #loc-map .loc-marker::after{background:#0a130c;border-color:#4dff6a}
+html.gta #desk #loc-map .cr-map{filter:hue-rotate(80deg) saturate(1.9) brightness(.82) contrast(1.1)}
+html.gta #desk #auto-headlines{border-color:rgba(77,255,106,.45);border-left-color:#4dff6a}
+html.gta #desk #auto-headlines .headline-feed-kicker{color:#4dff6a}
 `;
 
 // ---------- upgraded DOM helper ----------
@@ -1001,6 +1059,19 @@ html.swae #desk .letters{background:#0b0d12f5}
     // ?bot.scale= is the size knob: the mascot is drawn at broadcast size by default, and the
     // operator can shrink or grow him from the browser source URL without a code change.
     scale: num("bot.scale", 1, 0.4, 2.5),
+    // ?being.boredom=95&being.settle=0&being.cool=2000 — QA knobs that seed his
+    // drives so a staged climb/lean can be watched without waiting a minute.
+    beingOpts: (() => {
+      const o = {};
+      for (const k of ["energy", "boredom", "attention"]) {
+        const v = parseFloat(P.get(`being.${k}`) || "");
+        if (Number.isFinite(v)) (o.drives ||= {})[k] = Math.min(100, Math.max(0, v));
+      }
+      const settle = parseFloat(P.get("being.settle") || ""), cool = parseFloat(P.get("being.cool") || "");
+      if (Number.isFinite(settle)) o.settleMs = Math.min(60000, Math.max(0, settle));
+      if (Number.isFinite(cool)) o.cooldownMs = Math.min(60000, Math.max(500, cool));
+      return o;
+    })(),
   });
   // The room behind the desk. The page ships with a transparent body so the same /desk file can be
   // loaded straight into OBS and keyed out, which in a browser left the cards on the browser's own
@@ -1149,6 +1220,33 @@ html.swae #desk .letters{background:#0b0d12f5}
   dockRight.append(locationReadout);
   root.append(dockRight);
 
+  // The location dock owns the bottom-left corner. The clock plate is appended into it below
+  // (when ?clock stays on) and the map panel grows out of its top edge for peeks and the full
+  // view. It exists even under ?clock=0 so a map-only dock still has somewhere to anchor, and
+  // :empty hides it when neither child was ever built.
+  const locDock = h("div", { id: "loc-dock" });
+  root.append(locDock);
+
+  // Music's new home: the slot the radar plate gave up, bottom-right on top of the news
+  // ticker. The wrap keeps its own module styling; this slot only owns the position, which is
+  // measured against the ticker rather than guessed at, exactly as the plate's was.
+  const musicPlate = h("div", { id: "music-plate", "aria-live": "off" });
+  root.append(musicPlate);
+  const placeMusicPlate = () => {
+    const ticker = document.getElementById("auto-headlines");
+    if (!ticker) { musicPlate.style.bottom = ""; return; }
+    const top = ticker.getBoundingClientRect().top;
+    musicPlate.style.bottom = `${Math.round(Math.max(0, window.innerHeight - top)) + 12}px`;
+  };
+  placeMusicPlate();
+  window.addEventListener("resize", placeMusicPlate);
+  setTimeout(placeMusicPlate, 600);
+  setTimeout(placeMusicPlate, 2500);
+  if (typeof ResizeObserver === "function") {
+    const ticker = document.getElementById("auto-headlines");
+    if (ticker) new ResizeObserver(placeMusicPlate).observe(ticker);
+  }
+
   const modulesWrap = h("div", { id: "modules" });
   dockRight.append(modulesWrap);
 
@@ -1172,6 +1270,7 @@ html.swae #desk .letters{background:#0b0d12f5}
   let moduleKey = null;
   let identityMusicKey = "";
   let shownKinds = new Set();
+  let musicShown = null;
 
   // ---------- modules (docked right) ----------
   // Every teardown has to go through bot.cancel first: CRID owns a module's transform while it is
@@ -1185,6 +1284,8 @@ html.swae #desk .letters{background:#0b0d12f5}
   const renderModule = (s) => {
     if (!s) {
       clearModules();
+      if (musicShown) { bot?.cancel(musicShown); musicShown = null; }
+      musicPlate.replaceChildren();
       moduleKey = null;
       shownKinds = new Set();
       return;
@@ -1196,9 +1297,12 @@ html.swae #desk .letters{background:#0b0d12f5}
       soundOrb.classList.toggle("music-playing", Boolean(musicKey));
       drawHeadlines();
     }
+    // Music docks bottom-right in the radar plate's old slot now, so it is built apart from
+    // the module stack and lands in #music-plate instead of #modules. Everything else — the
+    // renderer, the key, the summon rules — is exactly what it was.
+    const musicEl = s.music?.current ? (renderers.get("music") || fallback)(s.music) : null;
     const parts = [];
     const kinds = [];
-    if (s.music?.current) { parts.push((renderers.get("music") || fallback)(s.music)); kinds.push("music"); }
     if (s.court) { parts.push((renderers.get("court") || fallback)({ type: "court", ...s.court })); kinds.push("court"); }
     if (s.spaces && s.spaces.length) { parts.push((renderers.get("space") || fallback)({ type: "space", spaces: s.spaces })); kinds.push("spaces"); }
     if (s.ledger && s.ledger.length) { parts.push((renderers.get("ledger") || fallback)({ type: "ledger", ledger: s.ledger })); kinds.push("ledger"); }
@@ -1215,7 +1319,17 @@ html.swae #desk .letters{background:#0b0d12f5}
     if (parts.length) parts.forEach(p => modulesWrap.append(p));
     // only a module that was not already up gets pushed out of the bot; the rest stay put
     if (bot) parts.forEach((p, i) => { if (p && !shownKinds.has(kinds[i])) bot.summon(p); });
+    // The music wrap leaves the stack for its own plate: same cancel-then-swap rule as
+    // clearModules, because CRID owns a module's transform while it is mid-flight.
+    if (musicShown) bot?.cancel(musicShown);
+    musicPlate.replaceChildren();
+    if (musicEl) {
+      musicPlate.append(musicEl);
+      musicShown = musicEl;
+      if (bot && !shownKinds.has("music")) bot.summon(musicEl);
+    } else musicShown = null;
     shownKinds = new Set(kinds);
+    if (musicEl) shownKinds.add("music");
     moduleKey = key;
   };
 
@@ -1491,9 +1605,31 @@ html.swae #desk .letters{background:#0b0d12f5}
     xTimer = setTimeout(fetchXfeed, xJPollMs);
   };
 
+  // The Following/For-You timeline is the extracted X-overlay app (public/x-overlay/),
+  // iframed into the same #x-card slot. It polls /api/x-timeline/feed itself — the
+  // desk's own /api/x/feed stays the trends path and the ?xui=classic escape hatch.
+  const renderXoverlay = () => {
+    if (!xMode || xMode === "trends") return;
+    if (xEl && xEl.classList.contains("x-overlay-panel")) return;
+    const frame = h("iframe", {
+      src: "/x-overlay/index.html?theme=dark&position=bottom-left&scale=.72&margin=8&count=5&refresh=30&interval=18&stack=1",
+      title: "X Following timeline", loading: "lazy",
+    });
+    const card = h("div", { id: "x-card", class: "x-overlay-panel" }, frame);
+    if (xEl) { xEl.replaceWith(card); xEl = card; }
+    else {
+      xEl = card;
+      dockRight.prepend(xEl);
+      bot?.summon(xEl);
+      requestAnimationFrame(() => requestAnimationFrame(() => xEl?.classList.add("in")));
+    }
+    xKey = "overlay";
+  };
+
   const fetchXfeed = async () => {
     if (!xMode) return;
     clearTimeout(xTimer);
+    if (xMode !== "trends" && !xUiClassic) { renderXoverlay(); return; }
     const result = await requestXFeed(globalThis.fetch, { mode: xMode, userId: xUserId });
     if (!xMode) return;
     if (result.ok) {
@@ -1548,9 +1684,52 @@ html.swae #desk .letters{background:#0b0d12f5}
     lastUpdated = s.updatedAt;
     clockOffset = s.serverNow - Date.now();
     state = s;
-    // A point the operator stored in desk state is the desk's own answer to "where is he". The
-    // page's URL still wins over it, and it still wins over a browser fix.
-    if (s.location) useLocation(readLocation(s.location, "control"));
+    // GTA mode is a desk-wide skin: one class on <html> and the stylesheet does the rest. It is
+    // read every poll rather than latched, so the frame reverts the moment gta goes false.
+    document.documentElement.classList.toggle("gta", s.gta === true);
+    // state.location is already the delayed public view ({lat,lon,place,at,hidden}); .public is
+    // read defensively in case a nested variant ever ships, and every field is checked because
+    // the overlay JSON is world-readable — it carries the coarse fix or nothing.
+    const locFeed = s.location?.public ?? s.location ?? null;
+    liveLoc = null;
+    if (locFeed && typeof locFeed === "object") {
+      const flatLat = numOrNaN(locFeed.lat);
+      const flatLon = numOrNaN(locFeed.lon);
+      if (Number.isFinite(flatLat) && Number.isFinite(flatLon)) {
+        const atNum = numOrNaN(locFeed.at);
+        const atMs = Number.isFinite(atNum) ? atNum : Date.parse(locFeed.at);
+        liveLoc = {
+          lat: flatLat, lon: flatLon,
+          alt: numOrNaN(locFeed.alt),
+          place: typeof locFeed.place === "string" ? locFeed.place : "",
+          at: Number.isFinite(atMs) ? atMs : null,
+          hidden: locFeed.hidden === true,
+        };
+      }
+    }
+    if (liveLoc?.hidden) {
+      // Panic is never delayed: the dock goes compact this poll — no map, no marker, no name
+      // from the feed — and a control-sourced point already on screen goes with it. A URL or
+      // browser fix is the operator's own and stays.
+      liveLoc = null;
+      locHidden = true;
+      if (currentLocation?.source === "control") { currentLocation = null; locationRank = 0; renderLocation(); }
+    } else {
+      locHidden = false;
+      if (!liveLoc && currentLocation?.source === "control") {
+        // The feed carries no point (cleared, or still inside the delay window): a stale
+        // control fix must not linger on the readout or the clock topline.
+        currentLocation = null; locationRank = 0; renderLocation();
+      }
+      if (liveLoc) {
+        const rl = readLocation({
+          lat: liveLoc.lat, lon: liveLoc.lon, alt: liveLoc.alt, place: liveLoc.place,
+          updatedAt: liveLoc.at ?? Date.now(),
+        }, "control");
+        if (rl) useLocation(rl);
+      }
+    }
+    renderLocDock();
     // CRID derives its own reactions, text tag and dozing from the same state the panels get; it
     // keeps the previous state itself and counts the diff, so it only fires on a real change.
     bot?.observe(s);
@@ -1628,7 +1807,7 @@ html.swae #desk .letters{background:#0b0d12f5}
     const ZONE = "Africa/Lagos";
     const clockTime = h("time", "clock-time", "--- --, --:--:--");
     const clockDay = h("span", "clock-day", "");
-    root.append(h("div", { id: "time-dock" },
+    locDock.append(h("div", { id: "time-dock" },
       h("div", "clock-top",
         h("span", "clock-market", "Black Market"),
         h("span", "clock-live", h("i", { class: "clock-dot", "aria-hidden": "true" }), "Live")),
@@ -1662,59 +1841,249 @@ html.swae #desk .letters{background:#0b0d12f5}
     window.addEventListener("pagehide", () => clearInterval(clockTimer), { once: true });
   }
 
-  // ---------- location plate (Cyber Radar) ----------
-  // The radar's own map in the desk's frame: his archive read from our shipped PMTiles with
-  // self-hosted glyphs, so every label is a real OSM name and the geometry is the real campus.
-  // This plate is geography and nothing else. The overlay has no GPS — no marker, no accuracy
-  // circle, no rotation — and the single readout line names the MAP VIEW centre, which is where
-  // the map is looking, never where anybody is.
-  // The centre and the name are the location source's, the same one the readout and the clock
-  // topline draw: the coordinate from ?lat=&lon=, the stored point or the browser's fix, and the
-  // campus point with the name it has always carried when there is no fix at all.
-  // ?map=0 removes the plate and, because every map asset is loaded from this block and nowhere
+  // ---------- location dock: the clock and the Cyber Radar map, one corner ----------
+  // The radar plate used to sit lower-right on top of the ticker; it moved into the clock's own
+  // dock, bottom-left, where the desk's two facts about *where* live together. Compact is
+  // exactly the clock plate it always was. On a timer (?locpeek= seconds, default 300, jittered
+  // ±40%) the dock peeks upward into a small live map — the same MapLibre instance and the same
+  // PMTiles archive, never a second load — CRID leans in with his "peek" react, and the panel
+  // retracts after 20–40s. A click on the dock (or ?locview=full; Esc or a 60s timeout leaves)
+  // opens the near-fullscreen view: the same map at desk scale, a fixed north-up marker on the
+  // coarse fix, the place name and a "last seen" line once the delayed fix is stale. hidden or
+  // no fix means the dock never opens at all — compact clock, nothing else.
+  // Every slide is stepped in JS: html.swae kills CSS transitions and animations, so nothing
+  // here may rely on one — animateRect writes each frame itself and snaps instantly under
+  // .swae or prefers-reduced-motion.
+  // ?map=0 removes the panel and, because every map asset is loaded from this block and nowhere
   // else, removes the MapLibre scripts, the archive and the glyph requests with it.
   if (P.get("map") !== "0") {
-    // The Cyber Radar app's own demo centre (UNILAG) and zoom: what the plate shows when the desk
-    // does not know where he is, so a frame with no location looks exactly as it did before.
+    // The Cyber Radar app's own demo centre (UNILAG) and zoom: what an opened view centres on
+    // when the desk does not know where he is.
     const FALLBACK_CENTER = [3.398, 6.517]; // lon, lat
     const FALLBACK_PLACE = "UNILAG";
     const MAP_ZOOM = 15.5;
     const SOURCE_LINE = "SOURCE: OSM VIA GEOFABRIK · SNAPSHOT";
+    const LOCPEEK_MS = num("locpeek", 300, 30, 3600) * 1000;
     const centreOf = (loc) => (loc ? [loc.lon, loc.lat] : FALLBACK_CENTER);
-    const readout = h("p", "map-readout", `MAP VIEW —— · Z${MAP_ZOOM} · ${SOURCE_LINE}`);
-    const canvas = h("div", "map-canvas", h("div", "cr-map"));
+    const marginPx = () => Math.min(32, Math.max(12, 0.04 * Math.min(innerWidth, innerHeight)));
     const placeName = h("span", "map-place", currentLocation?.place || FALLBACK_PLACE);
-    const plate = h("section", { id: "map-plate", "aria-label": "Cyber Radar location plate" },
+    const readout = h("p", "map-readout", `MAP VIEW —— · Z${MAP_ZOOM} · ${SOURCE_LINE}`);
+    const locStatus = h("p", "loc-status", "");
+    const marker = h("div", "loc-marker");
+    const canvas = h("div", "map-canvas", h("div", "cr-map"), marker);
+    const locMap = h("section", { id: "loc-map", hidden: true, "aria-live": "off" },
       h("div", "map-top",
-        h("span", "map-name", "Cyber Radar"),
+        h("span", "map-name", "CRID // LOC"),
         placeName),
       canvas,
-      readout);
-    root.append(plate);
-    // Registered before the map itself exists, so a fix that lands while MapLibre is still loading
-    // is not lost: the name moves at once and the camera takes it when the map is ready.
+      readout,
+      locStatus);
+    locDock.append(locMap);
+
     let map = null;
-    syncMapLocation = (loc) => {
-      placeName.textContent = loc?.place || FALLBACK_PLACE;
-      if (!map) return;
-      const [lng, lat] = centreOf(loc);
-      // Jumped, not eased: the plate is non-interactive and Swae renders it as a snapshot, so the
-      // camera moves in one frame and the readout redraws from the map's own centre on moveend.
-      if (map.getCenter().lng !== lng || map.getCenter().lat !== lat) map.jumpTo({ center: [lng, lat] });
+    let mapFailed = false;
+    let locMode = "compact"; // compact | peek | full
+    let wantFull = P.get("locview") === "full";
+    let animToken = 0;
+    let peekTimer = null;
+    let peekHideTimer = null;
+    let fullTimer = null;
+    let nextPeekAt = 0;
+    // The point the dock draws: the delayed feed fix first, then whatever the ranked location
+    // sources already resolved (URL, operator point, browser fix). hidden never reaches here —
+    // apply() nulls liveLoc and raises locHidden the moment the panic flag lands.
+    const dockPoint = () => (locHidden ? null : (liveLoc ?? currentLocation ?? null));
+    const locEligible = () => Boolean(!mapFailed && dockPoint());
+
+    const updateMarker = () => {
+      if (!map || !marker.isConnected) return;
+      const p = dockPoint();
+      if (!p || locMap.hidden) { marker.style.display = "none"; return; }
+      try {
+        // MapLibre's own project() — the marker rides the map's projection, so it stays glued
+        // through resizes and jumps. North-up only: desk state carries no heading to rotate by.
+        const pt = map.project([p.lon, p.lat]);
+        marker.style.display = "";
+        marker.style.transform = `translate(${Math.round(pt.x)}px,${Math.round(pt.y)}px)`;
+      } catch { marker.style.display = "none"; }
     };
 
-    // Sit directly on top of the news ticker instead of at a guessed offset: the ticker's height
-    // follows its type size and the frame, and this plate must never cover it or be covered.
-    const placePlate = () => {
-      const ticker = document.getElementById("auto-headlines");
-      if (!ticker) { plate.style.bottom = ""; return; }
-      const top = ticker.getBoundingClientRect().top;
-      plate.style.bottom = `${Math.round(Math.max(0, window.innerHeight - top)) + 12}px`;
+    const rectNow = () => {
+      const r = locMap.getBoundingClientRect();
+      return { left: r.left, top: r.top, width: r.width, height: r.height };
     };
-    placePlate();
-    window.addEventListener("resize", placePlate);
-    setTimeout(placePlate, 600);
-    setTimeout(placePlate, 2500);
+    const setRect = (r, o = 1) => {
+      locMap.style.left = `${r.left}px`;
+      locMap.style.top = `${r.top}px`;
+      locMap.style.width = `${r.width}px`;
+      locMap.style.height = `${r.height}px`;
+      locMap.style.opacity = String(o);
+      map?.resize();
+      updateMarker();
+    };
+    // One rAF stepper for every dock move. `from`/`fromO` let an opening snap to its collapsed
+    // rect first, so the panel grows out of the clock instead of fading in from nowhere.
+    const animateRect = (to, dur, done, from, fromO = 1) => {
+      const token = ++animToken;
+      const f = from || rectNow();
+      const o0 = from ? fromO : (parseFloat(getComputedStyle(locMap).opacity) || 0);
+      const applyK = (k) => {
+        const e = 1 - Math.pow(1 - k, 3);
+        setRect({
+          left: f.left + (to.left - f.left) * e,
+          top: f.top + (to.top - f.top) * e,
+          width: f.width + (to.width - f.width) * e,
+          height: f.height + (to.height - f.height) * e,
+        }, o0 + (1 - o0) * e);
+      };
+      const still = document.documentElement.classList.contains("swae") ||
+        (typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches);
+      if (still || dur <= 0) { applyK(1); if (token === animToken) done?.(); return; }
+      const t0 = performance.now();
+      const step = (t) => {
+        if (token !== animToken) return;
+        const k = Math.min(1, (t - t0) / dur);
+        applyK(k);
+        if (k < 1) requestAnimationFrame(step);
+        else done?.();
+      };
+      requestAnimationFrame(step);
+    };
+
+    const peekRect = () => {
+      const m = marginPx();
+      const w = Math.min(430, innerWidth - 2 * m - 8);
+      const hgt = Math.min(230, Math.max(150, innerHeight * 0.2));
+      const dockTop = locDock.getBoundingClientRect().top;
+      return { left: m, top: Math.max(m + 8, dockTop - hgt - 10), width: w, height: hgt };
+    };
+    // Near-fullscreen but not quite: the stream stays visible around the edges, and the plate's
+    // own .9 alpha lets it show through the map area too.
+    const fullRect = () => ({
+      left: innerWidth * 0.03, top: innerHeight * 0.07,
+      width: innerWidth * 0.94, height: innerHeight * 0.86,
+    });
+
+    const openLoc = (mode) => {
+      if (!locEligible()) return false;
+      const wasOpen = locMode !== "compact";
+      locMode = mode;
+      locMap.hidden = false;
+      locMap.classList.add("loc-open");
+      locDock.classList.add("loc-live");
+      clearTimeout(fullTimer);
+      // Full view is a timed look, not a mode: 60 seconds and the dock goes back to the clock.
+      if (mode === "full") fullTimer = setTimeout(() => { if (locMode === "full") closeLoc(); }, 60000);
+      renderLocDock();
+      const to = mode === "full" ? fullRect() : peekRect();
+      if (wasOpen) animateRect(to, 460);
+      else {
+        // Grow out of the clock: start as a zero-height sliver on the panel's bottom edge and
+        // let the tween carry it up into place.
+        setRect({ ...to, top: to.top + to.height, height: 0 }, 0);
+        requestAnimationFrame(() => animateRect(to, mode === "full" ? 560 : 480));
+      }
+      return true;
+    };
+    const closeLoc = () => {
+      if (locMode === "compact") return;
+      const r = rectNow();
+      const o = parseFloat(getComputedStyle(locMap).opacity) || 1;
+      // Retract the way it opened: collapse onto the bottom edge, which is the side touching
+      // the clock, then hide. A full-view close sweeps the same direction, just longer.
+      animateRect({ left: r.left, top: r.top + r.height, width: r.width, height: 0 },
+        locMode === "full" ? 540 : 400, () => {
+          locMap.hidden = true;
+          locMap.classList.remove("loc-open");
+          locMap.style.opacity = "";
+          locMode = "compact";
+          clearTimeout(fullTimer);
+          armPeek();
+        }, r, o);
+    };
+
+    // The peek schedule: one shot per eligibility window, jittered so two peeks never land on
+    // the same second of the hour twice. armPeek is the only place a peek timer is created.
+    const armPeek = () => {
+      clearTimeout(peekTimer);
+      peekTimer = null;
+      nextPeekAt = 0;
+      if (locMode !== "compact" || !locEligible()) return;
+      const wait = LOCPEEK_MS * (0.6 + Math.random() * 0.8);
+      nextPeekAt = Date.now() + wait;
+      peekTimer = setTimeout(firePeek, wait);
+    };
+    const firePeek = () => {
+      peekTimer = null;
+      nextPeekAt = 0;
+      if (locMode !== "compact" || !locEligible()) { armPeek(); return; }
+      openLoc("peek");
+      // CRID leans in: "peek" is his glance-up sequence, the lightest react that reads as
+      // "something just moved". Non-blocking — react() queues behind whatever he is doing.
+      try { bot?.react?.("peek"); } catch { /* a busy or dead bot simply does not react */ }
+      clearTimeout(peekHideTimer);
+      peekHideTimer = setTimeout(() => {
+        if (locMode === "peek") { closeLoc(); armPeek(); }
+      }, 20000 + Math.random() * 20000);
+    };
+    // Called on every poll via renderLocDock: keeps eligibility, the pending peek and any open
+    // mode honest against the freshest state. Cheap — it only arms timers on transitions.
+    const syncPeek = () => {
+      if (wantFull) {
+        wantFull = false;
+        if (locMode === "compact" && locEligible()) openLoc("full");
+      }
+      if (!locEligible()) {
+        clearTimeout(peekTimer); clearTimeout(peekHideTimer);
+        peekTimer = null; nextPeekAt = 0;
+        if (locMode !== "compact") closeLoc();
+        return;
+      }
+      if (locMode !== "compact") return; // peek and full own their own timers
+      if (!peekTimer && nextPeekAt === 0) armPeek();
+    };
+
+    renderLocDock = () => {
+      const p = dockPoint();
+      locDock.classList.toggle("loc-live", locEligible());
+      placeName.textContent = p?.place || FALLBACK_PLACE;
+      // The staleness line: the public fix is already delayed by the server, so "last seen"
+      // appears once it is more than ten minutes old; a fix with no timestamp says so plainly.
+      const atMs = p ? (p.at ?? p.updatedAt ?? null) : null;
+      if (!p) locStatus.textContent = "";
+      else if (p === liveLoc) {
+        if (!atMs) locStatus.textContent = "POSITION UNSTAMPED";
+        else {
+          const mins = Math.max(0, Math.round((serverNow() - atMs) / 60000));
+          locStatus.textContent = mins > 10 ? `LAST SEEN ${mins}M AGO` : `DELAYED FIX · ${mins}M AGO`;
+        }
+      } else locStatus.textContent = "POSITION FIX";
+      if (map && p) {
+        const [lng, lat] = centreOf(p);
+        const c = map.getCenter();
+        if (Math.abs(c.lng - lng) > 0.002 || Math.abs(c.lat - lat) > 0.002) map.jumpTo({ center: [lng, lat] });
+      } else if (map && !p) {
+        // No fix at all: an opened view shows the campus snapshot it always showed.
+        const c = map.getCenter();
+        if (Math.abs(c.lng - FALLBACK_CENTER[0]) > 0.002 || Math.abs(c.lat - FALLBACK_CENTER[1]) > 0.002)
+          map.jumpTo({ center: FALLBACK_CENTER });
+      }
+      updateMarker();
+      syncPeek();
+    };
+    // renderLocation() is the one place a resolved location lands; the dock listens through
+    // this hook rather than growing a second render path (same contract the plate had).
+    syncMapLocation = () => { renderLocDock(); };
+
+    // The dock itself is the click target: compact → full, full → compact, peek → full. It only
+    // ever has pointer events while a fix exists — loc-live is the class that grants them.
+    locDock.addEventListener("click", () => {
+      if (!locEligible()) return;
+      if (locMode === "full") closeLoc(); else openLoc("full");
+    });
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && locMode === "full") closeLoc();
+    });
 
     // Build-free vendored browser scripts: maplibre-gl (UMD), pmtiles (UMD) and the ported style.
     const loadAsset = (tag, attrs) => new Promise((res, rej) => {
@@ -1740,7 +2109,7 @@ html.swae #desk .letters{background:#0b0d12f5}
       map = new maplibregl.Map({
         container: canvas.firstElementChild,
         style: mapStyle,
-        center: centreOf(currentLocation),
+        center: centreOf(dockPoint() || currentLocation),
         zoom: MAP_ZOOM,
         pitch: 0,
         bearing: 0,
@@ -1752,20 +2121,23 @@ html.swae #desk .letters{background:#0b0d12f5}
         const c = map.getCenter();
         readout.textContent =
           `MAP VIEW ${fmtLat(c.lat)} ${fmtLon(c.lng)} · Z${map.getZoom().toFixed(1)} · ${SOURCE_LINE}`;
+        updateMarker();
       };
       let loaded = false;
       map.on("load", () => { loaded = true; draw(); });
       map.on("moveend", draw);
       // A map that never loads must say so rather than showing an empty box as if it were the
-      // campus: the readout is the only place this plate makes a claim about what it is showing.
+      // campus: the readout is the only place this panel makes a claim about what it is showing.
       setTimeout(() => {
         if (loaded) return;
         canvas.dataset.state = "unloaded";
         readout.textContent = `MAP VIEW —— · Z${MAP_ZOOM} · ${SOURCE_LINE} · NOT LOADED`;
       }, 12000);
     })().catch(() => {
+      mapFailed = true;
+      syncPeek();
       canvas.remove();
-      plate.dataset.state = "unavailable";
+      locMap.dataset.state = "unavailable";
       readout.textContent = `MAP VIEW —— · ${SOURCE_LINE} · UNAVAILABLE`;
     });
   }

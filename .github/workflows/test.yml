@@ -1,0 +1,26 @@
+# CYBER LIVE DESK — test suite on every push and pull request.
+#
+# `npm test` is the whole contract: node --test over tests/ plus the brain suite.
+# No build step, no secrets, no network — the suite is pure Node and runs in
+# about half a minute on a clean runner.
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test

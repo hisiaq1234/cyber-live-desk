@@ -1,29 +1,9 @@
-/* CYBER LIVE DESK — "Cyber" theme. One system, applied on purpose.
-
-   COLOUR  60 / 30 / 10, taken from the palette cards in the reference
-     60  Onyx            #0F0B17 family   every panel surface, the bot's body and face
-     30  Electric Indigo #6531F8 family   structure only: panel outlines, label pills, poll bars,
-                                          the hard shadow, the bot's shell
-     10  Tropical Mint   #86F6BC          the one thing to look at: the chat prompt, live signals,
-                                          the poll leader's percentage, "paid", the bot's eyes
-     Text is a tinted off-white. Red (#FF5B57) is not a theme colour: it is reserved for
-     meaning (disputed, still owing, offline) and stays under ~2% of any frame.
-     Contrast on onyx: body 16.5:1, secondary 10.2:1, tertiary 6.2:1, mint 14:1.
-
-   TYPE    Anton (heavy condensed caps) for what you read at a glance: headlines, titles, numbers.
-           Instrument Serif italic for the voice: the question put to chat.
-           System sans for everything dense. Fonts are self-hosted in /desk-assets/fonts/.
-
-   SHAPE   Big radius, flat fills, one hard offset shadow in deep indigo. No blur and no glow: it
-           matches the bot's sticker drawing and is cheap to snapshot on Swae. Panel surfaces stay
-           flat; the one gradient is a mint highlight travelling inside the poll leader's bar, which
-           reads as motion rather than as a surface. Each panel family leans up to half a degree on
-           the individual rotate property and cuts one corner to .42em, so the desk looks placed by
-           hand without any panel moving off its anchor.
-
-   SCENES  ?scene=pip reserves the bottom-right dual-camera inset (?pip.w= ?pip.h= in vw/vh,
-           default 34 x 34) and stacks the right column above it.                              */
-
+/* CYBER LIVE DESK — GTA-inspired whole-stream HUD.
+   The camera feeds are the world. This shared theme styles every layer that appears over them:
+   channel identity, CRID, GPS/minimap, active stories, polls, music and community modules.
+   It uses GTA's compact HUD hierarchy and map behaviour without importing Rockstar assets or
+   pretending to be GTA branding. The Black Market timestamp and the owner's own lockup remain
+   their original authored assets. */
 const T = 'html[data-theme="cyber"]';
 const PANEL = ".card,.court-wrap,.music-wrap,.space-wrap,.ledger-wrap,.riad-wrap,#x-feed";
 
@@ -195,4 +175,160 @@ ${T} #desk #crid-bot,${T} #desk #crid-bot svg{animation:none}
 ${T} #desk :is(${PANEL}){rotate:0deg;transition:none}
 ${T} #desk .meta::after,${T} #desk .opt.lead .fill::after{animation:none}
 }
+
+/* ---- GTA HUD layer: applies to the whole broadcast, not just the character ---------------- */
+
+${T} #desk{
+  --gta-panel:rgba(8,11,14,.82);--gta-panel-solid:#0b0e12;
+  --gta-line:rgba(236,239,241,.28);--gta-line-soft:rgba(236,239,241,.13);
+  --gta-amber:#e8bd48;--gta-green:#9bc45b;--gta-red:#d9574f;--gta-blue:#72a9d7;
+  --accent:var(--gta-amber);--glass:var(--gta-panel);--surface-line:var(--gta-line);
+  --ink:#f0f1ed;--ink-1:#f0f1ed;--ink-2:#c1c6c7;--ink-3:#8c969b;
+  --radius:2px;--display:"Arial Narrow","Roboto Condensed",Impact,sans-serif;
+  --voice:"Inter",system-ui,sans-serif;color:var(--ink-1)
+}
+
+${T} #desk :is(.card,.court-wrap,.music-wrap,.space-wrap,.ledger-wrap,.riad-wrap,#x-feed){
+  background:var(--gta-panel);border:1px solid var(--gta-line-soft);border-left:3px solid var(--gta-amber);
+  border-radius:2px;box-shadow:0 5px 18px rgba(0,0,0,.34);backdrop-filter:none;-webkit-backdrop-filter:none;
+  color:var(--ink-1);rotate:0deg;--lean:0deg;--chaos-radius:2px;--sticker:none
+}
+
+${T} #desk .card{padding:.78em .95em .82em;max-height:32dvh}
+
+${T} #desk .meta{display:flex;width:max-content;max-width:100%;align-items:center;gap:.55em;
+  margin:0 0 .5em;padding:0 0 .38em;border-radius:0;background:transparent;color:var(--gta-amber);
+  border-bottom:1px solid var(--gta-line-soft);font:700 .56em/1.1 var(--mono);letter-spacing:.15em}
+
+${T} #desk .meta>span:first-child{color:var(--gta-amber)}
+
+${T} #desk .meta::after{width:.38em;height:.38em;background:var(--gta-green);margin-left:.15em}
+
+${T} #desk .chip{background:transparent;color:var(--gta-amber);border:1px solid currentColor;border-radius:2px}
+
+${T} #desk .conf-confirmed .chip{background:var(--gta-green);border-color:var(--gta-green);color:#10140d}
+
+${T} #desk .conf-disputed .chip{background:var(--gta-red);border-color:var(--gta-red);color:#160b0a}
+
+${T} #desk .headline{font:700 clamp(1em,1.35vw,1.35em)/1.1 var(--display);letter-spacing:.015em;text-transform:uppercase;color:#fff}
+
+${T} #desk .summary{font-size:.78em;line-height:1.38;color:#c6cbcb}
+
+${T} #desk .source{font:600 .55em/1.2 var(--mono);letter-spacing:.08em;color:#929a9e}
+
+${T} #desk .ask{margin:.72em 0 0;padding:.52em 0 0;border-top:1px solid var(--gta-line);
+  font:600 .86em/1.3 var(--brand);color:var(--gta-amber)}
+
+${T} #desk .ask::before{position:static;display:block;margin-bottom:.28em;content:"YOUR MOVE";
+  font:700 .58em/1 var(--mono);letter-spacing:.15em;color:var(--gta-green)}
+
+${T} #desk .opt{border:1px solid var(--gta-line-soft);border-radius:2px;background:rgba(255,255,255,.035);color:#eff0ec}
+
+${T} #desk .opt .fill{background:rgba(232,189,72,.38)}
+
+${T} #desk .opt.lead{border-color:var(--gta-amber);background:rgba(232,189,72,.08)}
+
+${T} #desk .opt.lead .pct{color:var(--gta-amber)}
+
+${T} #desk .opt.lead .fill{background:rgba(232,189,72,.58)}
+
+${T} #desk .poll-state{font:600 .58em/1.2 var(--mono);letter-spacing:.12em;color:#90999d}
+
+${T} #desk :is(.court-question,.music-current,.space-title,.ledger-title,.riad-title){
+  font:700 1.05em/1.14 var(--display);letter-spacing:.04em;text-transform:uppercase;color:#fff}
+
+${T} #desk :is(.court-viewpoint,.court-vote,.music-track){border:1px solid var(--gta-line-soft);border-radius:2px;background:rgba(255,255,255,.035)}
+
+${T} #desk .court-viewpoint .v-label,${T} #desk .ledger-type{color:var(--gta-amber)}
+
+${T} #desk .court-verdict.w{color:var(--gta-green)}
+
+${T} #desk .court-verdict.l{color:var(--gta-red)}
+
+${T} #desk .music-track.current{border-color:var(--gta-green);background:rgba(155,196,91,.08)}
+
+${T} #desk .space-url{color:var(--gta-blue)}
+
+${T} #desk .riad-wrap{border-color:var(--gta-amber)}
+
+${T} #desk .riad-title{color:var(--gta-amber)}
+
+${T} #desk #crid-live{border:1px solid var(--gta-line);border-left:3px solid var(--gta-green);
+  border-radius:2px;background:var(--gta-panel);box-shadow:0 5px 18px rgba(0,0,0,.34);backdrop-filter:none}
+
+${T} #desk .crid-logo{border:1px solid var(--gta-line);border-radius:2px;background:#080b0e}
+
+${T} #desk .crid-brand,${T} #desk .crid-title{font-family:var(--display);font-weight:700;letter-spacing:.04em}
+
+${T} #desk .crid-brand{color:var(--gta-green)}
+
+${T} #desk .crid-kind{border:1px solid var(--gta-line-soft);border-radius:2px;background:transparent}
+
+${T} #desk .crid-v-1{background:var(--gta-green);color:#10140d}
+
+${T} #desk .crid-v-0{color:var(--gta-red);border:1px solid var(--gta-red);border-radius:2px}
+
+${T} #desk #desk-logo{
+  --t-logo-shell:var(--gta-amber);--t-logo-plate:#0a0e12;--t-logo-screen:#05070a;
+  --t-logo-edge:#313a3e;--t-logo-eye:var(--gta-green);--t-logo-rule:var(--gta-amber);
+  --t-logo-gesture:var(--gta-amber);--t-logo-1:#f1f1eb;--t-logo-2:var(--gta-amber);
+  --t-logo-bone:#d7dedc
+}
+
+${T} #desk #dock-right>#location-readout{
+  border:1px solid var(--gta-line-soft);border-right:3px solid var(--gta-amber);
+  border-radius:2px;background:var(--gta-panel);box-shadow:0 5px 18px rgba(0,0,0,.34)}
+
+${T} #desk #location-readout .loc-place{color:var(--gta-amber);font:700 .66em/1.2 var(--mono);letter-spacing:.1em}
+
+${T} #desk #location-readout .loc-fix{font-size:.62em;color:#c5cbca}
+
+${T} #desk #loc-map{border:1px solid var(--gta-line);border-left:3px solid var(--gta-green);
+  border-radius:2px;background:rgba(7,10,13,.84);box-shadow:0 6px 20px rgba(0,0,0,.4)}
+
+${T} #desk #loc-map .map-top{font:700 .62em/1.1 var(--mono);letter-spacing:.14em}
+
+${T} #desk #loc-map .map-name{color:var(--gta-green)}
+
+${T} #desk #loc-map .map-place{color:#f1f2ed}
+
+${T} #desk #loc-map .map-canvas{border:1px solid rgba(255,255,255,.2);border-radius:0}
+
+${T} #desk #loc-map .loc-marker::before{left:-5px;top:-10px;border:0;
+  border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:10px solid var(--gta-amber);
+  filter:drop-shadow(0 1px 2px #000)}
+
+${T} #desk #loc-map .loc-marker::after{display:none}
+
+${T} #desk #loc-map .map-readout,${T} #desk #loc-map .loc-status{font:600 .52em/1.3 var(--mono);letter-spacing:.06em}
+
+${T} #desk #loc-map .loc-status{color:var(--gta-green)}
+
+${T} #desk #auto-headlines,${T} #desk #swae-chat{
+  border:1px solid var(--gta-line);border-left:3px solid var(--gta-amber);border-radius:2px;
+  background:var(--gta-panel);box-shadow:0 5px 18px rgba(0,0,0,.34);backdrop-filter:none}
+
+${T} #desk .headline-feed-kicker{font:700 .6em/1.2 var(--mono);letter-spacing:.12em;color:var(--gta-amber)}
+
+${T} #desk .identity-row .headline-feed-title{font-family:var(--brand);font-size:.78em;color:#f0f1ed}
+
+${T} #desk .identity-row .headline-feed-meta{font:500 .54em/1.2 var(--mono);color:#929b9e}
+
+${T} #desk #swae-chat .swae-chat-user{color:var(--gta-amber)}
+
+${T} #desk #swae-chat .swae-chat-text{color:#f0f1ed}
+
+${T} #desk #music-plate .music-wrap{max-height:28dvh}
+
+${T} #desk #time-dock{backdrop-filter:none;-webkit-backdrop-filter:none}
+
+html.swae ${T} #desk :is(.card,.court-wrap,.music-wrap,.space-wrap,.ledger-wrap,.riad-wrap,#x-feed,#crid-live,#loc-map,#auto-headlines){
+  backdrop-filter:none!important;-webkit-backdrop-filter:none!important
+}
+
+@media(max-width:520px){
+  ${T} #desk .card{padding:.65em .78em}
+  ${T} #desk #loc-map .map-readout{font-size:8px}
+}
+
 `;

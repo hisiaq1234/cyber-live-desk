@@ -28,7 +28,7 @@ import { createCridAudioSync } from "./crid-audio.js";
      logo.x= logo.y=0–100      (percent placement, with logo=custom)
      lat= lon= alt= place=     (where the creator is: the readout top-right, the clock's topline and
                                 the centre of the map plate; falls back to the desk state, then to
-                                the browser's geolocation)
+                                the operator's delayed location feed)
      Add a card type: DeskOverlay.register("my-type", (card, opts) => HTMLElement)  */
 import { createSoundOrbSync } from "./sound-orb.js";
 import { requestXFeed } from "./x-feed-client.js";
@@ -128,7 +128,6 @@ import { createScene, SCENE_CSS } from "./scene.js";
   //   1. ?lat=&lon=&alt=&place= on this page. The URL travels with the frame, so it works in a
   //      Swae widget box and in a browser-source URL, where nobody can tap "allow".
   //   2. the point the operator stored in desk state.
-  //   3. navigator.geolocation, when this browser has been granted permission.
   //   4. nothing at all: no readout, no label change, no error, no waiting. A refused prompt is
   //      the normal case here, not a failure — this page is drawn by three different renderers.
   const LOCATION_RANK = { geo: 1, control: 2, url: 3 };
@@ -1228,26 +1227,6 @@ html.swae #desk .letters{background:#0b0d12f5}
     }
   };
 
-  // The browser's own fix, asked for once and never awaited: the page draws whether or not it
-  // answers. A denied prompt, a missing API, or a browser that throws here is not an error state —
-  // the frame keeps the location it already had, or none at all, and looks exactly as it did
-  // before it knew where it was.
-  const requestGeo = () => {
-    if (locationRank >= LOCATION_RANK.control) return; // the URL or the operator already decided
-    const geo = navigator.geolocation;
-    if (!geo || typeof geo.getCurrentPosition !== "function") return;
-    try {
-      geo.getCurrentPosition(
-        (pos) => useLocation(readLocation({
-          lat: pos.coords.latitude, lon: pos.coords.longitude, alt: pos.coords.altitude,
-        }, "geo")),
-        () => {},
-        { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 });
-    } catch (err) {
-      if (CFG.debug) console.debug("[desk] geolocation request failed:", err);
-    }
-  };
-
   const dockRight = h("div", { id: "dock-right" });
   dockRight.append(locationReadout);
   root.append(dockRight);
@@ -1904,12 +1883,12 @@ html.swae #desk .letters{background:#0b0d12f5}
     // The Cyber Radar app's own demo centre (UNILAG) and zoom: what an opened view centres on
     // when the desk does not know where he is.
     const FALLBACK_CENTER = [3.398, 6.517]; // lon, lat
-    const FALLBACK_PLACE = "UNILAG";
+    const FALLBACK_PLACE = "AREA UNRESOLVED";
     const MAP_ZOOM = 15.5;
     const SOURCE_LINE = "SOURCE: OSM VIA GEOFABRIK · SNAPSHOT";
     const centreOf = (loc) => (loc ? [loc.lon, loc.lat] : FALLBACK_CENTER);
     const marginPx = () => Math.min(32, Math.max(12, 0.04 * Math.min(innerWidth, innerHeight)));
-.place || FALLBACK_PLACE);
+    const placeName = h("span", "map-place", currentLocation?.place || FALLBACK_PLACE);
     const readout = h("p", "map-readout", `MAP VIEW —— · Z${MAP_ZOOM} · ${SOURCE_LINE}`);
     const locStatus = h("p", "loc-status", "");
     const marker = h("div", "loc-marker");
@@ -2174,7 +2153,6 @@ html.swae #desk .letters{background:#0b0d12f5}
   // One location, both consumers: the readout and the clock's topline are drawn once here, after
   // both plates exist, and again only when the location itself changes.
   renderLocation();
-  requestGeo();
   if (HEADLINES_ON) refreshHeadlines();
   // He was placed before the clock existed, so the floor he measured was the frame's own. Now that
   // every plate is in the document, measure again: this is what puts him on top of the bottom band

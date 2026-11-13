@@ -106,6 +106,12 @@ export function createFacial({rand=Math.random}={}){
     const shutBase=mode==="doze"?.7:mode==="dead"?.95:dying?.6:0;
     const lidL=Math.min(1,Math.max(shutBase,blinkL));
     const lidR=Math.min(1,Math.max(shutBase,blinkR));
+    // Lid lag: the lower lid catches up a beat after the upper — the asymmetry
+    // that keeps a blink from reading as a mechanical shutter.
+    const btLag=t-(blinkT+.045);
+    let lidLL=0,lidLR=0;
+    if(btLag>=0&&btLag<blinkDur){const u=btLag/blinkDur;
+      const c=u<.35?u/.35:u<.65?1:(1-u)/.35;lidLL=c;lidLR=blinkAsym?(u<.3?c*.8:(u<.55?c:(1-u)/.4)):c}
 
     // ---- gaze -------------------------------------------------------------
     // saccade scheduler: pick a small offset, snap there fast (eyes lead the
@@ -114,6 +120,11 @@ export function createFacial({rand=Math.random}={}){
       sacFrom={...sacTo};
       sacTo={x:rand(-.35,.35),y:rand(-.3,.3)};
       sacT=0;sacDur=.1+rand(0,.12);sacAt=t+rand(1.4,3.2);
+      // Humans blink as the eyes move — ~a third of saccades carry a blink.
+      // It lands ON the saccade, not on the blink clock's beat.
+      if(rand()<.34){blinkT=t;blinkDur=.09+rand(0,.05);
+        blinkAsym=rand()<.2?(rand()<.5?-1:1):0;
+        nextBlink=Math.max(nextBlink,t+rand(1.8,3.5)*(input.reduced?1.6:1))}
     }
     if(sacT<1)sacT=Math.min(1,sacT+dt/sacDur);
     const se=out3(sacT);
@@ -144,7 +155,11 @@ export function createFacial({rand=Math.random}={}){
     for(const[k,w]of Object.entries(e.w))put(k,w*emo);
     // lids from blink/doze/death + emotion (emotion lid keys are eyeShut*/eyeShut25*)
     put("eyeShutL",lidL);put("eyeShutR",lidR);
+    put("eyeShutLL",lidLL*.8);put("eyeShutLR",lidLR*.8);   // lower lids trail the upper
     if(shutBase>0){put("eyeShutLL",shutBase*.5);put("eyeShutLR",shutBase*.5)}
+    // Brow squeeze = thought: a locked attention target (pondering, a panel he's
+    // working) draws the inner brows down — the universal concentration tell.
+    if(attMag>.15){put("browInnerDnL",attMag*.32*life);put("browInnerDnR",attMag*.32*life)}
     // gaze: his left = viewer's right. gx<0 is look-left in the 2D pose space
     // (SEQ glanceL uses gx:-4), which is his right → irisOutR + irisInL.
     const gxw=clamp(Math.abs(lx)*.9,0,.9),gyw=clamp(Math.abs(ly)*.9,0,.9);

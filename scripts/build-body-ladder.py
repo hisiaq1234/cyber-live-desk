@@ -3,22 +3,17 @@
 
 WHY THIS WAS REBUILT
 --------------------
-The first ladder was cut from seven *different* Snap renders at rotation 7: 000/00 faced the camera,
-3/0/5 were three-quarter turned, and 1/2 were turned further with a visibly smaller head. A weight
-change therefore swapped the pose, the head size and the silhouette — it read as a different person,
-not the same man heavier.
-
-Snap's renderer takes a `body` parameter and returns the same avatar in the same front-facing pose at
-genuinely different builds, so the ladder is seven real builds, not warps of one drawing. The owner
-explored body=0..12 against the endpoint: 4/6/7/8/9/10/12 all return the same picture as body=4, so
-the distinct builds are these seven, ordered lean -> heavy by measured ink:
+The original r7 ladder mixed camera angles, straps and inconsistent head proportions. The owner
+selected `body-000-r7.webp` as the exact leanest look and face. That file is now the canonical first
+stage and is copied byte-for-byte into production. The other six stages use Snap's distinct
+front-facing body values, ordered lean -> heavy:
 
     body=3  leanest    body=0  lean    body=4  light    body=5  average
-    body=1  full       body=11 heavy   body=2  heaviest (belly, thicker limbs, same head)
+    body=1  full       body=11 heavy   body=2  heaviest
 
-Everything about the pose is identical across the three because it is one render: the head top, the
-feet, the stance and the base body are the same pixels. Only the build changes. Anything the desk
-wants between them is the renderer's own sub-step stretch, never a new drawing.
+The six heavier frames inherit the exact head/face crop from the selected r7 image. Their bodies are
+aligned to its measured torso axis and floor, then widened deterministically to the historical ink
+widths. The head is never scaled or redrawn.
 
 WHERE THE FRAMES COME FROM
 --------------------------
@@ -146,7 +141,6 @@ def fetch():
     reference = Image.open(__import__("io").BytesIO(reference_data)).convert("RGBA")
     if reference.size != (FRAME_W, FRAME_H):
         raise SystemExit(f"approved body-000-r7 reference is {reference.size}, expected {(FRAME_W, FRAME_H)}")
-    reference.save(VIEWS / f"body-{BODIES[0]}-r0.png")
     print(f"body-000-r7 exact reference -> {(VIEWS / 'body-000-r7.webp').relative_to(ROOT)}")
 
     for body in BODIES[1:]:
@@ -167,7 +161,8 @@ def fetch():
 
 # --- framing -------------------------------------------------------------------------------
 def master(body):
-    p = VIEWS / f"body-{body}-r0.png"
+    p = (VIEWS / "body-000-r7.webp" if body == BODIES[0]
+         else VIEWS / f"body-{body}-r0.png")
     if not p.exists():
         raise SystemExit(f"missing {p.relative_to(ROOT)} — run with --fetch first")
     im = Image.open(p).convert("RGBA")

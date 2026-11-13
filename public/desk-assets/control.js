@@ -845,7 +845,7 @@ import { createCridVoice } from "./crid-voice.js";
   };
   // GPS is started deliberately from the private controller, never by the public overlay.
   // The server stores coarse 0.01° cells and exposes them only after its 90-second delay.
-  let gpsWatchId = null, gpsSession = 0, gpsLastCell = "", gpsLastSentAt = 0, gpsWriteBusy = false;
+  let gpsWatchId = null, gpsSession = 0, gpsLastCell = "", gpsLastSentAt = 0, gpsWriteBusy = false, gpsWritePending = Promise.resolve();
   const gpsStatus = h("p", "sub", "GPS is off. Start it only while streaming somewhere you are comfortable sharing. The public map uses ~1.1 km cells and a 90-second delay.");
   const stopGpsWatch = () => {
     gpsSession++;
@@ -873,7 +873,8 @@ import { createCridVoice } from "./crid-voice.js";
         if (cell === gpsLastCell && now - gpsLastSentAt < 30000) return;
         gpsWriteBusy = true;
         try {
-          await api("/api/desk/location", { lat: latitude, lon: longitude, alt: altitude });
+          gpsWritePending = api("/api/desk/location", { lat: latitude, lon: longitude, alt: altitude });
+          await gpsWritePending;
           if (session !== gpsSession) return;
           gpsLastCell = cell;
           gpsLastSentAt = Date.now();
@@ -898,6 +899,7 @@ import { createCridVoice } from "./crid-voice.js";
   const stopGpsAndClear = async () => {
     stopGpsWatch();
     try {
+      await gpsWritePending.catch(() => {});
       await api("/api/desk/location", { clear: true });
       gpsStatus.textContent = "GPS stopped. The delayed public location and map history have been cleared.";
     } catch (error) {

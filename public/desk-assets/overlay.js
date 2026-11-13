@@ -20,6 +20,7 @@ import { createCridAudioSync } from "./crid-audio.js";
                                 and floor line — and leaves the transparent page OBS keys out)
      bot=0 | bl|bc|br          bot.x=0–100 bot.y=0–100  (CRID mascot; 0 restores the sound orb; default bc, the centre column)
      bot.scale=0.4–2.5         (mascot size multiplier on top of the theme's broadcast size; default 1)
+     headlines=1               (optional automatic RSS identity ticker; off by default)
      clock=0 | 1               (bottom-left clock plate; on by default)
      chat=0 | 1                chatPrefix=   (Swae chat strip; on by default inside Swae)
      cridLogo=                 (CRID badge logo URL, falls back to ./crid-logo.png)
@@ -77,6 +78,9 @@ import { createScene, SCENE_CSS } from "./scene.js";
   // ?game=0 removes the Letters card and its renderer with it: a frame that never wants the game
   // never draws one, and the desk state it ignores costs it nothing.
   const LETTERS_ON = P.get("game") !== "0";
+  // The public frame is a place, not a news dashboard. RSS is available on demand, but it must
+  // not occupy the scene or compete with Crid before the operator chooses to show it.
+  const HEADLINES_ON = P.get("headlines") === "1";
   const theme = pick("theme", ["creative", "torn-paper", "cyber"], "cyber");
   document.documentElement.dataset.theme = theme;
   document.documentElement.dataset.crop = P.get("crop") === "0" ? "false" : "true";
@@ -714,7 +718,7 @@ html.swae .scale-wrap{display:none}
 /* The music panel took the radar plate's old slot: bottom-right, sitting on the news ticker,
    measured against it rather than guessed at. It keeps the module look — the wrap's own glass
    border and fill — inside a plain fixed slot so the ticker can never be covered or covered. */
-#music-plate{position:fixed;right:var(--m);bottom:calc(var(--m) + 5.4em + env(safe-area-inset-bottom,0px));
+#music-plate{position:fixed;right:var(--m);bottom:calc(var(--m) + env(safe-area-inset-bottom,0px));
   z-index:24;width:min(342px,calc(100vw - 2*var(--m)));pointer-events:none}
 #music-plate:empty{display:none}
 #music-plate .music-wrap{width:100%;max-height:36dvh;overflow:hidden;padding:.65em .85em}
@@ -1003,8 +1007,8 @@ html.swae #desk .letters{background:#0b0d12f5}
   const slot = h("div", "slot");
   const root = h("div", { id: "desk", class: `layout-${CFG.layout} pos-${CFG.pos} anim-${CFG.anim} crid-pos-${CFG.cridPos} x-pos-${xJPos}${CFG.debug ? " debug" : ""}` }, slot);
   document.body.append(root);
-  const headlineShelf = h("div", { id: "auto-headlines", "aria-live": "off", "data-status": "loading" });
-  root.append(headlineShelf);
+  const headlineShelf = HEADLINES_ON ? h("div", { id: "auto-headlines", "aria-live": "off", "data-status": "loading" }) : null;
+  if (headlineShelf) root.append(headlineShelf);
 
   // ---------- Swae chat bridge ----------
   // Swae already reads the chat for the broadcast. With "Swae access" on it can hand those
@@ -1405,6 +1409,7 @@ html.swae #desk .letters{background:#0b0d12f5}
   };
 
   const drawHeadlines = (note = "Checking for fresh headlines…") => {
+    if (!headlineShelf) return;
     const track = state?.music?.playing ? state.music.current : null;
     const rows = [];
     if (track?.title) rows.push(h("div", "identity-row identity-music",
@@ -1430,6 +1435,7 @@ html.swae #desk .letters{background:#0b0d12f5}
   };
 
   const refreshHeadlines = async () => {
+    if (!HEADLINES_ON || !headlineShelf) return;
     try {
       const response = await fetch("/api/desk-headlines", { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
@@ -1445,10 +1451,12 @@ html.swae #desk .letters{background:#0b0d12f5}
       headlinePollTimer = setTimeout(refreshHeadlines, 5 * 60 * 1000);
     }
   };
-  headlineRotateTimer = setInterval(() => {
-    if (headlineItems.length > 1) { headlineIndex = (headlineIndex + 1) % headlineItems.length; drawHeadlines(); }
-  }, 12 * 1000);
-  window.addEventListener("pagehide", () => { clearTimeout(headlinePollTimer); clearInterval(headlineRotateTimer); }, { once: true });
+  if (HEADLINES_ON) {
+    headlineRotateTimer = setInterval(() => {
+      if (headlineItems.length > 1) { headlineIndex = (headlineIndex + 1) % headlineItems.length; drawHeadlines(); }
+    }, 12 * 1000);
+    window.addEventListener("pagehide", () => { clearTimeout(headlinePollTimer); clearInterval(headlineRotateTimer); }, { once: true });
+  }
 
   const schedulePoll = (ms) => {
     clearTimeout(pollTimer);
@@ -2166,7 +2174,7 @@ html.swae #desk .letters{background:#0b0d12f5}
   // both plates exist, and again only when the location itself changes.
   renderLocation();
   requestGeo();
-  refreshHeadlines();
+  if (HEADLINES_ON) refreshHeadlines();
   // He was placed before the clock existed, so the floor he measured was the frame's own. Now that
   // every plate is in the document, measure again: this is what puts him on top of the bottom band
   // on a narrow frame and on the floor of a broadcast one.

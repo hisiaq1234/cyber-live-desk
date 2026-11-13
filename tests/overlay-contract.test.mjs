@@ -45,3 +45,12 @@ test("peek, full view and GTA mode are wired to state and URL params", () => {
   // SWAE kills CSS transitions: dock motion must be stepped in JS, never transitioned.
   assert.ok(overlay.includes("animateRect"));
 });
+
+
+test("automatic RSS headlines are opt-in and never occupy the default startup frame", () => {
+  assert.match(overlay, /const HEADLINES_ON = P\.get\("headlines"\) === "1"/);
+  assert.match(overlay, /const headlineShelf = HEADLINES_ON \?/);
+  assert.match(overlay, /if \(HEADLINES_ON\) refreshHeadlines\(\)/);
+  assert.match(overlay, /if \(!HEADLINES_ON \|\| !headlineShelf\) return/);
+  assert.match(overlay, /#music-plate\{position:fixed;right:var\(--m\);bottom:calc\(var\(--m\) \+ env\(safe-area-inset-bottom,0px\)\)/);
+});

@@ -95,6 +95,24 @@ test("ledge grip respects the supplied world-space arm reach",()=>{
   assert.equal(body.grip,null);
 });
 
+test("grip releases after the shoulder remains outside the world-space reach envelope",()=>{
+  const {world,body,run}=make({x:0,y:-.2,halfW:.1,halfH:.2,gravity:8});
+  assert.equal(world.grabCharacter(body,{id:"ledge",x:0,y:-.8},{reach:.4}),true);
+  assert.equal(world.climbCharacter(body,{x:0,feetY:-.8},{strength:1,load:0,maxAcceleration:24}),true);
+  body.x=2;
+  run(.5);
+  assert.equal(body.grip,null);
+  assert.equal(body.gripFailed,true);
+});
+
+test("a character is not supported while it is still above a platform top",()=>{
+  const {world,body}=make({x:150,y:-.5,floor:0,grounded:false,supportId:null});
+  world.setPlatforms([{id:"ledge",left:100,right:200,top:-1,bottom:0,solidSides:false}]);
+  world.step(1/120);
+  assert.equal(body.grounded,false);
+  assert.equal(body.supportId,null);
+});
+
 test("carried load reduces attainable motor speed",()=>{
   const a=make(),b=make();
   a.world.moveCharacter(a.body,1000,{maxSpeed:180,acceleration:900,strength:1,load:0});

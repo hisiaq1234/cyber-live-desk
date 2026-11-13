@@ -11,6 +11,8 @@ on:
       - public/desk-assets/physics.mjs
       - scripts/build-body-ladder.py
       - scripts/build-crid-rig.py
+      - scripts/probe-crid.mjs
+      - .github/workflows/build-crid-ladder.yml
 
 permissions:
   contents: write
@@ -41,6 +43,24 @@ jobs:
         run: |
           npm ci
           npm test
+      - name: Install Chrome for CRID visual probes
+        uses: browser-actions/setup-chrome@v1
+        id: chrome
+        with:
+          chrome-version: stable
+      - name: Capture CRID at phone, compact and desktop sizes
+        run: |
+          export CHROME_BIN="$(command -v google-chrome)"
+          PROBE_SIZE=390x844 PROBE_NAME=phone node scripts/probe-crid.mjs
+          PROBE_SIZE=1024x768 PROBE_NAME=compact node scripts/probe-crid.mjs
+          PROBE_SIZE=1920x1080 PROBE_NAME=desktop PROBE_CLIMB=1 node scripts/probe-crid.mjs
+      - name: Upload CRID visual probes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crid-visual-probes
+          path: outputs/crid-lab-*.png
+          if-no-files-found: warn
       - name: Create comparison sheet
         run: python scripts/build-body-ladder.py --sheet out/crid-body-ladder.png
       - name: Upload generated visual evidence

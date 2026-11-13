@@ -368,23 +368,25 @@ export async function initCrid3D(host,getState,onReady,onFail){
       thighL:[.18,.20,.18],shinL:[.22,.24,.22],footL:[.26,.28,.26],toeL:[.30,.32,.30],
       thighR:[.18,.20,.18],shinR:[.22,.24,.22],footR:[.26,.28,.26],toeR:[.30,.32,.30]};
     const lagPose=new Map();
+    let frameDt=.016;                       // drive() stamps this each frame; pose() reads it
     const pose=(jk,x=0,y=0,z=0)=>{
       let s=lagPose.get(jk);
       if(!s){s=[x,y,z];lagPose.set(jk,s);rot(J[jk],x,y,z);return}
       const tau=LAG_TAU[jk]||[.14,.14,.14];
-      s[0]+=(x-s[0])*(1-Math.exp(-dt/tau[0]));
-      s[1]+=(y-s[1])*(1-Math.exp(-dt/tau[1]));
-      s[2]+=(z-s[2])*(1-Math.exp(-dt/tau[2]));
+      s[0]+=(x-s[0])*(1-Math.exp(-frameDt/tau[0]));
+      s[1]+=(y-s[1])*(1-Math.exp(-frameDt/tau[1]));
+      s[2]+=(z-s[2])*(1-Math.exp(-frameDt/tau[2]));
       rot(J[jk],s[0],s[1],s[2])};
-    // Walk settle: the gait fades over ~200 ms instead of snapping off — a stop
-    // is a settle, not a cut. Phase keeps its own clock; only amplitude blends.
-    walkW+=((walking?1:0)-walkW)*Math.min(1,dt*5);
 
     const drive=(t,dt,st)=>{
       const p=st.p||{},mode=st.mode||"dead",dying=!!st.dying,
         alive=mode==="on"&&!dying,walking=!!st.walking&&alive,
         reduced=st.reduced||reducedNow(),grooving=!!st.grooving,
         pr=clamp((p.pr||0)*Math.PI/180,-1.2,1.2);
+      frameDt=dt;
+      // Walk settle: the gait fades over ~200 ms instead of snapping off — a stop
+      // is a settle, not a cut. Phase keeps its own clock; only amplitude blends.
+      walkW+=((walking?1:0)-walkW)*Math.min(1,dt*5);
       if(walking)phase=(phase+dt*(reduced?3.4:5.2))%1;
       const u=phase,gait=Math.sin(TAU*u),          // one full gait cycle per phase wrap
         kL=swingOf(((u*2)%1+.5)%1)*walkW,kR=swingOf(((u*2+.5)%1+.5)%1)*walkW,

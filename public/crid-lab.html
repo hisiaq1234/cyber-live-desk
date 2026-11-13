@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Crid lab — animation QA harness</title>
+<style>
+  html,body{margin:0;height:100%;background:#0b0e17;overflow:hidden}
+  /* Stand-in furniture so a lean/climb has an edge to meet. The registry below
+     measures these live, exactly like layers.mjs measures the real desk. */
+  .panel{position:fixed;border-radius:10px;pointer-events:none;
+    background:linear-gradient(160deg,#171e33,#10152a);
+    border:1px solid #2f3b63;box-shadow:0 10px 30px rgba(0,0,0,.45)}
+  .panel::after{content:"";position:absolute;inset:0;border-radius:10px;
+    background:repeating-linear-gradient(0deg,transparent 0 22px,rgba(125,143,245,.05) 22px 23px)}
+  /* p-climb's top edge must sit within his reach: deskTargets() only offers a
+     climb when the lip is no higher than his own height above the floor line.
+     At the lab's ~484px viewport that means top >= ~54%. */
+  #p-climb{left:50%;top:54%;width:44%;height:32%}
+  #p-lean{left:4%;top:26%;width:22%;height:46%}
+  #p-seat{left:34%;top:60%;width:30%;height:22%}
+  #tag{position:fixed;left:10px;top:8px;z-index:5;color:#8b96b8;
+    font:11px ui-monospace,Menlo,monospace;pointer-events:none}
+</style>
+</head>
+<body>
+<div class="panel" id="p-climb"></div>
+<div class="panel" id="p-lean"></div>
+<div class="panel" id="p-seat"></div>
+<div id="tag">crid lab</div>
+<script type="module">
+import { createCridBot } from "./desk-assets/crid-bot.js";
+
+// The same contract layers.mjs gives the desk: layer(name) -> {edge,w,h,z} or null.
+const NAMES=["p-climb","p-lean","p-seat"];
+const layer=n=>{const el=document.getElementById(n); if(!el)return null;
+  const r=el.getBoundingClientRect();
+  if(!(r.width>10&&r.height>10))return null;
+  return{edge:{left:r.left,right:r.right,top:r.top,bottom:r.bottom},w:r.width,h:r.height,z:0,x:r.left,y:r.top}};
+const layers={names:NAMES,layer};
+
+const q=new URLSearchParams(location.search);
+const bot=createCridBot({root:document.body,position:"bc",
+  scale:parseFloat(q.get("scale"))||1.4,
+  layers,
+  // Deterministic-ish inner life: no jitter, mid picks — the lab shows his decisions
+  // repeating so before/after footage compares the same beats.
+  beingOpts:{rng:()=>.5}});
+
+// The QA surface the recorder drives. Everything routes through the real API —
+// cues, feelings, leans, walks — plus driveStage for the panel state machine,
+// which on air only being's intents reach.
+window.lab={
+  bot,
+  cue:(n,o)=>bot.cue(n,o),
+  feel:(n,o)=>bot.feel(n,o),
+  react:n=>bot.react(n),
+  lean:(n,s)=>bot.lean(n,s),
+  unlean:()=>bot.unlean(),
+  walk:(x,y)=>bot.walkTo?null:null,   // wander is being's; see driveStage below
+  driveStage:(key,layerName,phase="start")=>bot.driveStage(key,layerName,phase),
+  setMode:m=>bot.setMode(m),
+  state:()=>({mode:bot.mode,stage:window.__cridStage?window.__cridStage():null,
+    face:window.__cridFace?Object.keys(window.__cridFace.channels()).length:0})};
+// Warm the GLB before the first cue so footage never catches a load.
+setTimeout(()=>{document.getElementById("tag").textContent="crid lab · ready"},1500);
+</script>
+</body>
+</html>

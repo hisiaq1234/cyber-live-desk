@@ -248,7 +248,10 @@ export function createStage({
         const e = ease(stage.t / 0.8);
         stage.groundY = stage.slipFromY * (1 - e);
         stage.walkX = stage.slipFromX + (stage.fromX - stage.slipFromX) * e;
-        if (stage.t >= 0.8) { stage.groundY = 0; stage.walkX = stage.fromX; stage.surface = null; stage.squashAt = nowMs; go("recover"); }
+        if (stage.t >= 0.8) {
+          if (!canCompleteDrop(stage)) { stage.t = 0.8; break; }
+          stage.groundY = 0; stage.walkX = stage.fromX; stage.surface = null; stage.squashAt = nowMs; go("recover");
+        }
         break;
       }
       case "recover":                              // the scramble: a beat on the floor, then done

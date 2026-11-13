@@ -82,7 +82,7 @@ test("he stands on the panel during 'top' and the trace says done", () => {
 test("a climb waits for the physics motor to confirm platform support",()=>{
   let supported=false;
   const {stage}=makeStage({canCompleteClimb:()=>supported});
-  drive(stage,climbIntent,8);
+  drive(stage,climbIntent,12);
   assert.equal(stage.state,"pull");
   supported=true;
   drive(stage,climbIntent,1);
@@ -92,7 +92,7 @@ test("a climb waits for the physics motor to confirm platform support",()=>{
 test("a drop waits for the physics motor to confirm floor landing",()=>{
   let onFloor=false;
   const {stage}=makeStage({canCompleteDrop:()=>onFloor});
-  drive(stage,climbIntent,8);
+  drive(stage,climbIntent,12);
   drive(stage,{key:"climb",phase:"end",layer:"panel-r",x:.5},8);
   assert.equal(stage.state,"drop");
   onFloor=true;

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const overlay = readFileSync(new URL("../public/desk-assets/overlay.js", import.meta.url), "utf8");
+const control = readFileSync(new URL("../public/desk-assets/control.js", import.meta.url), "utf8");
 
 test("the selected alive layout class is applied to the overlay root", () => {
   assert.match(overlay, /layout:\s*pick\("layout",\s*\["alive",\s*"classic"\],\s*"alive"\)/);
@@ -37,11 +38,55 @@ test("the location dock reads the delayed public fix defensively and keeps panic
   assert.ok(!overlay.includes('id: "map-plate"'));
 });
 
-test("peek, full view and GTA mode are wired to state and URL params", () => {
-  assert.ok(overlay.includes('num("locpeek"'));
+test("the GTA minimap is persistent, location-gated and player-centred", () => {
+  assert.ok(overlay.includes('let locMode = "mini"'));
+  assert.ok(overlay.includes("const miniRect = () =>"));
+  assert.ok(overlay.includes("const syncMinimap = () =>"));
+  assert.ok(overlay.includes("the player marker stays centred"));
+  assert.ok(overlay.includes("map.easeTo({ center: [lng, lat], duration: 520 })"));
+  assert.ok(!overlay.includes("LOCPEEK_MS"));
+  assert.ok(!overlay.includes("peekHideTimer"));
   assert.ok(overlay.includes('P.get("locview") === "full"'));
-  assert.ok(overlay.includes('s.gta === true'));
-  assert.ok(overlay.includes('classList.toggle("gta"'));
   // SWAE kills CSS transitions: dock motion must be stepped in JS, never transitioned.
   assert.ok(overlay.includes("animateRect"));
+});
+
+test("GTA HUD styles the whole cyber overlay and leaves camera feeds visible by default", () => {
+  const theme = readFileSync(new URL("../public/desk-assets/cyber-theme.js", import.meta.url), "utf8");
+  assert.match(overlay, /const SCENE_ON = P.get\("bg"\) === "1"/);
+  assert.match(theme, /GTA HUD layer: applies to the whole broadcast/);
+  assert.match(theme, /#desk #desk-logo/);
+  assert.match(theme, /#desk #loc-map/);
+  assert.match(theme, /#desk #crid-live/);
+  assert.match(theme, /#desk :is\(\.card,\.court-wrap,\.music-wrap/);
+  assert.match(overlay, /html\[data-theme="cyber"\] #desk \.letters/);
+  assert.match(overlay, /html\[data-theme="cyber"\] #desk \.letters-tile\.vowel/);
+});
+
+
+test("automatic RSS headlines are opt-in and never occupy the default startup frame", () => {
+  assert.match(overlay, /const HEADLINES_ON = P\.get\("headlines"\) === "1"/);
+  assert.match(overlay, /const headlineShelf = HEADLINES_ON \?/);
+  assert.match(overlay, /if \(HEADLINES_ON\) refreshHeadlines\(\)/);
+  assert.match(overlay, /if \(!HEADLINES_ON \|\| !headlineShelf\) return/);
+  assert.match(overlay, /#music-plate\{position:fixed;right:var\(--m\);bottom:calc\(var\(--m\) \+ env\(safe-area-inset-bottom,0px\)\)/);
+});
+
+
+test("the default overlay uses the two-camera split HUD and keeps each half clear", () => {
+  assert.match(overlay, /const scene = pick\("scene", \["split", "pip"\], "split"\)/);
+  assert.match(overlay, /html\[data-scene="split"\] #desk\.layout-alive \.slot/);
+  assert.match(overlay, /html\[data-scene="split"\] #desk\.layout-alive #dock-right/);
+  assert.match(overlay, /html\[data-scene="split"\] #desk #music-plate/);
+  assert.match(overlay, /scene === "split" \? "tl" : "tc"/);
+  assert.match(overlay, /split \? 0\.44 : 0\.94/);
+});
+
+
+test("live GPS is explicit in the private controller and clears its public history on stop", () => {
+  assert.ok(control.includes("navigator.geolocation.watchPosition"));
+  assert.ok(control.includes('api("/api/desk/location", { lat: latitude, lon: longitude, alt: altitude })'));
+  assert.ok(control.includes('api("/api/desk/location", { clear: true })'));
+  assert.ok(control.includes("await gpsWritePending.catch(() => {})"));
+  assert.ok(!overlay.includes("navigator.geolocation"));
 });

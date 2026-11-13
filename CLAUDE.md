@@ -76,8 +76,8 @@ Three surfaces, no build step, deployed on Vercel from this repo:
 | `/control` | `public/control.html` (+ `control.js`) | The operator surface that drives the desk |
 | `brain/` | local Node loop | Crid's decision loop — reactions over chat, no cloud, no model |
 
-- `public/desk-assets/scene.js` draws the room behind everything (sky, masked cyber grid, horizon
-  glow, floor line). `?bg=0` (also `off` / `false`) gives the transparent page for OBS.
+- `public/desk-assets/scene.js` contains an optional synthetic room backdrop (sky, grid, horizon, floor).
+  The default `/desk` stays transparent over the real camera feeds; `?bg=1` opts into the synthetic room.
 - Overlay long-polls `GET /api/desk/state?since=<version>` (204 = no change). Control writes with
   `POST /api/desk/action` and a `Bearer` operator token.
 - `DESK_OPERATOR_TOKEN` is a **sensitive** Vercel variable — nobody can read it back, including the
@@ -92,9 +92,12 @@ Three surfaces, no build step, deployed on Vercel from this repo:
 
 Work here is judged on two things the owner named, and nothing else counts as done until they hold:
 
-**Immersion.** One room, one light, everything on the same floor. Crid stands *in* a place — his
-shadow lands on something, the panels belong to the room, nothing floats for no reason. If an
-element has no reason to be where it is, it is wrong.
+**Immersion.** GTA is the visual language of the entire broadcast HUD, not just Crid's surroundings.
+The camera feeds remain the world; the overlay supplies the minimap, location, identity, live status,
+stories, transitions and Crid as one coherent GTA-inspired interface. Use the game's HUD hierarchy,
+map behaviour, markers and motion language without importing its branding or hiding the cameras.
+Crid stands *in* the footage — his shadow lands on something and the HUD stays anchored to the feed.
+If an element has no reason to be where it is, it is wrong.
 
 **Return.** Something must visibly happen on a timer even when there is no news, and there must be
 continuity — daily accessories, recurring bits, a running gag — so a viewer who comes back sees that

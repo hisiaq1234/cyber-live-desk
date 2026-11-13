@@ -13,7 +13,9 @@
 //   POST /api/desk/cards           operator create or update one card
 //   POST /api/desk/action          operator show | next | previous | draw | hide | hold | source | mode |
 //                                   desk | poll actions | auto-play | auto-research | bulk-approval |
-//                                   research-approval | twitch-chat | twitch-allow
+//                                   research-approval | twitch-chat | twitch-allow | location | gta
+//   POST /api/desk/location        operator live-location fix {lat,lon,place?,hidden?}; stored
+//                                   coarse (~1.1 km) and served to the overlay delayed ~90 s
 //   POST /api/desk/research        operator fetch headlines/trends, or held items with heldOnly
 //   POST /api/desk/brief           operator-only, on-demand evidence brief; never public state
 //   GET  /api/desk/twitch          operator-only Twitch EventSub configuration status
@@ -49,6 +51,7 @@ import {
   runResearch,
   upsertCard,
   writeBeing,
+  writeLocation,
 } from "./_desk-core.mjs";
 import { twitchStatus } from "./_twitch-core.mjs";
 import { parseDeskCommand, commandBody, commandText } from "../public/desk-assets/_commands.mjs";
@@ -239,6 +242,11 @@ const handler = async (req) => {
     // sanitized field into state.bot and answers { ok } — no action runs, nothing else moves.
     if (req.method === "POST" && route === "/api/desk/being") {
       return json({ ...(await writeBeing(s, await readBody(req))), serverNow: Date.now() });
+    }
+    // The live-location write: coarse cells only, server receipt time, panic flag. Same
+    // Bearer gate as every operator route above; the public projection serves the delayed view.
+    if (req.method === "POST" && route === "/api/desk/location") {
+      return json({ ...(await writeLocation(s, await readBody(req))), serverNow: Date.now() });
     }
     if (req.method === "POST" && route === "/api/desk/research") return json(await runResearch(s, await readBody(req)));
     throw new HttpError(404, "Not found.");

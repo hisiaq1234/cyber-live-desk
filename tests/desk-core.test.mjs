@@ -12,6 +12,7 @@ import {
   FEEDS,
   HttpError,
   LIMITS,
+  LOCATION_DELAY_MS,
   PER_FEED,
   PIP_SIZE,
   RESEARCH_KEEP_MS,
@@ -37,6 +38,7 @@ import {
   upsertCard,
   wl,
   writeBeing,
+  writeLocation,
   createTwitchClip,
 } from "../api/_desk-core.mjs";
 
@@ -1557,4 +1559,111 @@ test("writeBeing is monotonic and lightly rate-limited", async () => {
   const s = await readState(store);
   assert.equal(s.bot.being.savedAt, NOW + 3000);
   assert.equal(s.bot.being.drives.energy, 55, "the throttled write's numbers were not stored");
+});
+
+// ---------- live location, GTA mode and panic ----------
+
+test("writeLocation stores coarse cells and server time, never raw coordinates", async () => {
+  const store = makeStore();
+  const res = await writeLocation(store, { lat: 6.5247123, lon: 3.3792055, place: "Ikeja, Lagos", alt: 41.6 }, NOW);
+  assert.equal(res.ok, true);
+  const loc = res.location;
+  assert.equal(loc.lat, 6.52, "latitude is rounded to 2 decimals (~1.1 km)");
+  assert.equal(loc.lon, 3.38);
+  assert.equal(loc.at, NOW, "at is the server receipt time");
+  assert.equal(loc.hidden, false);
+  assert.equal(loc.place, "Ikeja, Lagos");
+  // The raw fix must not survive anywhere in the stored state.
+  const raw = JSON.stringify((await readState(store)).location);
+  assert.ok(!raw.includes("6.5247123") && !raw.includes("3.3792055"), "no precise coordinate is stored");
+  assert.ok(!JSON.stringify((await readState(store)).locationHistory).includes("6.5247123"));
+});
+
+test("writeLocation rejects bad coordinates, over-long places and non-boolean hidden", async () => {
+  const store = makeStore();
+  const bad = [
+    [{ lon: 3.3 }, /lat and lon are required/],
+    [{ lat: 91, lon: 0 }, /lat must be between/],
+    [{ lat: -91, lon: 0 }, /lat must be between/],
+    [{ lat: 0, lon: 181 }, /lon must be between/],
+    [{ lat: 0, lon: -181 }, /lon must be between/],
+    [{ lat: "north", lon: 0 }, /lat and lon are required/],
+    [{ lat: 6.5, lon: 3.3, place: "x".repeat(81) }, /place must be 80 characters or fewer/],
+    [{ lat: 6.5, lon: 3.3, hidden: "yes" }, /hidden must be true or false/],
+    [{ lat: 6.5, lon: 3.3, alt: "high" }, /alt must be a number/],
+  ];
+  for (const [body, re] of bad) {
+    await assert.rejects(() => writeLocation(store, body, NOW), re);
+  }
+  assert.equal((await readState(store)).location, null, "a refused write stores nothing");
+});
+
+test("panic hidden survives into the public projection and is not delayed", async () => {
+  const store = makeStore();
+  await writeLocation(store, { lat: 6.5, lon: 3.3, place: "Home", hidden: true }, NOW);
+  const state = await readState(store);
+  assert.equal(state.location.hidden, true);
+  const pub = publicProjection(state, NOW + LOCATION_DELAY_MS + 1);
+  assert.equal(pub.location.hidden, true, "the panic flag reaches the overlay");
+  assert.equal(pub.locationHistory, undefined, "the private fix ring never leaves the server");
+});
+
+test("the public location is the fix from at least 90 s ago, never the fresh one", async () => {
+  const store = makeStore();
+  await writeLocation(store, { lat: 6.50, lon: 3.30, place: "First" }, NOW);
+  let state = await readState(store);
+
+  // Inside the delay window the desk shows "location unknown" rather than a live dot; a fix
+  // exactly LOCATION_DELAY_MS old is already public (the cutoff is inclusive).
+  assert.equal(publicProjection(state, NOW + LOCATION_DELAY_MS - 1).location, null);
+
+  const delayed = publicProjection(state, NOW + LOCATION_DELAY_MS).location;
+  assert.deepEqual(
+    { lat: delayed.lat, lon: delayed.lon, place: delayed.place, at: delayed.at, hidden: delayed.hidden },
+    { lat: 6.5, lon: 3.3, place: "First", at: NOW, hidden: false },
+  );
+
+  // A second fix moves the fresh point at once but the public point keeps serving the old one
+  // until the new fix itself is 90 s old.
+  const t2 = NOW + 60_000;
+  await writeLocation(store, { lat: 9.99, lon: 9.99, place: "Second" }, t2);
+  state = await readState(store);
+  assert.equal(state.location.place, "Second", "control sees the fresh fix");
+  assert.equal(state.location.at, t2);
+  const still = publicProjection(state, t2 + LOCATION_DELAY_MS - 1).location;
+  assert.equal(still.at, NOW, "the public view still serves the aged fix");
+  assert.equal(still.place, "First");
+  const moved = publicProjection(state, t2 + LOCATION_DELAY_MS + 1).location;
+  assert.equal(moved.at, t2);
+  assert.equal(moved.place, "Second");
+
+  // Clearing removes point and ring together, so nothing stale resurfaces publicly.
+  await runAction(store, { action: "location", clear: true }, t2 + 200_000);
+  state = await readState(store);
+  assert.equal(state.location, null);
+  assert.deepEqual(state.locationHistory, []);
+  assert.equal(publicProjection(state, t2 + 300_000).location, null);
+});
+
+test("the location desk action and writeLocation store the same shape", async () => {
+  const a = makeStore();
+  const b = makeStore();
+  await writeLocation(a, { lat: 6.5247, lon: 3.3792, place: "Ikeja" }, NOW);
+  await runAction(b, { action: "location", lat: 6.5247, lon: 3.3792, place: "Ikeja" }, NOW);
+  const la = (await readState(a)).location;
+  const lb = (await readState(b)).location;
+  for (const k of ["lat", "lon", "place", "at", "hidden"]) assert.equal(la[k], lb[k], k);
+  assert.equal(la.lat, 6.52);
+});
+
+test("gta toggles state.gta and lands in the public projection", async () => {
+  const store = makeStore();
+  assert.equal(DEFAULT_STATE.gta, false);
+  assert.equal((await runAction(store, { action: "gta" }, NOW)).state.gta, true);
+  assert.equal((await runAction(store, { action: "gta" }, NOW)).state.gta, false, "second press flips back");
+  assert.equal((await runAction(store, { action: "gta", value: true }, NOW)).state.gta, true);
+  assert.equal((await runAction(store, { action: "gta", value: false }, NOW)).state.gta, false);
+  assert.equal(publicProjection(await readState(store), NOW).gta, false);
+  await runAction(store, { action: "gta", value: true }, NOW);
+  assert.equal(publicProjection(await readState(store), NOW).gta, true, "the overlay sees the flag");
 });

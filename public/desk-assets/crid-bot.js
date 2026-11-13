@@ -11,10 +11,16 @@
    position, squeezed into a 44x22 box over a face that already has eyes) and produced a second
    ghost face; those unregistered frames have been removed. Emotion therefore comes from a
    body swap + a motion beat + a hold — see FEEL.
-   BODY LADDER: the seven measured front-facing builds are 307/366/420/486/560/676/822 px wide
-   in a shared 1050x1400 frame. The head crop, height, floor and torso axis are locked; only the
-   body silhouette widens. ladder.mjs is the single runtime source for 2D sprite width, collider,
-   movement slow-down, heft and 3D girth. Growth: every sub moves him up a notch. SUB_STEPS is where each stage takes over, and between
+   BODY LADDER: seven frames, and they are seven builds of ONE render — the distinct builds Snap's
+   own body= parameter gives at rotation 0 (3/0/4/5/1/11/2 lean -> heavy; every other value returns
+   one of these same pictures), fetched and framed by scripts/build-body-ladder.py. The pose, the
+   base body and the head are therefore the same pixels in all seven and only the build changes:
+   480x1190 px of ink leanest, 592x1191 heaviest. The six lighter builds differ mostly in mass —
+   Snap gives them nearly the same silhouette width — so the stage order is proven on ink area in
+   ladder.json, not on width. All seven keep one framing: ink bottom on y=1325 and the mid-torso on
+   x=560, so a swap is a change of build, never a jump sideways or off the floor. ladder.json next
+   to the frames holds the measured box of each stage.
+   Growth: every sub moves him up a notch. SUB_STEPS is where each stage takes over, and between
    stages he widens a little (STAGE_STRETCH) so every single sub is visible. The size is worked out
    from the sub total each time, so an overlay reload mid-stream restores it. The build also drives
    how he moves — see BODY_LADDER.slow and .heft, used by the walk, the gait and the gesture weight.
@@ -28,8 +34,10 @@ import{createStage}from"./stage.mjs";
 const NS="http://www.w3.org/2000/svg",XLINK="http://www.w3.org/1999/xlink",PAL={onyx:"#1F1736",screen:"#0F0B17",edge:"#3A1D9E",indigo:"#6531F8",indigoDk:"#3A1D9E",mint:"#86F6BC",bone:"#A98BFF",ink:"#F4F0FF",slate:"#2B2738",red:"#FF5B57",dead:"#5E5873"},
 DOZE_AFTER_MS=12e4,BODIES=["3","0","4","5","1","11","2"],ROT=0,ASSETS="./desk-assets/crid",AV=b=>`${ASSETS}/body-${b}-r${ROT}.webp`,
 SUB_STEPS=[0,4,8,12,16,20,24],STAGE_STRETCH=.03,
-// Generated ladder is the shared source for sprite, collider and 3D girth.
-stageOf=i=>BODY_LADDER[Math.min(BODY_LADDER.length-1,Math.max(0,i|0))],
+// The ladder, in BODIES order: the measured ink box of each frame (w x h) and what that build does
+// to his movement. slow stretches every step he takes, heft is his weight in a gesture — a heavy
+// Shared measured geometry is generated into ./crid/ladder.mjs; subscription thresholds and BODIES order remain here.
+  stageOf=i=>BODY_LADDER[Math.min(BODY_LADDER.length-1,Math.max(0,i|0))],
 // The eight micro-emotions from brain/micro-emotions.mjs. A painted face cannot be swapped, so a
 // feeling is a whole drawing that changes and is moved well: a different body, one of the gesture
 // sequences, and how long he stays in that body before his own weight takes it back. No two triples
@@ -232,7 +240,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // ---- the 3D body -----------------------------------------------------------------------
   // His real rigged Bitmoji (crid-3d.js): Snap's own GLB, 167 bones, facial morphs. The canvas
   // is him. The SVG figure is hidden the moment the model is on the GPU and is not put back.
-  let crid3d=null,lastPose=null,disposed3d=false,crid3dFailed=false,subs=0;
+  let crid3d=null,crid3dFailed=false,disposed3d=false;
   const hideFigure=()=>{parts.avatarBase.setAttribute("display","none");parts.rigG.setAttribute("display","none");parts.ph.setAttribute("display","none");host.classList.add("has-glb")};
   // The stage machine's lean states don't set leanAt (that's the verb path) —
   // synthesize the same contract for the renderer: roll/pitch/lift plus a
@@ -251,6 +259,261 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     return {dir,angle,contact:{x:pxX,y:pxY},
       worldAnchor:{id:stage.layer,position:{x:stagePX(pxX),y:(deskFeet()-pxY)/UPX(),z:0},
         normal:{x:dir,y:0,z:0}}};
+  };
+  const STAGE_GRIP={reach:.85,pull:.85,"lean-in":.8,lean:.8,seat:.7,slip:.9,hop:.4,top:.4};
+  // Where the body is about to go, for the face: the eyes fixate the target
+  // BEFORE the body covers ground (facial.mjs lookBias fires a saccade on a
+  // changed bias). Panel commits look up at the lip; a walk looks down-range.
+  // stage.side "right" means he stands on the panel's right edge — the panel
+  // (and the look) is screen-left, so the sign flips against attend's lean dir.
+  const lookBiasNow=()=>{
+    if(stage&&stageActive()){
+      const s=stage.state,dir=stage.side==="right"?-1:1;
+      if(s==="anticipate"||s==="reach"||s==="pull")return{x:dir*.7,y:-.55};
+      if(s==="lean"||s==="lean-in")return{x:dir*.6,y:.1};
+      if(s==="top"||s==="seat")return{x:0,y:-.3};
+      if(s==="hop"||s==="hop-down")return{x:0,y:-.45};
+      if(s==="slip"||s==="recover")return{x:0,y:.5};
+      if(s==="drop"||s==="settle"||s==="crouch")return{x:0,y:.3};
+      return{x:dir*.4,y:-.2}}
+    if(walk&&walk.to)return{x:(walk.tx-walk.x<0?-1:1)*.6,y:0};
+    return null};
+  init3d(host,()=>({p:lastPose,mode,dying,
+    walking:!!(walk&&walk.to)||(stage?stage.walking&&Math.abs(stage.targetX-stage.walkX)>.015:!1),
+    walkDir:walk&&walk.to?(walk.tx-walk.x<0?-1:1):(stage&&stage.targetX<cridBody.x?-1:1),fx,
+    motorState:{x:cridBody.x,y:cridBody.y,vx:cridBody.vx,vy:cridBody.vy,
+      grounded:cridBody.grounded,supportId:cridBody.supportId,distanceTravelled:cridBody.distanceTravelled,
+      screenX:cridBody.x*UPX(),active:!!(stage&&stage.walking&&["approach","floor","top"].includes(stage.state)),
+      strideLength:Math.max(.08,cridBody.halfW*2.25),
+      grip:cridBody.grip?{...cridBody.grip}:null},
+    lean:leanAt||stageLean(),reduced,stage:BODIES[bodyI],face:faceNow,
+    stagePose:stage?{ref:stage,roll:stage.roll,pitch:stage.pitch,liftPx:stage.groundY*UPX(),
+      state:stage.state,key:stage.key,trace:stage.trace,squash:stage.squashEnv||0,
+      grip:STAGE_GRIP[stage.state]||0}:null,
+    // Phase B attention: eyes fixate what the body is engaged with — the panel
+    // he's touching while leaning (dir=+1 is screen-right), a down-glance while
+    // pondering. null hands gaze back to the saccade/drift scheduler.
+    attend:leanAt?{x:leanAt.dir*.8,y:.15}:pondering?{x:0,y:.4}:null,
+    lookBias:lookBiasNow(),
+    talking:host.classList.contains("is-active"),grooving:host.classList.contains("music-playing"),mood,bag:bag.worn}),hideFigure)
+    .then(h=>{crid3d=h;crid3dFailed=!h}).catch(err=>{crid3dFailed=true;try{console.warn("[crid-3d] not started:",err&&err.message||err)}catch{}});
+  // ---- the backpack: a prop with mass (docs/specs/backpack.md + physics.md) ---------------
+  // One world, one gravity, one floor — the same rules the spec gives every body. Worn, the bag
+  // rides his back as an SVG in his own palette (no bitmap, no image budget); dropped, it is a
+  // physics body that falls, bounces once and settles on the same floor line his feet use, and it
+  // stays exactly where it landed — that is the continuity a returning viewer reads.
+  const BAG_MASS=.5,world=createWorld();
+  // One weighted character body in the shared bag/paper world.
+  const cridBody=world.add({character:true,x:0,y:-1,vx:0,vy:0,
+    halfW:Math.max(20,(host.offsetWidth||innerWidth*.175)*.34)/Math.max(80,innerHeight/3.5),
+    halfH:Math.max(50,(host.offsetHeight||220)*.47)/Math.max(80,innerHeight/3.5),
+    floor:0,gravity:2400/Math.max(80,innerHeight/3.5),mass:1,strength:1,grounded:true,supportId:"floor"});
+  const bagEl=document.createElement("div"); bagEl.id="crid-bag";
+  const bagSvg=el("svg",{viewBox:"0 0 64 78","aria-hidden":"true",focusable:"false"});
+  bagSvg.append(
+    el("path",{d:"M16 24 Q11 24 11 32 L11 60 Q11 69 20 69 L44 69 Q53 69 53 60 L53 32 Q53 24 48 24 Z",fill:PAL.slate,stroke:PAL.bone,"stroke-width":3,"stroke-linejoin":"round"}),
+    el("path",{d:"M16 24 Q32 36 48 24 L48 31 Q32 43 16 31 Z",fill:PAL.onyx,stroke:PAL.bone,"stroke-width":2.5,"stroke-linejoin":"round"}),
+    el("circle",{cx:32,cy:41,r:5,fill:"none",stroke:PAL.mint,"stroke-width":3}),
+    el("path",{d:"M21 14 L19 25 M43 14 L45 25",stroke:PAL.bone,"stroke-width":4,"stroke-linecap":"round"}));
+  bagSvg.style.cssText="width:100%;height:100%;display:block";
+  bagEl.append(bagSvg); bagEl.style.cssText="position:fixed;z-index:26;pointer-events:none";
+  root.append(bagEl);
+  const bag={worn:!0,body:null};
+  let pickupWalk=!1,pickupEnd=null,bucketThinkAt=Date.now()+rand(200000,380000),pickupThinkAt=0,paperThinkAt=0;
+  const bagWH=()=>{const w=host.offsetWidth||innerWidth*.175; return{w:w*.5,h:w*.5*78/64}};
+  const floorY=()=>{const r=host.getBoundingClientRect(); return r.bottom-r.height*.03};
+  // His horizontal speed, measured off the host's own movement — the toss a dropped bag gets is
+  // the speed he was actually walking at, not a guessed constant.
+  let lastCX=0,lastCT=0,hisVx=0;
+  const placeBag=()=>{
+    const{w,h}=bagWH(); bagEl.style.width=`${w}px`; bagEl.style.height=`${h}px`;
+    // Worn on the 3D path the pack is the GLB's own skinned bag — the SVG is only
+    // ever the dropped prop on the floor, never a flat image pasted on his back.
+    // If the GLB never started there is no figure to follow either, so the worn
+    // SVG stays hidden rather than floating where he should be.
+    if(bag.worn&&(crid3d||crid3dFailed)){bagEl.style.display="none";return}
+    if(bag.worn){const r=host.getBoundingClientRect();
+      bagEl.style.left=`${r.left+r.width/2-w/2}px`; bagEl.style.top=`${r.top+r.height*.07}px`}
+    else if(bag.body){const b=bag.body;
+      bagEl.style.left=`${b.x-w/2}px`; bagEl.style.top=`${b.y-h/2}px`}
+    else bagEl.style.display="none";
+    if(bag.body){bag.body.floor=floorY(); bag.body.halfH=h/2}};
+  const releaseBag=()=>{if(!bag.worn||bag.body)return; const r=host.getBoundingClientRect(),{h}=bagWH();
+    const b=world.add({x:r.left+r.width/2,y:r.top+r.height*.22,vx:hisVx,vy:-60,mass:1,drag:.4,restitution:reduced?0:.26,floor:floorY(),halfH:h/2});
+    bag.body=b; bag.worn=!1; bagEl.style.display="";
+    spawnPaper(b.x-rand(4,16),b.y-rand(0,10),hisVx); if(Math.random()<.5)spawnPaper(b.x+rand(4,16),b.y,hisVx)};
+  const wearBag=()=>{if(bag.worn||!bag.body)return; world.remove(bag.body); bag.body=null; bag.worn=!0};
+  // The marker frames inside SEQ.dropbag / SEQ.pickup land here, the same place __cueEnd does.
+  const bagMark=(kind,frame)=>{if(kind==="drop")releaseBag(); else if(kind==="wear")wearBag()};
+  // Loose paper (physics.md §3): what slips out of the bag obeys the same gravity, the same
+  // drag and the same floor — it flutters on the way down, lands flat and stays where it lies.
+  // Session-only: a reload clears the floor the way a reset desk would.
+  const papers=[],PAPER_MAX=4;
+  const paperEl=()=>{const d=document.createElement("div");d.id="crid-paper";
+    const s=el("svg",{viewBox:"0 0 20 14","aria-hidden":"true",focusable:"false"});
+    s.append(el("path",{d:"M2 2 L18 1 L19 12 L3 13 Z",fill:PAL.bone,opacity:.92,stroke:PAL.ink,"stroke-width":.6}),
+      el("path",{d:"M4 5 L16 4.5 M4 8 L15 7.6",stroke:PAL.slate,"stroke-width":.8,"stroke-linecap":"round"}));
+    s.style.cssText="width:100%;height:100%;display:block";d.append(s);
+    d.style.cssText="position:fixed;z-index:25;pointer-events:none";
+    const w=13+rand(0,7);d.style.width=`${w}px`;d.style.height=`${w*.7}px`;root.append(d);return d};
+  const spawnPaper=(x,y,vx=0)=>{
+    if(papers.length>=PAPER_MAX){const old=papers.shift();world.remove(old.body);old.el.remove()}
+    const d=paperEl(),b=world.add({x,y,vx:vx+rand(-30,30),vy:rand(-50,10),mass:.05,drag:2.8,restitution:0,floor:floorY(),halfH:7});
+    papers.push({body:b,el:d,phase:rand(0,6.28),rot:rand(-14,14)})};
+  const placePapers=now=>{for(const p of papers){const b=p.body,w=p.el.offsetWidth||16,h=w*.7;
+    p.el.style.left=`${b.x-w/2}px`;p.el.style.top=`${b.y-h/2}px`;
+    const fl=!reduced&&!world.settled(b)?Math.sin(now/130+p.phase)*9+b.vx*.05:0;
+    p.el.style.transform=`rotate(${p.rot+fl}deg)`}};
+  // Carrying is not free: his step shrinks and his gap lengthens by the mass ratio, so a lean
+  // Crid visibly works harder under the same bag than a heavy one does (physics.md §1).
+  const carrySlow=()=>bag.worn?build().heft/(build().heft+BAG_MASS):1;
+  // The desk hands in its layer registry (layers.mjs) and this is the only way he learns where a
+  // panel is. It is read at the moment he moves, never cached: the registry answers for a panel
+  // that has been moved, hidden or removed, and a name it does not know comes back null — which
+  // every verb below treats as "no such furniture", not as a reason to throw.
+  let getLayer=typeof layers=="function"?layers:layers&&typeof layers.layer=="function"?n=>layers.layer(n):null;
+  // Panel boxes are read through a 4Hz memo: the registry invalidates on every
+  // style/class mutation — including the ones his own position writes cause —
+  // so an unmemoized read in the tick re-measured all nine layers (a
+  // getBoundingClientRect plus computed styles each) several times a second.
+  // A panel that actually moves is still picked up within a quarter second,
+  // which is faster than he can lean on it anyway.
+  const layerCache=new Map(); let layerCacheAt=0;
+  const layerOf=name=>{
+    const now=Date.now();
+    if(now-layerCacheAt>250){layerCache.clear();layerCacheAt=now}
+    if(!layerCache.has(name)){let b=null; try{b=(getLayer&&getLayer(name))||null}catch{} layerCache.set(name,b)}
+    return layerCache.get(name)};
+  // What the desk offers his inner life, read off the same registry the lean verbs use, in desk
+  // pixels — the px stand-in for crid3d.html's layerTargets() (behaviour-drives §9). The filters
+  // are the same three, with the world-unit thresholds restated against his own drawn height:
+  // a panel that paints over him is furniture he only stands beside, one whose top is below his
+  // knees has nothing to lean on, and only a top wide enough for his footprint can hold him.
+  // No registry (or a name it does not know) simply offers less: with no panels at all the
+  // being still wanders, stretches and rests — a living desk, not a parked sprite.
+  const BEING_LAYERS=["card","clock","map","ticker","dock","logo","chat","headlines"],   // LAYER_NAMES minus "crid"; the fallback for injected fakes that carry no .names
+    BEING_BENCH=["ticker","headlines"],                                              // wide text plates: leaned on, never climbed
+    deskFeet=()=>innerHeight-(floorBottom||16),                                      // the floor line his feet actually stand on
+    deskTargets=()=>{
+      const out={lean:[],sit:[],climb:[]};
+      if(!getLayer)return out;
+      const names=(layers&&Array.isArray(layers.names)?layers.names:BEING_LAYERS).filter(n=>n!=="crid"),
+        cridZ=(layerOf("crid")||{}).z??0,
+        frameW=host.offsetWidth||innerWidth*.175,frameH=host.offsetHeight||frameW*168/VBW,bodySpec=build(),w=frameW*bodySpec.w/FRAME.w,h=frameH*bodySpec.h/FRAME.h,
+        above=b=>deskFeet()-b.edge.top;                       // px the panel's top edge stands above his feet
+      for(const name of names){
+        const b=layerOf(name); if(!b||!b.edge||b.w<=10||b.h<=10)continue;
+        if(b.z>cridZ)continue;                                // it paints over him: he stands beside it, never on it
+        const top=above(b);
+        if(top<h*.25)continue;                               // below his knees (crid3d's 0.25 world units)
+        out.lean.push(name);
+        if(top>h)continue;                                   // taller than he is: its top is above his reach (crid3d's 1.05)
+        if(b.w<w*1.2)continue;                               // too narrow for his footprint (§9.3)
+        out.sit.push(name);
+        if(!BEING_BENCH.includes(name))out.climb.push(name);
+      }
+      out.climb.sort((a,b)=>above(layerOf(a))-above(layerOf(b)));   // the lowest ledge first
+      return out};
+  // ---- the stage machine (stage.mjs — the crid3d.html body, on this desk) ---------------
+  // being decides WHAT; the stage decides HOW: approach the panel, reach, pull up, sit on
+  // the lip, lean in, slip and recover — the same states the rig page proved. stage.mjs is
+  // pure and speaks the rig page's world units: x centred on the screen's middle, y up from
+  // the floor line, one unit = UPX desk px. syncStageBoxes converts the registry's viewport
+  // px into that space; stageTick converts walkX/groundY back for the DOM.
+  const UPX=()=>Math.max(80,innerHeight/3.5);   // desk px per world unit (~the rig page's pxPerUnit)
+  const stageBoxes={};
+  const stageHW={w:0,h:0};
+  let stage=null,lastBoxSync=0;
+  const stageActive=()=>!!stage&&(stage.state!=="floor"||stage.walking);
+  const stagePX=x=>(x-innerWidth/2)/UPX();       // viewport px -> world x (0 = screen centre)
+  // Re-measured at most 4x a second (and once when forced): panel rects only
+  // matter when he picks a target or reaches for a lip, neither of which happens
+  // faster than a quarter second. His own size rides the same pass.
+  const syncStageBoxes=force=>{
+    const now=Date.now(); if(!force&&now-lastBoxSync<250)return; lastBoxSync=now;
+    for(const k of Object.keys(stageBoxes))delete stageBoxes[k];
+    const hr=host.getBoundingClientRect(); stageHW.w=hr.width||host.offsetWidth; stageHW.h=hr.height||host.offsetHeight;
+    if(!getLayer){world.setPlatforms([]);return}
+    const feet=deskFeet(),names=(layers&&Array.isArray(layers.names)?layers.names:BEING_LAYERS).filter(n=>n!=="crid");
+    for(const name of names){
+      const b=layerOf(name); if(!b||!b.edge)continue;
+      const left=b.edge.left??(b.edge.x??0),right=b.edge.right??(left+(b.w||0));
+      stageBoxes[name]={left:stagePX(left),right:stagePX(right),top:(feet-(b.edge.top??0))/UPX(),w:b.w/UPX(),h:b.h/UPX(),z:b.z??0}}};
+    // Mirror deskTargets' physical reach/occlusion checks without calling it
+    // during boot (its responsive dimensions are initialized later in this file).
+    const bodySpec=build(),wPx=(stageHW.w||host.offsetWidth||innerWidth*.175)*bodySpec.w/FRAME.w,hPx=(stageHW.h||host.offsetHeight||220)*bodySpec.h/FRAME.h;
+    const cridZ=(layerOf("crid")||{}).z??0;
+    const solid=new Set(Object.keys(stageBoxes).filter(id=>{
+      const b=layerOf(id);if(!b||!b.edge||b.z>cridZ)return false;
+      const top=feet-(b.edge.top??0);
+      return top>=hPx*.25&&top<=hPx&&b.w>=wPx*1.2;
+    }));
+    world.setPlatforms(Object.entries(stageBoxes).filter(([id])=>solid.has(id)).map(([id,b])=>({
+      id,left:b.left,right:b.right,top:-b.top,bottom:-b.top+b.h,solidSides:true
+    })));
+  const getStage=()=>stage||(stage=createStage({
+    targets:deskTargets,boxes:stageBoxes,unit:UPX,worldX:px=>stagePX(px),screenWidth:()=>innerWidth,
+    rand:Math.random,mass:()=>build().heft,bagOn:()=>bag.worn,
+    canCompleteClimb:()=>!!(cridBody.grounded&&cridBody.supportId===stage?.layer),
+    canCompleteHop:()=>!!(cridBody.grounded&&cridBody.supportId===stage?.layer),
+    canCompleteDrop:()=>!!(cridBody.grounded&&cridBody.supportId==="floor"),
+    hisW:Math.max(24,(host.offsetWidth||innerWidth*.175)*build().w/FRAME.w)/UPX(),hipY:Math.max(30,(host.offsetHeight||220)*build().h/FRAME.h*.5)/UPX(),
+    walkX:0,   // seeded from his real centre-x on first step (stageSeed)
+    onInterrupt:reason=>{try{being.interrupt(reason)}catch{}
+      // Clear the verb-path lean directly — unlean() would re-enter goHome()
+      // and this callback fires from inside stage transitions.
+      if(leanAt||pendingLean){pendingLean=null;leanAt=null;lastDrawn=""}}}));
+  // Seed walkX from where he actually stands the first time the machine wakes.
+  const stageSeed=()=>{if(stage){const fw=host.offsetWidth||innerWidth*.175,fh=host.offsetHeight||220,b=build();cridBody.halfW=Math.max(12,fw*b.w/FRAME.w*.52)/UPX();cridBody.halfH=Math.max(30,fh*b.h/FRAME.h*.5)/UPX();if(stage.walkX===0){const r=host.getBoundingClientRect();stage.walkX=stagePX(r.left+r.width/2);cridBody.x=stage.walkX;cridBody.y=-cridBody.halfH;cridBody.floor=0;cridBody.grounded=true;cridBody.supportId="floor"}}};
+  // His inner life (being.mjs is pure — drives in, an intent out; beingTick below is the body
+  // half). The registry is read live on every decision, so a panel that moves or leaves simply
+  // stops being offered. beingOpts is the test seam: rng/drives/cooldown can be pinned without
+  // touching the module under test. `let`, not `const`: the first observe that carries a saved
+  // snapshot rebuilds it once with those drives restored (see the persistence block below).
+  let being=createBeing({now:Date.now(),targets:deskTargets,...beingOpts});
+  // Reduced motion is a request for less movement, never for a dead mascot: he keeps breathing and
+  // ticking and only the travelling gestures (hops, walks, flights, slams) are cut back. It is read
+  // live rather than once, because a browser source (OBS, Swae) can report the preference and can
+  // change it without a reload.
+  let reduced=!1,lastDrawn="";
+  const mq=typeof matchMedia=="function"?matchMedia("(prefers-reduced-motion: reduce)"):null;
+  const readMotion=()=>{reduced=!!(mq&&mq.matches)};
+  readMotion(); if(mq){const onmq=()=>{readMotion();lastDrawn=""}; mq.addEventListener?mq.addEventListener("change",onmq):mq.addListener&&mq.addListener(onmq)}
+  // Kept, not just warmed: a lean bakes the drawing into a bitmap (see bakeLean), and that needs the
+  // decoded frame, not a second request for it.
+  const bodyImg=new Map(); for(const b of BODIES){const im=new Image();im.src=AV(b);bodyImg.set(String(b),im)}
+  // A sprite that will not load falls back to the drawn placeholder figure rather than leaving an
+  // invisible image painting over the frame.
+  parts.avatarBase.addEventListener("error",()=>{parts.avatarBase.setAttribute("display","none");parts.ph.removeAttribute("display")});
+  parts.avatarBase.addEventListener("load",()=>{parts.ph.setAttribute("display","none");parts.avatarBase.removeAttribute("display")});
+  let mode="dead",tagText=null,talking=!1,grooving=!1,tickN=0,waitUntil=Date.now()+3000,idleQ=[],gestureQ=[],timer=null,frozen=!1,dying=!1;
+  // online is null, not true: "nothing has told me otherwise yet" is a different state from "the
+  // desk says he is on". Starting at true made the first observe({bot:{on:true}}) a no-op — it only
+  // acts on a flip — so the boot never ran, mode stayed at its "dead" default and the idle loop's
+  // `mode!=="dead"` guard skipped every gesture. That was the dead-on-air bug.
+  const pendingReact=[]; let lastActive=Date.now(),prev=null,online=null,lastReactN=null,lastSubN=null,bodyI=-1,growth={sx:1,sy:1},fx=1,walk=null,roamN=0,subs=0,home=null,
+  // Staging: the lean he is holding, the lean he is walking towards, and the held wondering pose.
+  leanAt=null,pendingLean=null,pondering=!1;
+  const jobs=[]; let running=null; const flights=new WeakMap;
+  const paintBody=()=>{const src=AV(BODIES[bodyI]); parts.avatarBase.setAttribute("href",src); parts.avatarBase.setAttributeNS(XLINK,"href",src); parts.setRigStage(BODIES[bodyI])};
+  const setBody=i=>{if(i===bodyI)return; bodyI=clamp(i,0,BODIES.length-1); paintBody()};
+  // The build he is in right now — the walk, the gait and the gesture weight all read it, so the
+  // body is not just a picture that changes: a heavy Crid plods and slams, a lanky one trots.
+  const build=()=>stageOf(bodyI);
+  const subCount=s=>{const b=s&&s.bot||{}; const n=b.subs??b.subCount??b.subN; return Number.isFinite(n)?n:null};
+  const applySubs=(n,beat)=>{subs=Math.max(0,n|0); const st=stageFor(subs); setBody(st.i); growth={sx:st.sx,sy:st.sy}; lastDrawn="";
+    if(beat&&mode!=="dead"&&!dying){if(mode==="doze"){mode="on";lastActive=Date.now()} play(SEQ.sub,{urgent:!0}); lastActive=Date.now()}};
+  let mood="idle";
+  let bubbleTimer=null;
+  let mischiefTimer=null;
+  const WHIMSY_LINES={
+    idle:["rent is always due","Omooo","hm.","no notes","I saw that"],
+    curious:["what's this then?","new card","hold on—","ooh."],
+    delighted:["PAID.","yes!","get in jorr","called it"],
+    alarmed:["uh oh","disputed","hm hm","signal's gone"],
+    dozing:["zzz","five more","wake me for food"],
+    proud:["my desk","tidy.","look at it"],
+    cheeky:["wasn't me","oops","just a nudge","you saw nothing"]
   };
   const setMood=(m)=>{if(!WHIMSY_LINES[m])return; mood=m; host.dataset.mood=m; const desk=document.getElementById("desk"); if(desk) desk.dataset.botMood=m;};
   const say=(text,ms=1800)=>{if(!text)return; let b=host.querySelector(".bot-bubble"); if(!b){b=document.createElement("div"); b.className="bot-bubble"; host.append(b);} b.style.transition=reduced?"none":""; b.textContent=text; b.style.opacity="1"; clearTimeout(bubbleTimer); bubbleTimer=setTimeout(()=>{b.style.opacity="0";},ms);};
@@ -838,7 +1101,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   try{window.__cridStage=()=>stage?{state:stage.state,key:stage.key,layer:stage.layer,
     walkX:Math.round(stage.walkX*UPX()+innerWidth/2),groundY:Math.round(stage.groundY*UPX()),
     roll:+stage.roll.toFixed(3),pitch:+stage.pitch.toFixed(3),trace:stage.trace,hold:+stage.hold.toFixed(1),
-    grounded:cridBody.grounded,supportId:cridBody.supportId,handContact:stageLean()?.contact||null,worldAnchor:stageLean()?.worldAnchor||null,vx:+cridBody.vx.toFixed(3),vy:+cridBody.vy.toFixed(3),handContact:stageLean()?.contact||null,worldAnchor:stageLean()?.worldAnchor||null}:null}catch{}
+    grounded:cridBody.grounded,supportId:cridBody.supportId,handContact:stageLean()?.contact||null,worldAnchor:stageLean()?.worldAnchor||null,vx:+cridBody.vx.toFixed(3),vy:+cridBody.vy.toFixed(3)}:null}catch{}
   try{window.__crid3D=()=>({active:!!(crid3d&&crid3d.active),failed:!!crid3dFailed})}catch{}
   try{window.__cridMotor=()=>({x:+cridBody.x.toFixed(4),y:+cridBody.y.toFixed(4),
     vx:+cridBody.vx.toFixed(4),vy:+cridBody.vy.toFixed(4),grounded:cridBody.grounded,
@@ -1112,8 +1375,6 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const activityOf=s=>!!(s&&(s.visible&&s.card||s.poll&&s.poll.active!==!1||s.crid||s.court||s.music&&s.music.current||s.spaces&&s.spaces.length||s.riad&&s.riad.active));
   // null online means "not told yet", and the desk's own default is on, so an unknown state boots
   // him rather than freezing him. Only an explicit bot.on:false kills him.
-  const applySubs=(n,beat)=>{subs=Math.max(0,n|0); const st=stageFor(subs); setBody(st.i); growth={sx:st.sx,sy:st.sy}; lastDrawn="";
-    if(beat&&mode!=="dead"&&!dying){if(mode==="doze"){mode="on";lastActive=Date.now()} play(SEQ.sub,{urgent:!0}); lastActive=Date.now()}};
   const power=()=>setMode(online===!1?"dead":"on");
   const observe=s=>{var _a,_b,_c; if(!s)return; maybeSeedBeing(s); const on=s.bot?s.bot.on!==!1:!0; if(on!==online){online=on;power()} if(online===!1){prev=s; return}
     const reactN=(_c=(_b=(_a=s.bot)==null?void 0:_a.react)==null?void 0:_b.n)!=null?_c:0; if(lastReactN===null)lastReactN=reactN; else if(reactN!==lastReactN){lastReactN=reactN;react(s.bot.react.kind)}

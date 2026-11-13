@@ -410,6 +410,9 @@ export async function initCrid3D(host,getState,onReady,onFail){
     const RELAX={armL:{z:1.12},armR:{z:-1.12},foreL:{x:.3},foreR:{x:-.3}};
 
     let disposed=!1,raf=0,ready=!1,phase=0,heading=0,bagShown=true,ikW=0,footW=0,footDbg=0,curlW=0,lastBagCX=0,C_leanF=0,walkW=0;
+    // A stance foot is stored in renderer world space until that foot enters swing.
+    // Root translation is compensated in projected screen space so it cannot skate.
+    const footPlant={L:null,R:null};let lastMotorScreenX=null;
     // Landing squash clock (pose-path landings) + head-turn rate for the blink scheduler.
     let sqAt=-9,prevBy=0,prevHeadYaw=0,prevHeadPitch=0,headTurnS=0;
     const ikSolver=new TwoBoneIK();let ikLast=null,ikDbg="";
@@ -468,7 +471,12 @@ export async function initCrid3D(host,getState,onReady,onFail){
       // Walk settle: the gait fades over ~200 ms instead of snapping off — a stop
       // is a settle, not a cut. Phase keeps its own clock; only amplitude blends.
       walkW+=((walking?1:0)-walkW)*Math.min(1,dt*5);
-      if(walking)phase=(phase+dt*(reduced?3.4:5.2))%1;
+      if(walking){
+        if(st.motorState&&Number.isFinite(st.motorState.screenX)){
+          const stridePx=Math.max(24,st.motorState.stridePx||100);
+          phase=(st.motorState.distanceTravelled/stridePx)%1;
+        } else phase=(phase+dt*(reduced?3.4:5.2))%1;
+      }
       const u=phase,gait=Math.sin(TAU*u),          // one full gait cycle per phase wrap
         kL=swingOf(((u*2)%1+.5)%1)*walkW,kR=swingOf(((u*2+.5)%1+.5)%1)*walkW;
 
@@ -681,6 +689,25 @@ export async function initCrid3D(host,getState,onReady,onFail){
       const legFree=sd=>!(stageOwned&&(stageOwned.has(J["thigh"+sd])||stageOwned.has(J["shin"+sd])));
       const plant={L:walking&&legFree("L")?clamp(walkW-kL,0,1):0,
                    R:walking&&legFree("R")?clamp(walkW-kR,0,1):0};
+      if(!walking){footPlant.L=null;footPlant.R=null}
+      else {
+        if(kL>.08)footPlant.L=null;
+        if(kR>.08)footPlant.R=null;
+      }
+      // The CSS root moves outside Three.js. Move a locked ankle by the inverse
+      // projected root displacement, keeping its screen point fixed during stance.
+      if(st.motorState&&Number.isFinite(st.motorState.screenX)){
+        const sx=st.motorState.screenX,dx=lastMotorScreenX==null?0:sx-lastMotorScreenX;
+        lastMotorScreenX=sx;
+        if(Math.abs(dx)>.001&&(footPlant.L||footPlant.R)){
+          const rr=host.getBoundingClientRect();
+          for(const sd of ["L","R"])if(footPlant[sd]){
+            _iv.copy(footPlant[sd]).project(cam);
+            _iv.x-=dx/Math.max(1,rr.width)*2;
+            footPlant[sd].copy(_iv.unproject(cam));
+          }
+        }
+      }
       const wLock={L:Math.max(locked?footW:0,plant.L),R:Math.max(locked?footW:0,plant.R)};
       if((wLock.L>.02||wLock.R>.02)&&footBind.L&&footBind.R){
         footDbg=0;B(J.pelvis).getWorldPosition(_ip);const floorY=shadowY();
@@ -691,7 +718,9 @@ export async function initCrid3D(host,getState,onReady,onFail){
           const fb=footBind[sd],th=B(J["thigh"+sd]),sn=B(J["shin"+sd]),ft=B(J["foot"+sd]);
           if(!th||!sn||!ft)continue;
           ft.getWorldPosition(_it);                                   // current ankle
-          _ic.set(_ip.x+fb.x*cy+fb.z*sy,floorY+fb.ankleH,_ip.z-fb.x*sy+fb.z*cy);
+          if(plant[sd]>.5&&!footPlant[sd])footPlant[sd]=_it.clone();
+          if(footPlant[sd])_ic.copy(footPlant[sd]);
+          else _ic.set(_ip.x+fb.x*cy+fb.z*sy,floorY+fb.ankleH,_ip.z-fb.x*sy+fb.z*cy);
           _it.lerp(_ic,w);                                            // eased reach, like the hand plant
           _id.set(_it.x+sy*.5,_it.y+.5,_it.z+cy*.5);                  // pole: knees back along facing
           const r2=ikSolver.solve({rootBone:th,middleBone:sn,endBone:ft,target:_it,poleTarget:_id,preserveEndRotation:!0});

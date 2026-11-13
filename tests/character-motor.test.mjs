@@ -55,7 +55,7 @@ test("a ledge grip drives a weighted mantle and remains world-anchored",()=>{
 test("releasing a grip lets gravity carry him back to the floor",()=>{
   const m=createCharacterMotor({gravity:1000});
   m.setScene({floor,platforms:[platform]});
-  m.reset({x:400,feetY:platform.top,width:40,height:100});
+  m.reset({x:400,feetY:platform.top,width:40,height:100,supportId:"ledge"});
   m.actor.vy=-100;
   m.grab({id:"ledge",x:300,y:250});
   m.releaseGrip();

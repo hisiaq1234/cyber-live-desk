@@ -180,6 +180,11 @@ ${T} #desk #crid-bot.is-active svg{animation:bot-answer .8s ease-out}
 /* The theme's selector out-specifies the bot module's own swae/low-power filter:none, and the
    blanket swae guard only kills transition and animation — so the shadow has to be waived here. */
 html.swae ${T} #desk #crid-bot svg,html.low-power ${T} #desk #crid-bot svg{filter:none}
+/* Once the GLB is on the GPU the flat svg is gone and the host transform belongs
+   to the stage machine's translate3d — the idle bob and the svg shadow are both
+   switched off here so the theme's selectors cannot out-specify the bot module. */
+${T} #desk #crid-bot.has-glb[data-mode]{animation:none}
+${T} #desk #crid-bot.has-glb svg{filter:none;animation:none}
 
 /* ---- scene: dual-camera PiP. The inset owns the bottom-right; the right column stacks above it ---- */
 html[data-scene="pip"] #auto-headlines{right:var(--m);bottom:calc(var(--m) + var(--pip-h,34vh));width:var(--pip-w,34vw)}

@@ -218,6 +218,12 @@ html.low-power #crid-bot svg,html.swae #crid-bot svg{filter:none}
 #crid-bot[data-mode="dead"] .avatar-base,#crid-bot[data-mode="dying"] .avatar-base{opacity:.55}
 #crid-bot[data-mode="dead"] svg,#crid-bot[data-mode="dying"] svg{filter:grayscale(.15) drop-shadow(0 calc(var(--bot-w)*.028) calc(var(--bot-w)*.07) rgba(0,0,0,.42))}
 #crid-bot[data-mode="doze"] .avatar-base{opacity:.88}
+/* The 3D body owns the frame once it is on the GPU: the theme's idle bob is a
+   host transform animation, which would fight the stage's translate3d outright,
+   and the svg drop-shadow only ever painted the now-hidden flat figure. */
+#crid-bot.has-glb[data-mode="on"]{animation:none}
+#crid-bot.has-glb svg{filter:none}
+#crid-bot.has-glb[data-mode="dead"] svg,#crid-bot.has-glb[data-mode="dying"] svg{filter:none}
 `;
 // The ladder is exported so a test can hold it to the measurement in ladder.json; nothing in the
 // overlay has to import it to use it.
@@ -244,7 +250,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // His real rigged Bitmoji (crid-3d.js): Snap's own GLB, 167 bones, facial morphs. The canvas
   // is him. The SVG figure is hidden the moment the model is on the GPU and is not put back.
   let crid3d=null,lastPose=null,disposed3d=false;
-  const hideFigure=()=>{parts.avatarBase.setAttribute("display","none");parts.rigG.setAttribute("display","none");parts.ph.setAttribute("display","none")};
+  const hideFigure=()=>{parts.avatarBase.setAttribute("display","none");parts.rigG.setAttribute("display","none");parts.ph.setAttribute("display","none");host.classList.add("has-glb")};
   // The stage machine's lean states don't set leanAt (that's the verb path) —
   // synthesize the same contract for the renderer: roll/pitch/lift plus a
   // contact point on the panel edge so the IK hand-plant keeps working.
@@ -316,7 +322,18 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // that has been moved, hidden or removed, and a name it does not know comes back null — which
   // every verb below treats as "no such furniture", not as a reason to throw.
   let getLayer=typeof layers=="function"?layers:layers&&typeof layers.layer=="function"?n=>layers.layer(n):null;
-  const layerOf=name=>{try{return (getLayer&&getLayer(name))||null}catch{return null}};
+  // Panel boxes are read through a 4Hz memo: the registry invalidates on every
+  // style/class mutation — including the ones his own position writes cause —
+  // so an unmemoized read in the tick re-measured all nine layers (a
+  // getBoundingClientRect plus computed styles each) several times a second.
+  // A panel that actually moves is still picked up within a quarter second,
+  // which is faster than he can lean on it anyway.
+  const layerCache=new Map(); let layerCacheAt=0;
+  const layerOf=name=>{
+    const now=Date.now();
+    if(now-layerCacheAt>250){layerCache.clear();layerCacheAt=now}
+    if(!layerCache.has(name)){let b=null; try{b=(getLayer&&getLayer(name))||null}catch{} layerCache.set(name,b)}
+    return layerCache.get(name)};
   // What the desk offers his inner life, read off the same registry the lean verbs use, in desk
   // pixels — the px stand-in for crid3d.html's layerTargets() (behaviour-drives §9). The filters
   // are the same three, with the world-unit thresholds restated against his own drawn height:
@@ -355,11 +372,17 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // px into that space; stageTick converts walkX/groundY back for the DOM.
   const UPX=()=>Math.max(80,innerHeight/3.5);   // desk px per world unit (~the rig page's pxPerUnit)
   const stageBoxes={};
-  let stage=null,lastStageMs=0;
+  const stageHW={w:0,h:0};
+  let stage=null,lastBoxSync=0;
   const stageActive=()=>!!stage&&(stage.state!=="floor"||stage.walking);
   const stagePX=x=>(x-innerWidth/2)/UPX();       // viewport px -> world x (0 = screen centre)
-  const syncStageBoxes=()=>{
+  // Re-measured at most 4x a second (and once when forced): panel rects only
+  // matter when he picks a target or reaches for a lip, neither of which happens
+  // faster than a quarter second. His own size rides the same pass.
+  const syncStageBoxes=force=>{
+    const now=Date.now(); if(!force&&now-lastBoxSync<250)return; lastBoxSync=now;
     for(const k of Object.keys(stageBoxes))delete stageBoxes[k];
+    const hr=host.getBoundingClientRect(); stageHW.w=hr.width||host.offsetWidth; stageHW.h=hr.height||host.offsetHeight;
     if(!getLayer)return;
     const feet=deskFeet(),names=(layers&&Array.isArray(layers.names)?layers.names:BEING_LAYERS).filter(n=>n!=="crid");
     for(const name of names){
@@ -479,6 +502,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // has been sent to is the reason he is crossing it.
     const lo=loose?1.5:minCenterX(),hi=loose?98.5:Math.min(92,maxCenterX()); if(hi<=lo)return !1;
     const r=pct(host.getBoundingClientRect());
+    dropStageAnchor();
     host.classList.remove(...homeCls); host.classList.add("roam"); host.style.left=`${r.x}%`; host.style.top=`${r.y}%`;
     const tyMax=floorBottom?(innerHeight-floorBottom-r.h*innerHeight/100)/innerHeight*100:100-r.h-2;
     walk={x:r.x,y:r.y,tx:clamp(tx,lo,hi),ty:clamp(ty,42,tyMax),
@@ -503,6 +527,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       walk.from={x:walk.x,y:walk.y}; walk.to={x:walk.x+dx*k,y:walk.y+dy*k};
       walk.t0=now; walk.dur=clamp(340+Math.hypot(dx,dy)*9,340,720)*build().slow/carry;
     }
+    if(stageAnchored)dropStageAnchor();
     host.style.left=`${walk.x}%`; host.style.top=`${walk.y}%`};
   // Home is the anchor he was placed at. Coming home is the one thing that ends a lean: he is a
   // guest on a panel, not furniture himself, so the moment the desk needs him back he lets go of
@@ -511,7 +536,15 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const goHome=()=>{if(stage&&stage.state!=="floor")stage.interrupt("home");   // going home abandons the panel gracefully — drop/crouch, never a cut
     const roam=host.classList.contains("roam"); leanAt=null; pendingLean=null; lastDrawn="";
     if(pickupWalk){pickupWalk=!1; const e=pickupEnd; pickupEnd=null; e!=null&&endCue(e,"aborted")}
-    if(!walk&&!roam)return; walk=null; fx=1; gestureQ=[]; host.classList.remove("roam"); host.style.left=host.style.top=""; host.classList.add(...homeCls)};
+    const sp=stageAnchored?stagePosePct():null;
+    if(!walk&&!roam)return; walk=null; fx=1; gestureQ=[];
+    host.classList.remove("roam");
+    // Hand the stage's translate3d back as the left/top percentages the home
+    // transition knows how to animate from — clearing it bare would snap him
+    // to the anchor's corner before the .9s glide even started.
+    if(sp){host.style.left=`${sp.x}%`;host.style.top=`${sp.y}%`}else host.style.left=host.style.top="";
+    if(stageAnchored){stageAnchored=false;host.style.transform="";host.style.willChange="";host.style.marginLeft=""}
+    host.classList.add(...homeCls)};
   // Stopping a walk is not letting go of a panel. A job arriving mid-stride, or a wander coming to
   // its end, used to go through goHome() — the one thing that clears the lean — so a lean he had
   // already taken (or was walking towards) was thrown away and he walked home instead. A walk ends
@@ -894,19 +927,50 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // Root motion is integrated here because stage.mjs stays pure: walking is a
   // flag + a target, the body covers the distance. Speed is ~0.76 body-widths
   // a second (the rig page's 0.42 units at hisW 0.55), slowed on a ledge.
-  let stageWalkMs=0;
+  let stageWalkMs=0,stageAnchored=false;
+  // Once the stage owns him he is pinned by a compositor transform, not left/top:
+  // the behaviour tick used to write layout properties ~22x a second while the
+  // rig drew at 60fps, and every write forced style+layout work the transform
+  // path never does. The anchor is a fixed 0,0 corner under .roam (which already
+  // kills the .9s position transition); translate3d then carries the same desk-px
+  // box the old percentage math produced. dropStageAnchor hands the element back
+  // to left/top the moment a cue walk or goHome needs it.
+  const dropStageAnchor=()=>{if(!stageAnchored)return; stageAnchored=false;
+    host.style.transform=""; host.style.willChange=""; host.style.marginLeft=""; host.style.left=""; host.style.top=""};
+  // The transform's px offset back in viewport-percent, so a walk home or a cue
+  // stride can start from the exact spot the stage left him without a jump.
+  const stagePosePct=()=>{const m=/translate3d\(([-\d.]+)px,\s*([-\d.]+)px/.exec(host.style.transform||"");
+    return m?{x:+m[1]/innerWidth*100,y:+m[2]/innerHeight*100}:null};
   const stageTick=()=>{
     if(!stage)return;
-    if(stage.state==="floor"&&!stage.walking){stageWalkMs=0;return}
+    if(!stageAnchored&&stage.state==="floor"&&!stage.walking){stageWalkMs=0;return}
     const now=Date.now(),dt=stageWalkMs?Math.min(.1,Math.max(0,(now-stageWalkMs)/1000)):.016;stageWalkMs=now;
     if(stage.walking&&Math.abs(stage.targetX-stage.walkX)>.015){
-      const speedPx=.76*(host.offsetWidth||180)*(stage.groundY>.02?.7:1);
+      const speedPx=.76*(stageHW.w||host.offsetWidth||180)*(stage.groundY>.02?.7:1);
       stage.walkX+=Math.sign(stage.targetX-stage.walkX)*Math.min(Math.abs(stage.targetX-stage.walkX),speedPx*dt/UPX())}
+    if(!stageAnchored){
+      stageAnchored=true;
+      host.classList.remove(...homeCls);host.classList.add("roam");
+      host.style.left="0px";host.style.top="0px";
+      host.style.marginLeft="0px";host.style.willChange="transform"}
     const cxPx=stage.walkX*UPX()+innerWidth/2,gY=stage.groundY*UPX();
-    const r=host.getBoundingClientRect(),w=r.width||host.offsetWidth,h=r.height||host.offsetHeight;
-    host.classList.remove(...homeCls);host.classList.add("roam");
-    host.style.left=`${(cxPx-w/2)/innerWidth*100}%`;
-    host.style.top=`${(deskFeet()-h-gY)/innerHeight*100}%`};
+    const w=stageHW.w||host.offsetWidth,h=stageHW.h||host.offsetHeight;
+    host.style.transform=`translate3d(${(cxPx-w/2).toFixed(2)}px,${(deskFeet()-h-gY).toFixed(2)}px,0)`};
+  // The stage machine itself runs on the display's clock, not the behaviour
+  // tick's: step() advances groundY/roll/pitch through climbs and lens, and at
+  // 22Hz those stepped visibly under the 60fps rig. The intent is the one
+  // beingTick last computed — it only ever changed at that cadence anyway.
+  let stageIntent=null,stageBusy=false,lastStageRAF=0;
+  const stageRAF=()=>{
+    if(frozen){requestAnimationFrame(stageRAF);return}
+    const now=Date.now();
+    if(stage&&mode==="on"&&!dying&&!reduced){
+      const dt=lastStageRAF?Math.min(.1,Math.max(0,(now-lastStageRAF)/1000)):.016; lastStageRAF=now;
+      try{stage.step(now,stageBusy?null:stageIntent,dt)}catch{}}
+    else lastStageRAF=0;
+    try{stageTick()}catch{}
+    if(typeof requestAnimationFrame=="function")requestAnimationFrame(stageRAF)};
+  if(typeof requestAnimationFrame=="function")requestAnimationFrame(stageRAF);
   // Read-only QA handle for the stage machine — same spirit as __cridIk/__cridFace.
   // Positions are reported back in desk px so a screenshot can be checked by eye.
   try{window.__cridStage=()=>stage?{state:stage.state,key:stage.key,layer:stage.layer,
@@ -922,7 +986,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // A commanded lean or walk is the desk's ask outranking his own stage: the
     // machine is told to abandon gracefully rather than fight the new verb.
     if(stage&&stage.state!=="floor"&&(leanAt||pendingLean||walk))stage.interrupt("cue-takeover");
-    stageTick(); maybeVisit(now); maybeBag(now);
+    if(typeof requestAnimationFrame!="function")stageTick(); maybeVisit(now); maybeBag(now);
     if(now>=trAt+trFor){ // the previous beat has finished travelling: choose the next one
       let frame=null; if(walk&&!walk.done&&!gestureQ.length)gestureQ.push(...SEQ.crawl);
       if(gestureQ.length){const head=gestureQ[0]; if(head&&head.__cueEnd!=null){gestureQ.shift(); endCue(head.__cueEnd,"done")} else {frame=gestureQ.shift(); if(frame&&frame.__bag)bagMark(frame.__bag,frame)}} else if(mode!=="dead"&&!dying){
@@ -1044,9 +1108,11 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // never strands a sequence mid-pull. dt is the real gap since the last step.
     const busy=!!(walk||running||jobs.length||pendingReact.length||pickupWalk||gestureQ.length||idleQ.length);
     if(mode==="on"&&!dying&&!reduced){
-      const st=getStage(); stageSeed(); syncStageBoxes();
-      const dt=lastStageMs?Math.min(.1,Math.max(0,(now-lastStageMs)/1000)):.016; lastStageMs=now;
-      st.step(now,busy?null:it,dt)}
+      getStage(); stageSeed(); syncStageBoxes();
+      // step() itself moved to the rAF loop (stageRAF) — it advances the climb,
+      // the lean and the seat on the display's clock. What stays here is the
+      // intent it consumes, refreshed at the behaviour tick's own cadence.
+      stageIntent=it||null; stageBusy=busy}
     if(key!==beingPrev){                              // the activity ended or turned over: let go of what it held
       if(beingPrev==="rest"&&mode==="doze")setMode("on");
       if(beingLean&&leanAt&&leanAt.layer===beingLean){ponder(!1);unlean()}
@@ -1187,6 +1253,10 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // The registry can arrive after him (the desk builds its panels as it goes), and a new one
     // replaces the old without remounting him.
     setLayers(v){getLayer=typeof v=="function"?v:v&&typeof v.layer=="function"?n=>v.layer(n):null; return !0},
+    // QA hook (crid-lab): hand the stage machine one intent the way beingTick would.
+    // On air only being's intents reach begin(); the lab page uses this to film a climb.
+    driveStage:(key,layerName,phase="start")=>{stageSeed();syncStageBoxes();
+      return getStage().step(Date.now(),{key,phase,layer:layerName,x:.5},.05)},
     setSubs:n=>{lastSubN=n|0;applySubs(n,!1)},setOnline(v){online=!!v;power()},get mode(){return mode},get subs(){return subs},get stage(){return build()},setMood,say,nudge,randomLine,place:replace,
     // What being-sync.mjs posts back to the desk: the drives as they stand, where he is on the
     // floor band (0..1 between the clock and the strip, the same band wander walks), and the

@@ -566,15 +566,6 @@ html[data-theme="torn-paper"] #desk{
 .layout-alive .summary,.layout-alive .source,.layout-alive .court-viewpoint .v-text,.layout-alive .ledger-entry{font-family:var(--brand)}
 .layout-alive .music-wrap{max-height:28dvh;overflow:auto}
 .music-empty{font-size:.78em;color:#9d9587;margin-top:.4em}
-/* Split-screen HUD: each camera keeps its own half. The left side carries the Black Market
-   identity/map and the active story; the right side carries location and live modules. */
-html[data-scene="split"] #desk.layout-alive .slot{width:min(460px,calc(50vw - 2*var(--m)))}
-html[data-scene="split"] #desk.layout-alive #dock-right{width:min(360px,calc(50vw - 2*var(--m)));max-height:calc(100svh - 2*var(--m))}
-html[data-scene="split"] #desk #time-dock{min-width:0;width:min(390px,calc(50vw - 2*var(--m)));max-width:calc(50vw - 2*var(--m))}
-html[data-scene="split"] #desk #loc-map{max-width:calc(50vw - 2*var(--m))}
-html[data-scene="split"] #desk #music-plate{width:min(342px,calc(50vw - 2*var(--m)))}
-html[data-scene="split"] #desk #auto-headlines{width:min(36vw,calc(50vw - 2*var(--m)))}
-
 /* The clock plate is the operator's own Black Market timestamp, ported rather than paraphrased
    (his index (2).html): crimson #dc143c on paper #f7f3ea, IBM Plex Mono digits at 2.35vw with
    -.045em tracking, a Space Grotesk topline and detail row, the 3px crimson left bar with the

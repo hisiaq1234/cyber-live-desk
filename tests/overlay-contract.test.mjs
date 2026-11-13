@@ -59,6 +59,8 @@ test("GTA HUD styles the whole cyber overlay and leaves camera feeds visible by 
   assert.match(theme, /#desk #loc-map/);
   assert.match(theme, /#desk #crid-live/);
   assert.match(theme, /#desk :is\(\.card,\.court-wrap,\.music-wrap/);
+  assert.match(overlay, /html\[data-theme="cyber"\] #desk \.letters/);
+  assert.match(overlay, /html\[data-theme="cyber"\] #desk \.letters-tile\.vowel/);
 });
 
 

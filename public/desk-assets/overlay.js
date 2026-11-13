@@ -969,6 +969,30 @@ html[data-scene="split"] #desk #auto-headlines{width:min(36vw,calc(50vw - 2*var(
   display:flex;justify-content:space-between;gap:12px}
 #desk .letters-foot b{color:#f7f3ea;font-family:"IBM Plex Mono","Courier New",var(--mono);font-weight:500}
 html.swae #desk .letters{background:#0b0d12f5}
+
+/* The word game is a full-screen stream card too. Keep its scoreboard, tiles and timer inside
+   the same HUD grammar instead of letting its older paper palette reappear when a round opens. */
+html[data-theme="cyber"] #desk .letters{
+  border:1px solid var(--gta-line-soft);border-left:3px solid var(--gta-amber);
+  border-radius:2px;background:var(--gta-panel);color:var(--ink-1);
+  box-shadow:0 5px 18px rgba(0,0,0,.34)
+}
+html[data-theme="cyber"] #desk .letters-top{
+  border-bottom:1px solid var(--gta-line-soft);padding-bottom:9px;
+  font:600 .6em/1.2 var(--mono);letter-spacing:.12em;color:#aab2b4
+}
+html[data-theme="cyber"] #desk .letters-brand{color:var(--gta-amber)}
+html[data-theme="cyber"] #desk .letters-clock{font-family:var(--mono);font-weight:600;color:#f0f1ed}
+html[data-theme="cyber"] #desk .letters[data-state="over"] .letters-clock{color:var(--gta-red)}
+html[data-theme="cyber"] #desk .letters-tile{
+  border:1px solid var(--gta-line);border-radius:2px;background:rgba(255,255,255,.035);color:#f0f1ed
+}
+html[data-theme="cyber"] #desk .letters-tile.vowel{color:var(--gta-green);border-color:var(--gta-green)}
+html[data-theme="cyber"] #desk .letters-row{border-bottom:1px solid var(--gta-line-soft)}
+html[data-theme="cyber"] #desk .letters-rank{color:var(--gta-amber)}
+html[data-theme="cyber"] #desk :is(.letters-who,.letters-pts,.letters-empty){color:#c1c6c7}
+html[data-theme="cyber"] #desk .letters-foot{border-top:1px solid var(--gta-line-soft);color:#929b9e}
+html[data-theme="cyber"] #desk .letters-foot b{color:var(--gta-green);font-family:var(--mono)}
 `;
 
   register("letters", (c, opts) => {

@@ -94,7 +94,10 @@ export async function initCrid3D(host,getState,onReady,onFail){
     renderer.toneMapping=THREE.NoToneMapping;
 
     const scene=new THREE.Scene();
-    const cam=new THREE.PerspectiveCamera(24,1,.1,50);
+    // Orthographic, exactly like crid3d.html: the 2D art has no vanishing point,
+    // so the 3D is shot flat — no perspective stretch on his head and shoulders.
+    const cam=new THREE.OrthographicCamera(-1,1,1,-1,.1,60);
+    const VIEW_H=2.05,camTargetY=.86;   // portrait framing: model ~1.7 units fills ~83%
 
     // Camera sits at -Z. The bind pose faces +Z, so a half turn on the model
     // puts the face toward the camera. Turn group still carries walk yaw and lean.
@@ -145,6 +148,44 @@ export async function initCrid3D(host,getState,onReady,onFail){
     const feetY=y0*s;
     model.position.y=-feetY;
 
+    // ---- rest pose = the art's stance, not the raw bind -------------------------
+    // Ported from crid3d.html: the GLB's bind frame holds the arms wide, so the
+    // reference page swings them down to his sides and turns the head a touch
+    // toward the lens — measured off the rig's own bone axes, never invented.
+    // After posing we re-freeze userData.q0 on THIS frame, so every procedural
+    // delta (pose(), stage channels, IK) composes on top of the art's stance
+    // instead of fighting the bind pose — that was the twisted-wrist idle.
+    const _bv=new THREE.Vector3();
+    {
+      const basisCol=(m,c)=>_bv.set(m.elements[c*4],m.elements[c*4+1],m.elements[c*4+2]).clone().normalize();
+      const swing=(bone,target)=>{if(!bone)return;
+        bone.updateWorldMatrix(!0);
+        const cur=basisCol(bone.matrixWorld,0),axis=basisCol(bone.matrixWorld,2),
+          t=target.clone().normalize();
+        const ang=Math.atan2(new THREE.Vector3().crossVectors(cur,t).dot(axis),cur.dot(t));
+        bone.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),ang));
+        bone.updateMatrixWorld(!0)};
+      for(const side of["L","R"]){
+        const up=bones[`${side}_armUpper0001_bind_JNT`],fore=bones[`${side}_armLower0001_bind_JNT`];
+        if(!up)continue;
+        up.updateWorldMatrix(!0);
+        const out=basisCol(up.matrixWorld,0).x>=0?1:-1;
+        swing(up,new THREE.Vector3(out*.27,-.96,0));
+        swing(fore,new THREE.Vector3(out*.14,-.97,.12))}
+      const n=bones["C_neck0001_bind_JNT"];
+      if(n){n.updateWorldMatrix(!0);
+        const pq=n.parent.getWorldQuaternion(new THREE.Quaternion()),
+          q=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),.26);
+        n.quaternion.premultiply(pq.clone().invert().multiply(q).multiply(pq));
+        n.updateMatrixWorld(!0)}
+      // the art's face is relaxed, not wide-eyed: the rig's own lid shapes at .35
+      for(const x of morphs){
+        if(x.k==="face_shapes.ai_eyeUpperClose_25_L"||x.k==="face_shapes.ai_eyeUpperClose_25_R")
+          if(x.m.morphTargetInfluences)x.m.morphTargetInfluences[x.i]=.35}
+      model.updateMatrixWorld(!0);
+      for(const n2 in bones)bones[n2].userData.q0=bones[n2].quaternion.clone();
+    }
+
     // ---- the body ladder, inside the mesh ----------------------------------------------
     // One GLB is one build; the seven stages are that same body at a girth factor k
     // (docs/specs/crid-360.md). Bones are not scaled — that bent him — so the bind-pose
@@ -172,8 +213,7 @@ export async function initCrid3D(host,getState,onReady,onFail){
       for(let i=0;i<g.w.length;i++){const s=1+(k-1)*g.w[i],j=i*3;
         p.setXYZ(i,g.cx+(g.orig[j]-g.cx)*s,g.orig[j+1],g.cz+(g.orig[j+2]-g.cz)*s)}
       p.needsUpdate=!0}};
-    const dist=1.5/(2*Math.tan(cam.fov*Math.PI/360))*1.3;
-    cam.position.set(0,.8,-dist);cam.lookAt(0,.7,0);
+    cam.position.set(0,camTargetY,-4.2);cam.lookAt(0,camTargetY,0);
 
     // Contact shadow: a soft radial blob on the floor plane, so he stands IN the room.
     const shC=document.createElement("canvas");shC.width=shC.height=128;
@@ -370,7 +410,10 @@ export async function initCrid3D(host,getState,onReady,onFail){
     const resize=()=>{
       const r=host.getBoundingClientRect();
       renderer.setSize(Math.max(2,r.width),Math.max(2,r.height),!1);
-      cam.aspect=r.width/Math.max(1,r.height);cam.updateProjectionMatrix()};
+      cam.aspect=r.width/Math.max(1,r.height);
+      const half=VIEW_H/2,a=cam.aspect;
+      cam.left=-half*a;cam.right=half*a;cam.top=half;cam.bottom=-half;
+      cam.updateProjectionMatrix()};
     resize();
     const ro=typeof ResizeObserver=="function"?new ResizeObserver(resize):null;
     ro&&ro.observe(host);

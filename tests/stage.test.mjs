@@ -101,17 +101,27 @@ test("a drop waits for the physics motor to confirm floor landing",()=>{
 });
 
 test("a physical slip stays in the slip state until the floor contact is real",()=>{
-  let onFloor=false;
-  const {stage}=makeStage({slip:()=>true,canCompleteDrop:()=>onFloor});
-  drive(stage,climbIntent,12);
+  let forceSlip=false,onFloor=false,now=0;
+  const {stage}=makeStage({slip:()=>forceSlip,canCompleteDrop:()=>onFloor});
+  for(let i=0;i<320&&stage.state!=="pull";i++){
+    now+=50;stage.step(now,climbIntent,.05);
+    if(stage.walking&&stage.state!=="top"&&stage.state!=="seat"){
+      const d=stage.targetX-stage.walkX;
+      stage.walkX+=Math.sign(d)*Math.min(Math.abs(d),.42*.05);
+    }
+  }
   assert.equal(stage.state,"pull");
-  // Start the deterministic forced slip at the pull state.
-  drive(stage,{...climbIntent,phase:"middle"},1);
+  forceSlip=true;
+  for(let i=0;i<20&&stage.state!=="slip";i++){
+    now+=50;stage.step(now,{...climbIntent,phase:"middle"},.05);
+  }
   assert.equal(stage.state,"slip");
-  drive(stage,{...climbIntent,phase:"middle"},2);
+  for(let i=0;i<50;i++){
+    now+=50;stage.step(now,{...climbIntent,phase:"middle"},.05);
+  }
   assert.equal(stage.state,"slip");
   onFloor=true;
-  drive(stage,{...climbIntent,phase:"middle"},.2);
+  now+=50;stage.step(now,{...climbIntent,phase:"middle"},.05);
   assert.equal(stage.state,"recover");
 });
 

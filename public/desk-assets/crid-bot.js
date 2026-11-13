@@ -255,11 +255,11 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // synthesize the same contract for the renderer: roll/pitch/lift plus a
   // contact point on the panel edge so the IK hand-plant keeps working.
   const stageLean=()=>{
-    if(!stage||(stage.state!=="lean"&&stage.state!=="lean-in"))return null;
+    if(!stage||!["lean","lean-in","reach","pull"].includes(stage.state))return null;
     const b=layerOf(stage.layer); if(!b||!b.edge)return null;   // registry px — the IK solve wants px
     const dir=stage.side==="right"?1:-1;
     return{angle:stage.roll*57.3,dir,layer:stage.layer,
-      contact:{x:dir>0?b.edge.right-8:b.edge.left+8,y:b.edge.top+(host.offsetHeight||220)*.3}}};
+      contact:{x:dir>0?b.edge.right-8:b.edge.left+8,y:b.edge.top}}};
   const STAGE_GRIP={reach:.85,pull:.85,"lean-in":.8,lean:.8,seat:.7,slip:.9,hop:.4,top:.4};
   // Where the body is about to go, for the face: the eyes fixate the target
   // BEFORE the body covers ground (facial.mjs lookBias fires a saccade on a
@@ -283,7 +283,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     walkDir:walk&&walk.to?(walk.tx-walk.x<0?-1:1):(stage&&stage.targetX<cridBody.x?-1:1),fx,
     motorState:{x:cridBody.x,y:cridBody.y,vx:cridBody.vx,vy:cridBody.vy,
       grounded:cridBody.grounded,supportId:cridBody.supportId,distanceTravelled:cridBody.distanceTravelled,
-      screenX:cridBody.x*UPX(),stridePx:Math.max(24,cridBody.halfW*UPX()*4.5),
+      screenX:cridBody.x*UPX(),strideLength:Math.max(.08,cridBody.halfW*4.5),
       grip:cridBody.grip?{...cridBody.grip}:null},
     lean:leanAt||stageLean(),reduced,stage:BODIES[bodyI],face:faceNow,
     stagePose:stage?{ref:stage,roll:stage.roll,pitch:stage.pitch,liftPx:stage.groundY*UPX(),

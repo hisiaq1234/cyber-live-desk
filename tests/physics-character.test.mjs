@@ -81,6 +81,14 @@ test("releasing a grip returns the character to gravity and floor support",()=>{
   assert.equal(body.y,-50);
 });
 
+test("a grip releases after sustained load exceeds its force capacity",()=>{
+  const {world,body,run}=make({gravity:8,mass:1,strength:1});
+  assert.equal(world.grabCharacter(body,{id:"ledge",x:0,y:-.2},{reach:2,strength:1,load:1}),true);
+  run(.5);
+  assert.equal(body.grip,null);
+  assert.equal(body.gripFailed,true);
+});
+
 test("carried load reduces attainable motor speed",()=>{
   const a=make(),b=make();
   a.world.moveCharacter(a.body,1000,{maxSpeed:180,acceleration:900,strength:1,load:0});

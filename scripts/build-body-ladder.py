@@ -65,11 +65,12 @@ BODIES = [3, 0, 4, 5, 1, 11, 2]   # leanest -> heaviest, the seven distinct buil
 SUB_STEPS = [0, 4, 8, 12, 16, 20, 24]
 BODY_NAMES = {3: "leanest", 0: "lean", 4: "light", 5: "average",
               1: "full", 11: "heavy", 2: "heaviest"}
-# Historical r7 measured ink widths, mapped to the seven current front-facing body builds.
+# Historical r7 measured ink widths; rasterized output may differ by at most two pixels.
 WIDTH_TARGETS = [307, 366, 420, 486, 560, 676, 822]
 HEAD_LOCK_BOTTOM = 450
 HEAD_BLEND = 100
 LEG_TAPER = 0.35
+# This blob is the user's exact leanest image; do not regenerate or alter it.
 FACE_REFERENCE = {"url":"https://github.com/hisiaq1234/cyber-live-desk/blob/cc1902269b6d36a4d086af3f67241af79a5bcbb0/public/desk-assets/crid/body-000-r7.webp","source_commit":"cc1902269b6d36a4d086af3f67241af79a5bcbb0","source_path":"public/desk-assets/crid/body-000-r7.webp","source_blob_sha":"864979d00e0e76de5ca87c30b6a99df57a33a417"}
 WIDTH_REFERENCE = {"source_commit":"cc1902269b6d36a4d086af3f67241af79a5bcbb0","source_path":"public/desk-assets/crid/ladder.json","measured_widths":[307,366,420,486,560,676,822]}
 

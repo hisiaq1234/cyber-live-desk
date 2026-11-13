@@ -249,7 +249,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // ---- the 3D body -----------------------------------------------------------------------
   // His real rigged Bitmoji (crid-3d.js): Snap's own GLB, 167 bones, facial morphs. The canvas
   // is him. The SVG figure is hidden the moment the model is on the GPU and is not put back.
-  let crid3d=null,lastPose=null,disposed3d=false;
+  let crid3d=null,lastPose=null,disposed3d=false,crid3dFailed=false;
   const hideFigure=()=>{parts.avatarBase.setAttribute("display","none");parts.rigG.setAttribute("display","none");parts.ph.setAttribute("display","none");host.classList.add("has-glb")};
   // The stage machine's lean states don't set leanAt (that's the verb path) —
   // synthesize the same contract for the renderer: roll/pitch/lift plus a
@@ -291,7 +291,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     attend:leanAt?{x:leanAt.dir*.8,y:.15}:pondering?{x:0,y:.4}:null,
     lookBias:lookBiasNow(),
     talking:host.classList.contains("is-active"),grooving:host.classList.contains("music-playing"),mood,bag:bag.worn}),hideFigure)
-    .then(h=>{crid3d=h}).catch(err=>{try{console.warn("[crid-3d] not started:",err&&err.message||err)}catch{}});
+    .then(h=>{crid3d=h;crid3dFailed=!h}).catch(err=>{crid3dFailed=true;try{console.warn("[crid-3d] not started:",err&&err.message||err)}catch{}});
   // ---- the backpack: a prop with mass (docs/specs/backpack.md + physics.md) ---------------
   // One world, one gravity, one floor — the same rules the spec gives every body. Worn, the bag
   // rides his back as an SVG in his own palette (no bitmap, no image budget); dropped, it is a
@@ -319,7 +319,9 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     const{w,h}=bagWH(); bagEl.style.width=`${w}px`; bagEl.style.height=`${h}px`;
     // Worn on the 3D path the pack is the GLB's own skinned bag — the SVG is only
     // ever the dropped prop on the floor, never a flat image pasted on his back.
-    if(bag.worn&&crid3d){bagEl.style.display="none";return}
+    // If the GLB never started there is no figure to follow either, so the worn
+    // SVG stays hidden rather than floating where he should be.
+    if(bag.worn&&(crid3d||crid3dFailed)){bagEl.style.display="none";return}
     if(bag.worn){const r=host.getBoundingClientRect();
       bagEl.style.left=`${r.left+r.width/2-w/2}px`; bagEl.style.top=`${r.top+r.height*.07}px`}
     else if(bag.body){const b=bag.body;

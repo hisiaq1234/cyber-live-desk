@@ -571,10 +571,11 @@ export async function initCrid3D(host,getState,onReady,onFail){
       setMorph("cheekPuffL",clamp((fc.cheekPuffL||0)+chub,0,1));
       setMorph("cheekPuffR",clamp((fc.cheekPuffR||0)+chub,0,1));
 
-      // Identity is bag=-1 (docs/crid-avatar-params.json): the 2D ladder never
-      // wears the pack, so the GLB's outfit_bag stays hidden on this path — the
-      // only bag in the room is the SVG floor prop when he drops it.
-      const showBag=false;
+      // Worn state comes from crid-bot's bag.worn through the snapshot: on, the
+      // GLB's own outfit_bag (re-skinned to spine3 above, on the lag springs)
+      // is the pack on his back; off, it hides and the SVG floor prop is the
+      // only bag left. The flat SVG never rides him on this path.
+      const showBag=!!st.bag;
       if(showBag!==bagShown){bagShown=showBag;if(bagPivot)bagPivot.visible=showBag;
         for(const m of bagMeshes)m.visible=false}   // the skinned original is gone; the pivot carries the bag
       if(bagLag){

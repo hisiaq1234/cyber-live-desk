@@ -306,7 +306,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const cridBody=world.add({character:true,x:0,y:-1,vx:0,vy:0,
     halfW:Math.max(20,(host.offsetWidth||innerWidth*.175)*.34)/UPX(),
     halfH:Math.max(50,(host.offsetHeight||220)*.47)/UPX(),
-    floor:0,mass:build().heft,strength:build().heft,grounded:true,supportId:"floor"});
+    floor:0,gravity:2400/UPX(),mass:build().heft,strength:build().heft,grounded:true,supportId:"floor"});
   const bagEl=document.createElement("div"); bagEl.id="crid-bag";
   const bagSvg=el("svg",{viewBox:"0 0 64 78","aria-hidden":"true",focusable:"false"});
   bagSvg.append(
@@ -1010,7 +1010,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     cridBody.mass=heft;cridBody.strength=heft;
     cridBody.halfW=Math.max(20,(stageHW.w||host.offsetWidth||180)*.34)/UPX();
     cridBody.halfH=Math.max(50,(stageHW.h||host.offsetHeight||220)*.47)/UPX();
-    cridBody.floor=0;
+    cridBody.floor=0;cridBody.gravity=2400/UPX();
     if(stage.walking&&["approach","floor","top"].includes(stage.state)){
       world.moveCharacter(cridBody,stage.targetX,{maxSpeed:Math.max(.12,.76*(stageHW.w||180)/UPX()),
         acceleration:3.2,strength:heft,load});

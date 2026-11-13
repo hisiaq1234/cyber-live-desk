@@ -24,18 +24,18 @@ WHERE THE FRAMES COME FROM
 --------------------------
 `--fetch` asks preview.bitmoji.com/bm-preview/v3/avatar/body — the endpoint the owner's own
 avatar URL uses (scripts/fetch-crid-views.mjs in the CRID archive) — at scale=2, rotation=0,
-for the seven distinct builds, masters downscaled to 1050x1400. The face is the one the desk
-ships: the RECIPE constant below is that avatar URL verbatim with `body` left free and the
-backpack removed (`bag=-1`) — the bag is a prop he carries, not part of his render. He wears
-Snap's minimum: a bare chest, the camo trousers, socks and shoes from the recipe. Snap has no
-nude render — its floor is this under-layer, and it is the same on every stage.
+for the seven distinct builds, masters downscaled to 1050x1400. The selected leanest image is not regenerated: `body-000-r7.webp` at the exact source commit in
+FACE_REFERENCE is the canonical first stage. The other six builds are fetched from the same Snap
+recipe at rotation=0, with `body` changed and the backpack removed (`bag=-1`). Their head crop
+is replaced by the exact pixels from the selected r7 image. The bag remains a separate prop.
 
 FRAMING (what crid-bot.js assumes: INK_BOTTOM, FIG_X, FIG_Y)
 -----------------------------------------------------------
-Snap already returns the figure at 1050x1400 with the ink bottom near y=1319 and the mid-torso
-near x≈526, identically for all seven bodies, so the framing is a pure translation onto
-GROUND=1325 / AXIS=560. One shared shift, taken from the lean frame, so the head lands on the
-same pixels in every stage and the face cannot jump when the build changes.
+The r7 lean reference is already 1050x1400 with its ink bottom at y=1325. It is the immutable
+canonical frame: do not recenter, resize or redraw it. Each of the other six Snap renders is
+translated onto its measured torso axis and the same floor, then receives the exact r7 head crop.
+The historical widths (307..822 px) are targets; ink height is measured per stage, not fabricated
+or forced to a stale shared value.
 
 Needs Pillow (not a runtime dependency — this is a one-off asset tool):
   python3 -m pip install pillow
@@ -46,6 +46,7 @@ Needs Pillow (not a runtime dependency — this is a one-off asset tool):
   python3 scripts/build-body-ladder.py --sheet OUT.png   # comparison sheet at 336px and 150px
 """
 import json
+import shutil
 import sys
 import urllib.parse
 import urllib.request
@@ -131,7 +132,24 @@ def query(body):
 
 def fetch():
     VIEWS.mkdir(exist_ok=True)
-    for body in BODIES:
+    # The user selected this exact archived frame as Crid's leanest look. Preserve its
+    # original WebP bytes and decode it losslessly to the PNG master used by the builder.
+    reference_url = (
+        "https://raw.githubusercontent.com/hisiaq1234/cyber-live-desk/"
+        + FACE_REFERENCE["source_commit"] + "/" + FACE_REFERENCE["source_path"]
+    )
+    req = urllib.request.Request(reference_url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=90) as r:
+        reference_data = r.read()
+    reference_file = VIEWS / "body-000-r7.webp"
+    reference_file.write_bytes(reference_data)
+    reference = Image.open(__import__("io").BytesIO(reference_data)).convert("RGBA")
+    if reference.size != (FRAME_W, FRAME_H):
+        raise SystemExit(f"approved body-000-r7 reference is {reference.size}, expected {(FRAME_W, FRAME_H)}")
+    reference.save(VIEWS / f"body-{BODIES[0]}-r0.png")
+    print(f"body-000-r7 exact reference -> {(VIEWS / 'body-000-r7.webp').relative_to(ROOT)}")
+
+    for body in BODIES[1:]:
         url = API + "?" + urllib.parse.urlencode(query(body))
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=90) as r:
@@ -140,7 +158,7 @@ def fetch():
         if not ctype.startswith("image"):
             raise SystemExit(f"body={body}: the API answered {ctype!r}, not an image")
         im = Image.open(__import__("io").BytesIO(data)).convert("RGBA")
-        if im.size != (FRAME_W, FRAME_H):   # the scale=2 master is 2100x2800: downscale it
+        if im.size != (FRAME_W, FRAME_H):
             im = im.resize((FRAME_W, FRAME_H), Image.LANCZOS)
         p = VIEWS / f"body-{body}-r0.png"
         im.save(p)
@@ -190,7 +208,7 @@ def lock_head(canonical, current):
     return out
 
 
-def warp_rows(im, scale):
+def warp_rows(im, scale, axis=AXIS):
     out = Image.new("RGBA", im.size, (0, 0, 0, 0))
     for y in range(FRAME_H):
         k = 1.0 + (scale - 1.0) * body_profile(y)
@@ -198,20 +216,20 @@ def warp_rows(im, scale):
         if abs(k - 1.0) > 0.0001:
             inv = 1.0 / k
             row = row.transform((FRAME_W, 1), Image.Transform.AFFINE,
-                                (inv, 0, AXIS * (1.0 - inv), 0, 1, 0),
+                                (inv, 0, axis * (1.0 - inv), 0, 1, 0),
                                 resample=Image.Resampling.BICUBIC)
         out.paste(row, (0, y))
     return out
 
 
-def warp_to_width(im, target):
+def warp_to_width(im, target, axis=AXIS):
     head_w = ink(im.crop((0, 0, FRAME_W, HEAD_LOCK_BOTTOM)))["w"]
     if target <= head_w + 4:
         raise RuntimeError(f"target width {target} is smaller than locked head width {head_w}")
     scale = target / max(1, ink(im)["w"])
     out = im
     for _ in range(10):
-        out = warp_rows(im, scale)
+        out = warp_rows(im, scale, axis)
         actual = ink(out)["w"]
         if abs(actual - target) <= 2:
             return out
@@ -221,7 +239,7 @@ def warp_to_width(im, target):
     raise RuntimeError(f"could not reach target width {target}; got {ink(out)['w']}")
 
 
-def write_runtime_module(stages):
+def write_runtime_module(stages, axis):
     rows = [
         '  Object.freeze({key: "%s", w: %d, h: %d, slow: %.3f, heft: %.3f, girth: %.3f})'
         % (s["key"], s["ink"]["w"], s["ink"]["h"], s["slow"], s["heft"], s["girth"])
@@ -229,43 +247,49 @@ def write_runtime_module(stages):
     ]
     module = (
         "// Generated by scripts/build-body-ladder.py. Do not edit by hand.\n"
-        "export const FRAME = Object.freeze({w: %d, h: %d, ground: %d, axis: %d});\n"
+        "export const FRAME = Object.freeze({w: %d, h: %d, ground: %d, axis: %.1f});\n"
         "export const BODY_LADDER = Object.freeze([\n%s\n]);\n"
         "export const bodyForKey = key => BODY_LADDER.find(s => s.key === String(key)) || BODY_LADDER[0];\n"
-        % (FRAME_W, FRAME_H, GROUND, AXIS, ",\n".join(rows))
+        % (FRAME_W, FRAME_H, GROUND, axis, ",\n".join(rows))
     )
     (CRID / "ladder.mjs").write_text(module, encoding="utf-8")
 
 
 def build_all():
     masters = {b: master(b) for b in BODIES}
-    # Solve the shared frame from the approved leanest front-facing build, not body=0.
-    base = masters[BODIES[0]]
-    dx = int(round(AXIS - mid_torso_axis(base)))
-    dy = GROUND - ink(base)["bottom"]
-    # The same integer translation is used for every stage. Do not recenter each
-    # silhouette independently: the face and feet must remain pixel-locked.
-    canonical = frame(base, dx, dy)
-    canonical_height = ink(canonical)["h"]
+    # The selected r7 file itself is the canonical leanest stage. Never re-render,
+    # translate, scale or redraw its face/body pixels.
+    canonical = masters[BODIES[0]].copy()
+    if ink(canonical)["w"] != WIDTH_TARGETS[0] or ink(canonical)["bottom"] != GROUND:
+        raise RuntimeError(f"approved r7 reference measurements changed: {ink(canonical)}")
     canonical_axis = mid_torso_axis(canonical)
     stages, areas = [], []
     for i, body in enumerate(BODIES):
-        out = lock_head(canonical, frame(masters[body], dx, dy))
         target_w = WIDTH_TARGETS[i]
-        out = warp_to_width(out, target_w)
+        if body == BODIES[0]:
+            out = canonical.copy()
+        else:
+            source = masters[body]
+            dx = int(round(canonical_axis - mid_torso_axis(source)))
+            dy = GROUND - ink(source)["bottom"]
+            current = frame(source, dx, dy)
+            out = lock_head(canonical, current)
+            out = warp_to_width(out, target_w, canonical_axis)
         m = ink(out)
         if abs(m["w"] - target_w) > 2:
             raise RuntimeError(f"body {body}: expected width {target_w}, got {m['w']}")
-        if m["h"] != canonical_height or m["bottom"] != GROUND:
-            raise RuntimeError(f"body {body}: frame drift {m}")
+        if m["bottom"] != GROUND:
+            raise RuntimeError(f"body {body}: floor drift {m}")
         if abs(mid_torso_axis(out) - canonical_axis) > 3:
             raise RuntimeError(f"body {body}: torso axis drift {mid_torso_axis(out):.1f} (canonical {canonical_axis:.1f})")
         if out.crop((0, 0, FRAME_W, HEAD_LOCK_BOTTOM)).tobytes() != canonical.crop((0, 0, FRAME_W, HEAD_LOCK_BOTTOM)).tobytes():
             raise RuntimeError(f"body {body}: head/face pixels differ from canonical")
-        # Keep the 2100x2800 / 1050x1400 PNG masters in views/ only.
-        # Public runtime assets are WebP; never leave heavyweight PNGs in CRID's served folder.
         webp = CRID / f"body-{body}-r0.webp"
-        out.save(webp, "WEBP", quality=95, method=6)
+        if body == BODIES[0]:
+            # Preserve the user's selected leanest image byte-for-byte in production.
+            shutil.copyfile(VIEWS / "body-000-r7.webp", webp)
+        else:
+            out.save(webp, "WEBP", quality=95, method=6)
         t = (target_w - WIDTH_TARGETS[0]) / (WIDTH_TARGETS[-1] - WIDTH_TARGETS[0])
         slow, heft, girth = round(1 + .45*t, 3), round(.86 + .59*t, 3), round(.72 + t, 3)
         stages.append({"key":str(body),"name":BODY_NAMES[body],"file":webp.name,"ink":m,
@@ -278,14 +302,14 @@ def build_all():
               "dw":stages[i+1]["ink"]["w"]-stages[i]["ink"]["w"],
               "dh":stages[i+1]["ink"]["h"]-stages[i]["ink"]["h"]}
              for i in range(len(stages)-1)]
-    doc = {"frame":{"w":FRAME_W,"h":FRAME_H},"ground":GROUND,"axis":AXIS,"rotation":0,
+    doc = {"frame":{"w":FRAME_W,"h":FRAME_H},"ground":GROUND,"axis":round(canonical_axis,1),"rotation":0,
            "head_lock_bottom":HEAD_LOCK_BOTTOM,"face_reference":FACE_REFERENCE,
            "width_reference":WIDTH_REFERENCE,"width_targets":WIDTH_TARGETS,
            "min_step":{"w":min(d["dw"] for d in diffs),"h":min(d["dh"] for d in diffs)},
            "stages":stages,"diffs":diffs}
     (CRID / "ladder.json").write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
-    write_runtime_module(stages)
-    print(json.dumps({"min_step":doc["min_step"],"stages":stages},indent=2))
+    write_runtime_module(stages, canonical_axis)
+    print(json.dumps({"min_step":doc["min_step"],"axis":doc["axis"],"stages":stages},indent=2))
 
 
 

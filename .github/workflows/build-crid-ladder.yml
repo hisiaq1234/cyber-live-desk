@@ -56,7 +56,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add views/body-*-r0.png public/desk-assets/crid/body-*-r0.webp public/desk-assets/crid/ladder.json public/desk-assets/crid/ladder.mjs public/desk-assets/crid/rigs public/desk-assets/crid/rig.mjs
+          git add views/body-*-r0.png views/body-000-r7.webp public/desk-assets/crid/body-*-r0.webp public/desk-assets/crid/ladder.json public/desk-assets/crid/ladder.mjs public/desk-assets/crid/rigs public/desk-assets/crid/rig.mjs
           if ! git diff --cached --quiet; then
             git commit -m "Build consistent CRID body ladder and rigs"
             git push origin "HEAD:${GITHUB_REF_NAME}"

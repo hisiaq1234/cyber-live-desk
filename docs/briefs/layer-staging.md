@@ -5,7 +5,7 @@ one, and takes a wondering pose as he counters. Chat that arrives mid-thought is
 thought, not answered separately.
 
 Today none of that is possible, because Crid does not know where anything is. The overlay builds
-surfaces ad hoc (`#time-dock`, `#map-plate`, `#auto-headlines`, `.slot` card, `#dock-right`,
+surfaces ad hoc (`#time-dock`, `#loc-map`, `#auto-headlines`, `.slot` card, `#dock-right`,
 `#desk-logo`, `#swae-chat`) and nothing publishes their positions to the bot. Every "interaction with
 an overlay" so far has been faked by putting him at a hardcoded spot.
 

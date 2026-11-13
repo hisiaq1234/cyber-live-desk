@@ -1,6 +1,6 @@
 /* THE LAYER REGISTRY — where the desk's panels actually are.
  *
- * Every surface on this frame has been built ad hoc: #time-dock, #map-plate, #auto-headlines,
+ * Every surface on this frame has been built ad hoc: #time-dock, #loc-map, #auto-headlines,
  * the card in .slot, #dock-right, #desk-logo, #swae-chat. Nothing published their positions, so
  * every "CRID interacts with an overlay" so far was a hardcoded spot that only looked right on
  * one frame size. This is the one place that answers "where is the clock, right now, in desk
@@ -29,7 +29,9 @@ const SURFACES = {
   // box reaches further than the card the eye sees.
   card: [".slot > *", ".slot"],
   clock: ["#time-dock"],
-  map: ["#map-plate"],
+  // The map lives in the location dock and is `hidden` until a peek or the full view opens it;
+  // a closed dock measures as absent, which is exactly what a lean needs to know.
+  map: ["#loc-map"],
   ticker: ["#auto-headlines"],
   headlines: ["#auto-headlines"],
   dock: ["#dock-right"],

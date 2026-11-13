@@ -106,6 +106,9 @@ import { createScene, SCENE_CSS } from "./scene.js";
   const xJPos = "top";
   const xJPollMs = num("x.jpoll", 60, 10, 3600) * 1000;
   const xUserId = P.get("x.userId") || "";
+  // ?xui=classic keeps the old text-list renderer for timeline modes; the
+  // default is the extracted Larix overlay app iframed into the same card.
+  const xUiClassic = P.get("xui") === "classic";
 
   // ---------- location ----------
   // Where the creator is. One source, several consumers — the readout top-right, the clock's
@@ -421,6 +424,11 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
    room than the trend list and keeps its "retrying" footer on screen. */
 #x-feed.x-problem-panel{max-height:28dvh}
 .x-item.x-problem{font-size:.86em;-webkit-line-clamp:4}
+/* The X Following timeline runs the extracted Larix overlay app
+   (public/x-overlay/) in an iframe — its own React UI, its own feed poll
+   through /api/x-timeline/feed. Transparent body, so only its cards show. */
+#x-feed.x-overlay-panel{max-height:none;padding:.4em}
+#x-feed.x-overlay-panel iframe{display:block;width:100%;height:64dvh;border:0;background:transparent}
 
 /* Module Component Styles — individual caps keep the dock total bounded */
 .court-wrap,.music-wrap,.space-wrap,.ledger-wrap,.riad-wrap {
@@ -1051,6 +1059,19 @@ html.swae #desk .letters{background:#0b0d12f5}
     // ?bot.scale= is the size knob: the mascot is drawn at broadcast size by default, and the
     // operator can shrink or grow him from the browser source URL without a code change.
     scale: num("bot.scale", 1, 0.4, 2.5),
+    // ?being.boredom=95&being.settle=0&being.cool=2000 — QA knobs that seed his
+    // drives so a staged climb/lean can be watched without waiting a minute.
+    beingOpts: (() => {
+      const o = {};
+      for (const k of ["energy", "boredom", "attention"]) {
+        const v = parseFloat(P.get(`being.${k}`) || "");
+        if (Number.isFinite(v)) (o.drives ||= {})[k] = Math.min(100, Math.max(0, v));
+      }
+      const settle = parseFloat(P.get("being.settle") || ""), cool = parseFloat(P.get("being.cool") || "");
+      if (Number.isFinite(settle)) o.settleMs = Math.min(60000, Math.max(0, settle));
+      if (Number.isFinite(cool)) o.cooldownMs = Math.min(60000, Math.max(500, cool));
+      return o;
+    })(),
   });
   // The room behind the desk. The page ships with a transparent body so the same /desk file can be
   // loaded straight into OBS and keyed out, which in a browser left the cards on the browser's own
@@ -1584,9 +1605,31 @@ html.swae #desk .letters{background:#0b0d12f5}
     xTimer = setTimeout(fetchXfeed, xJPollMs);
   };
 
+  // The Following/For-You timeline is the extracted X-overlay app (public/x-overlay/),
+  // iframed into the same #x-card slot. It polls /api/x-timeline/feed itself — the
+  // desk's own /api/x/feed stays the trends path and the ?xui=classic escape hatch.
+  const renderXoverlay = () => {
+    if (!xMode || xMode === "trends") return;
+    if (xEl && xEl.classList.contains("x-overlay-panel")) return;
+    const frame = h("iframe", {
+      src: "/x-overlay/index.html?theme=dark&position=bottom-left&scale=.72&margin=8&count=5&refresh=30&interval=18&stack=1",
+      title: "X Following timeline", loading: "lazy",
+    });
+    const card = h("div", { id: "x-card", class: "x-overlay-panel" }, frame);
+    if (xEl) { xEl.replaceWith(card); xEl = card; }
+    else {
+      xEl = card;
+      dockRight.prepend(xEl);
+      bot?.summon(xEl);
+      requestAnimationFrame(() => requestAnimationFrame(() => xEl?.classList.add("in")));
+    }
+    xKey = "overlay";
+  };
+
   const fetchXfeed = async () => {
     if (!xMode) return;
     clearTimeout(xTimer);
+    if (xMode !== "trends" && !xUiClassic) { renderXoverlay(); return; }
     const result = await requestXFeed(globalThis.fetch, { mode: xMode, userId: xUserId });
     if (!xMode) return;
     if (result.ok) {

@@ -473,7 +473,8 @@ test("dropbag spills paper that falls under the same gravity and comes to rest (
 });
 
 
-test("the autonomous sit-on behaviour keeps the approved neutral face", () => {
+test("the autonomous sit-on behaviour keeps the approved neutral face", async () => {
+  const bot = await readFile(new URL("../public/desk-assets/crid-bot.js", import.meta.url), "utf8");
   assert.ok(bot.includes('beingLean=it.layer;if(key==="lean-watch")feel("curious",{faceOnly:!0})'));
   assert.ok(!bot.includes('feel(key==="sit-on"?"smug":"curious"'));
 });

@@ -175,7 +175,9 @@ export const TEST_CARD = {
   summary: "If you can read this on your stream, the overlay is working. This is not a news story.",
   question: "Can you read this clearly?",
   confidence: "test",
-  approval: "approved",
+  // A fixture is available to the operator for a deliberate check, but it never enters the
+  // live queue. It must not be mistaken for current programming after a fresh deploy or reload.
+  approval: "pending",
   source: { publisher: "Local test", url: null, publishedAt: null, retrievedAt: null },
   eventDate: null,
   presenterNotes: "Delete or reject this once the real queue exists.",
@@ -225,7 +227,9 @@ export async function commitStateIfCurrent(store, expectedVersion, patch, now = 
 // ---------- queue + auto-play ----------
 
 export function queueOf(cards, deskId = null) {
-  const approved = cards.filter((c) => c.approval === "approved");
+  // Tests are fixtures, even when an operator has reviewed their wording. Never let a fixture
+  // become the default live card or an auto-play candidate.
+  const approved = cards.filter((c) => c.approval === "approved" && c.confidence !== "test");
   return (deskId ? approved.filter((c) => matchesDesk(c, deskId)) : approved)
     .sort((a, z) => (a.order ?? a.createdAt) - (z.order ?? z.createdAt));
 }
@@ -486,7 +490,7 @@ export async function publicState(store, since, now = Date.now()) {
   let card = null;
   if (state.mode === "cards" && state.visible && state.activeCardId) {
     const found = (await readCards(store)).find((c) => c.id === state.activeCardId);
-    if (found && found.approval === "approved") card = publicCard(found);
+    if (found && found.approval === "approved" && found.confidence !== "test") card = publicCard(found);
   }
   return { status: 200, body: { ...publicProjection(state, now), card, serverNow: now } };
 }

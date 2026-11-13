@@ -45,3 +45,10 @@ test("peek, full view and GTA mode are wired to state and URL params", () => {
   // SWAE kills CSS transitions: dock motion must be stepped in JS, never transitioned.
   assert.ok(overlay.includes("animateRect"));
 });
+
+test("the idle desk leaves headlines and completed game boards off screen", () => {
+  assert.match(overlay, /const HEADLINES_ON = P\.get\("headlines"\) === "1"/);
+  assert.match(overlay, /if \(HEADLINES_ON\) refreshHeadlines\(\);/);
+  assert.match(overlay, /state\.letters\?\.status === "open"/);
+  assert.match(overlay, /state\.letters\.endsAt > serverNow\(\)/);
+});

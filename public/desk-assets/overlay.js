@@ -21,6 +21,7 @@ import { createCridAudioSync } from "./crid-audio.js";
      bot=0 | bl|bc|br          bot.x=0–100 bot.y=0–100  (CRID mascot; 0 restores the sound orb; default bc, the centre column)
      bot.scale=0.4–2.5         (mascot size multiplier on top of the theme's broadcast size; default 1)
      clock=0 | 1               (bottom-left clock plate; on by default)
+     headlines=1                (opt in to the current Nigeria headline ticker; off by default)
      chat=0 | 1                chatPrefix=   (Swae chat strip; on by default inside Swae)
      cridLogo=                 (CRID badge logo URL, falls back to ./crid-logo.png)
      logo=0 | tl|tc|tr|bl|bc|br|custom   (desk lockup, see ./logo.js; 0 hides it; default tc)
@@ -77,6 +78,9 @@ import { createScene, SCENE_CSS } from "./scene.js";
   // ?game=0 removes the Letters card and its renderer with it: a frame that never wants the game
   // never draws one, and the desk state it ignores costs it nothing.
   const LETTERS_ON = P.get("game") !== "0";
+  // Headlines are useful programming when the operator asks for them, not default page chrome.
+  // A quiet desk starts quiet; `?headlines=1` opts this browser source into the live ticker.
+  const HEADLINES_ON = P.get("headlines") === "1";
   const theme = pick("theme", ["creative", "torn-paper", "cyber"], "cyber");
   document.documentElement.dataset.theme = theme;
   document.documentElement.dataset.crop = P.get("crop") === "0" ? "false" : "true";
@@ -995,7 +999,7 @@ html.swae #desk .letters{background:#0b0d12f5}
   const slot = h("div", "slot");
   const root = h("div", { id: "desk", class: `layout-${CFG.layout} pos-${CFG.pos} anim-${CFG.anim} crid-pos-${CFG.cridPos} x-pos-${xJPos}${CFG.debug ? " debug" : ""}` }, slot);
   document.body.append(root);
-  const headlineShelf = h("div", { id: "auto-headlines", "aria-live": "off", "data-status": "loading" });
+  const headlineShelf = h("div", { id: "auto-headlines", hidden: !HEADLINES_ON, "aria-live": "off", "data-status": HEADLINES_ON ? "loading" : "off" });
   root.append(headlineShelf);
 
   // ---------- Swae chat bridge ----------
@@ -1234,7 +1238,7 @@ html.swae #desk .letters{background:#0b0d12f5}
   root.append(musicPlate);
   const placeMusicPlate = () => {
     const ticker = document.getElementById("auto-headlines");
-    if (!ticker) { musicPlate.style.bottom = ""; return; }
+    if (!ticker || ticker.hidden) { musicPlate.style.bottom = ""; return; }
     const top = ticker.getBoundingClientRect().top;
     musicPlate.style.bottom = `${Math.round(Math.max(0, window.innerHeight - top)) + 12}px`;
   };
@@ -1397,6 +1401,7 @@ html.swae #desk .letters{background:#0b0d12f5}
   };
 
   const drawHeadlines = (note = "Checking for fresh headlines…") => {
+    if (!HEADLINES_ON) return;
     const track = state?.music?.playing ? state.music.current : null;
     const rows = [];
     if (track?.title) rows.push(h("div", "identity-row identity-music",
@@ -1437,9 +1442,11 @@ html.swae #desk .letters{background:#0b0d12f5}
       headlinePollTimer = setTimeout(refreshHeadlines, 5 * 60 * 1000);
     }
   };
-  headlineRotateTimer = setInterval(() => {
-    if (headlineItems.length > 1) { headlineIndex = (headlineIndex + 1) % headlineItems.length; drawHeadlines(); }
-  }, 12 * 1000);
+  if (HEADLINES_ON) {
+    headlineRotateTimer = setInterval(() => {
+      if (headlineItems.length > 1) { headlineIndex = (headlineIndex + 1) % headlineItems.length; drawHeadlines(); }
+    }, 12 * 1000);
+  }
   window.addEventListener("pagehide", () => { clearTimeout(headlinePollTimer); clearInterval(headlineRotateTimer); }, { once: true });
 
   const schedulePoll = (ms) => {
@@ -1656,11 +1663,14 @@ html.swae #desk .letters{background:#0b0d12f5}
       xStarted = true;
       fetchXfeed();
     }
-    // The game owns the card while a round exists — open, timed out, or just closed — because
-    // it is the main event. Clearing it (letters-clear) hands the slot back to the cards.
-    const letters = LETTERS_ON ? state.letters : null;
+    // The game owns the card only during its active round. An expired or closed board is history,
+    // not page-start content; the control surface retains it until the operator clears it.
+    const letters = LETTERS_ON && state.letters?.status === "open" && state.letters.endsAt > serverNow()
+      ? state.letters
+      : null;
     if (letters) {
       showCard({ id: `letters-${letters.id}`, type: "letters", category: "CRID" }, { letters });
+      expiryTimer = setTimeout(render, Math.max(50, letters.endsAt - serverNow() + 50));
       return;
     }
     const poll = state.poll || null;
@@ -2150,7 +2160,7 @@ html.swae #desk .letters{background:#0b0d12f5}
   // both plates exist, and again only when the location itself changes.
   renderLocation();
   requestGeo();
-  refreshHeadlines();
+  if (HEADLINES_ON) refreshHeadlines();
   // He was placed before the clock existed, so the floor he measured was the frame's own. Now that
   // every plate is in the document, measure again: this is what puts him on top of the bottom band
   // on a narrow frame and on the floor of a broadcast one.

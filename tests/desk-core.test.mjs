@@ -292,12 +292,23 @@ test("auto-play can never show a card that is not approved", async () => {
   assert.equal((await readState(store)).activeCardId, "a");
 });
 
+test("test fixtures never enter the live queue or public card projection", async () => {
+  const testCard = card({ id: "test", headline: "Overlay test card", confidence: "test", approval: "approved" });
+  const liveCard = card({ id: "live", headline: "Verified live card" });
+  const store = makeStore({ cards: JSON.stringify([testCard, liveCard]) });
+  const state = await commitState(store, DEFAULT_STATE, { visible: true, activeCardId: "test", autoPlay: true }, NOW);
+
+  assert.deepEqual(queueOf(await readCards(store)).map((c) => c.id), ["live"], "fixtures are never candidates for live playback");
+  assert.equal((await publicState(store, null, NOW)).body.card, null, "a persisted fixture cannot be projected as live content");
+  assert.equal((await advanceIfExpired(store, { ...state, expiresAt: NOW - 1 }, NOW)).activeCardId, "live", "auto-play recovers to a real approved card");
+});
+
 test("a pending card saved by research stays invisible until approved", async () => {
   const store = makeStore();
   const c = await upsertCard(store, { type: "news-drop", headline: "Raw headline", approval: "pending",
     source: { publisher: "Premium Times", url: "https://www.premiumtimesng.com/x" } }, NOW);
   assert.equal(c.approval, "pending");
-  assert.deepEqual(queueOf(await readCards(store)).map((x) => x.headline), ["Overlay test card"], "only the seeded test card is playable");
+  assert.deepEqual(queueOf(await readCards(store)).map((x) => x.headline), [], "the seeded test card is never playable");
 });
 
 // ---------- feed parsing, against real captured XML ----------
@@ -456,7 +467,7 @@ test("research files everything as pending, reported, with a traceable link", as
     assert.ok(c.source.url.startsWith("https://"));
     assert.equal(c.source.retrievedAt, new Date(NOW).toISOString());
   }
-  assert.equal(queueOf(await readCards(store)).map((x) => x.headline).join(), "Overlay test card", "auto arrivals never enter the play queue by themselves");
+  assert.equal(queueOf(await readCards(store)).length, 0, "fixtures and auto arrivals never enter the play queue by themselves");
 });
 
 test("re-running research adds nothing, and it cannot clobber a card the operator edited", async () => {

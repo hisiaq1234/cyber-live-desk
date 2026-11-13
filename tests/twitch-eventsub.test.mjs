@@ -279,9 +279,11 @@ test("gift-recipient subscribe notifications and engagement from another broadca
 });
 
 test("revocation turns Ready off and a new verification turns it back on", async () => {
-  const store = makeStore();
+  // A readiness test needs a deliberately approved live card. The default fixture is
+  // intentionally pending so a fresh desk cannot expose test content on air.
+  const store = await readyStore();
   await send(store, { payload: challengeBody(), messageType: "webhook_callback_verification" });
-  let state = await commitState(store, await readState(store), { twitchChatEnabled: true }, NOW);
+  let state = await readState(store);
   assert.equal((await send(store, { payload: message(), messageId: "header-test" })).status, 204);
   let status = await twitchStatus(store, state, { env });
   assert.equal(status.ready, true);

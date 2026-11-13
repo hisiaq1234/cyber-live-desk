@@ -61,7 +61,7 @@ test("a reachable ledge grip drives a weighted mantle onto the platform",()=>{
   assert.equal(world.climbCharacter(body,{x:1.4,feetY:-.8},{strength:1,load:.5}),true);
   run(2);
   assert.equal(body.supportId,"ledge");
-  assert.equal(body.grip.id,"ledge");
+  assert.equal(body.grip,null);
   assert.ok(body.x>1);
 });
 

@@ -471,3 +471,9 @@ test("dropbag spills paper that falls under the same gravity and comes to rest (
   assert.ok(papers.every((p) => p.settled), "every sheet must come to rest on the floor");
   bot.destroy();
 });
+
+
+test("the autonomous sit-on behaviour does not apply the rejected smug face", () => {
+  assert.ok(bot.includes('beingLean=it.layer;feel("curious",{faceOnly:!0})'));
+  assert.ok(!bot.includes('feel(key==="sit-on"?"smug":"curious"'));
+});

@@ -268,7 +268,7 @@ test("a stalled climb times out to slip and waits for real floor contact",()=>{
   drive(stage,climbIntent,12);
   assert.equal(stage.state,"slip");
   onFloor=true;
-  drive(stage,climbIntent,2.0);
+  drive(stage,{key:null,phase:null,x:0.5,layer:null},1.1);
   assert.equal(stage.state,"floor");
 });
 

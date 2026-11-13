@@ -25,7 +25,7 @@
 | Area | Gap | Requirement |
 |------|-----|-------------|
 | **Twitch webhook** | `TWITCH_WEBHOOK_SECRET` and `TWITCH_BROADCASTER_USER_ID` not set in Vercel. Webhook not verified. Server control shows "Not configured". | Set both env vars in Vercel, create `channel.chat.message` EventSub subscription with callback `https://cyber-live-desk.vercel.app/api/twitch/eventsub`. |
-| **X API** | `X_BEARER_TOKEN` not set in Vercel. `/api/x/feed` returns 502. | Set `X_BEARER_TOKEN` in the Vercel project env. Token needs X API v2 access (trends + user timeline). |
+| **X API** | `/api/x/feed` can still answer 502 when the configured credentials are rejected upstream. The OAuth 1.0a signing fix is merged; what remains is credential validity, not code. | Set `X_BEARER_TOKEN` **or** all four of `X_CONSUMER_KEY`, `X_CONSUMER_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET` in the Vercel project env. Bearer is preferred; the OAuth 1.0a set drives the v1.1 endpoints. One value alone authenticates nothing. |
 | **DESK_OPERATOR_TOKEN** | Required for `/control`. | Set in the Vercel project env; operator signs in at `/control`. |
 | **Swae overlay URL** | Operator pastes the overlay URL into a Swae Browser Widget. Query parameters do survive here — Swae loads the configured URL verbatim through `URLRequest(url:)` — so `?theme=torn-paper` and the other switches are usable. The page forces its own placement, and it recognises Swae from the "Swae access" bridge that Swae injects. | Manual step; no code change. |
 | **Scheduled research** | `desk-auto-research.mjs` documents its schedule as "declared in vercel.json under `crons`" and authorises itself with `CRON_SECRET`, but `vercel.json` declares no `crons` entry. The 15-minute auto-research run therefore never fires; research only happens when the operator presses the button. | Add a `crons` entry for `/api/desk-auto-research`. Note Vercel restricts cron frequency by plan: Hobby allows one run per day, so `*/15 * * * *` needs Pro. |
@@ -43,7 +43,7 @@
 | `TWITCH_CLIENT_ID` / `TWITCH_CLIENT_SECRET` | Status panel (optional) | Also used to create clips. |
 | `TWITCH_CLIP_ACCESS_TOKEN` | Clip creation (optional) | Needs the `clips:edit` scope. |
 | `TWITCH_EVENTSUB_CALLBACK` | Optional | Overrides the callback URL the controller displays. |
-| `X_BEARER_TOKEN` | X feed / brief | Legacy `X_ACCESS_TOKEN` still works as a fallback. |
+| `X_BEARER_TOKEN` — or all four of `X_CONSUMER_KEY`, `X_CONSUMER_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET` | X feed / brief | Bearer is preferred when present; otherwise requests are signed OAuth 1.0a and use the v1.1 endpoints (`trends/place.json`, `statuses/home_timeline.json`) that accept it. `X_ACCESS_TOKEN` alone is not a credential. |
 | `GEMINI_API_KEY` | Trends + brief (optional) | Enriches trends and powers the brief and the witty rewrite. |
 | `AUDIOMACK_KEY` / `AUDIOMACK_SECRET` | Audiomack station (optional) | A curated station is served when these are absent. |
 | `YOUTUBE_API_KEY` | Music Desk search (optional) | A Google Cloud key with the **YouTube Data API v3** enabled. Powers `crid music play <song>` and the controller's "Search YouTube" box. Without it a spoken song name is refused and the queue stays manual. This only resolves which video is on air; the player itself stays a Swae web-page layer. |

@@ -2,16 +2,20 @@
 // Credentials stay server-side. Trend requests are explicit and bounded.
 // Routes:
 //   GET /api/x/feed?mode=trends&woeid=23424908   Nigeria trends (default)
-//   GET /api/x/feed?mode=following&userId=123   posts from people the user follows
-//   GET /api/x/feed?mode=for-you&userId=123     closest available: home timeline
+//   GET /api/x/feed?mode=following              home timeline (people the account follows)
+//   GET /api/x/feed?mode=for-you                closest available: home timeline
+//   GET /api/x/feed?mode=following&userId=123   bearer-token path only: that user's timeline
 //
 // Auth, in order of preference:
-//   1. X_BEARER_TOKEN — an app-only bearer token, when the project has one.
+//   1. X_BEARER_TOKEN — an app-only bearer token, when the project has one. With a bearer
+//      token the timeline modes use the v2 user-timeline endpoints and userId is required.
 //   2. OAuth 1.0a user context, signed here with the four credentials the project
 //      actually provisions: X_CONSUMER_KEY, X_CONSUMER_SECRET, X_ACCESS_TOKEN,
 //      X_ACCESS_TOKEN_SECRET. This used to be broken: the code sent X_ACCESS_TOKEN as
 //      `Authorization: Bearer`, which is not a bearer token, so every call came back
-//      "X API 401" and the feed was dead on air.
+//      "X API 401" and the feed was dead on air. v2 refuses OAuth 1.0a outright, so under
+//      OAuth 1.0a every mode uses the v1.1 endpoints that accept it: trends/place.json
+//      and statuses/home_timeline.json.
 //
 // The signing function is pure and takes the nonce and timestamp as arguments, so tests
 // pin them and the signature is reproducible.
@@ -232,6 +236,41 @@ export async function fetchXTrends({
   return { mode: "trends", woeid: id, updatedAt: now, trends };
 }
 
+// v1.1 statuses, shaped like the v2 tweets the overlay already renders.
+const tweetFromV1 = (t) => {
+  const u = t?.user || {};
+  return {
+    id: String(t?.id_str ?? t?.id ?? ""),
+    text: text(t?.full_text ?? t?.text ?? ""),
+    author: text(u.name || t?.user?.screen_name || "", 80),
+    handle: text(u.screen_name || "", 80),
+    avatar: u.profile_image_url ? String(u.profile_image_url).replace(/^http:/, "https:") : null,
+    createdAt: t?.created_at || null,
+    metrics: {
+      reply: null, // v1.1 timelines do not report a reply count
+      repost: Number.isFinite(Number(t?.retweet_count)) ? Number(t.retweet_count) : 0,
+      like: Number.isFinite(Number(t?.favorite_count)) ? Number(t.favorite_count) : 0,
+    },
+  };
+};
+
+// The home timeline is "the posts of the people this account follows" — exactly what the
+// desk's following/for-you card means. v1.1 accepts OAuth 1.0a user context; the v2
+// user-timeline endpoints do not, which is why this path exists at all. There is no v1.1
+// equivalent of "a different user's timeline", so userId only applies on the bearer path.
+export async function fetchXHomeTimeline({
+  env = process.env,
+  fetchFn = globalThis.fetch,
+  max = 10,
+  now = Date.now(),
+  nonce,
+} = {}) {
+  const count = boundedInt(max, 10, 1, 200);
+  const data = await xFetch(`/1.1/statuses/home_timeline.json?count=${count}&tweet_mode=extended`, { env, fetchFn, now, nonce });
+  const tweets = (Array.isArray(data) ? data : []).slice(0, count).map(tweetFromV1);
+  return { mode: "home", updatedAt: now, tweets };
+}
+
 // The handler turns a thrown error into the JSON the overlay and the operator both read.
 // upstreamStatus and detail are kept separate from the human message so /control can show
 // exactly what X said instead of a generic failure.
@@ -258,6 +297,14 @@ const handler = async (req) => {
     }
 
     if (mode === "following" || mode === "for-you") {
+      // With no bearer token the project only has OAuth 1.0a, and the v2 user-timeline
+      // endpoints refuse it. The v1.1 home timeline is the same feed under the auth the
+      // project actually has, so userId is not needed on this path — it names the account
+      // that signed the request, which is the one whose follows the desk wants.
+      if (!bearerToken()) {
+        const home = await fetchXHomeTimeline({ max });
+        return json({ mode, userId: userId || null, updatedAt: home.updatedAt, tweets: home.tweets });
+      }
       if (!userId) return json({ error: "userId is required for following / for-you" }, 422);
       // The v2 path is reverse_chronological with an underscore. It was spelled with a hyphen, which
       // X answers with a bare 404, so this mode could not have worked either.

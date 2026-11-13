@@ -7,7 +7,7 @@
     "BARE CHEST, HIS OWN KIT — no shirt, no straps, no backpack in the render (bag=-1). He wears the recipe's camo trousers, socks and shoes. Accessories and the backpack are separate objects the overlay draws.",
     "rotation MUST be 0. Crid is drawn front-facing. rotation=7 (three-quarter) is what made earlier weight stages look like different people.",
     "The seven production keys are 3, 0, 4, 5, 1, 11, 2 (leanest -> heaviest). Key 3 is the exact archived body-000-r7.webp reference, not a fresh Snap render. The six heavier builds use Snap body values 0, 4, 5, 1, 11 and 2 at rotation 0; do not invent stage numbers the renderer does not produce.",
-    "The exact body-000-r7.webp image is the leanest production render (307 px ink width, 1156 px ink height, floor y=1325). Its head/face pixels are copied exactly into every heavier stage. All stages retain the same measured 1156 px ink height; only horizontal body width and mass change.",
+    "The exact body-000-r7.webp image is the leanest production render (307 px ink width, 1185 px ink height, floor y=1325). Its head/face pixels are copied exactly into every heavier stage. All stages retain the same measured 1185 px ink height; only horizontal body width and mass change.",
     "The six heavier body stages are fetched at rotation 0, translated to the reference torso axis and floor, and receive the exact r7 head crop. Horizontal body-only deformation creates the historical width ladder; the leanest stage is never regenerated or resampled.",
     "Never pass these parameters to an image-generation model. They belong to Snap's renderer and nowhere else.",
     "Tone values must be sent as DECIMAL integers. Hex strings in a URL make the renderer answer HTTP 400 with an empty body."

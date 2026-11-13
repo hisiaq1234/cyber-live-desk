@@ -573,6 +573,8 @@ html[data-scene="split"] #desk.layout-alive .slot{width:min(460px,calc(50vw - 2*
 html[data-scene="split"] #desk.layout-alive #dock-right{width:min(360px,calc(50vw - 2*var(--m)));max-height:calc(100svh - 2*var(--m))}
 html[data-scene="split"] #desk #time-dock{min-width:0;width:min(390px,calc(50vw - 2*var(--m)));max-width:calc(50vw - 2*var(--m))}
 html[data-scene="split"] #desk #loc-map{max-width:calc(50vw - 2*var(--m))}
+html[data-scene="split"] #desk #music-plate{width:min(342px,calc(50vw - 2*var(--m)))}
+html[data-scene="split"] #desk #auto-headlines{width:min(36vw,calc(50vw - 2*var(--m)))}
 
 /* The clock plate is the operator's own Black Market timestamp, ported rather than paraphrased
    (his index (2).html): crimson #dc143c on paper #f7f3ea, IBM Plex Mono digits at 2.35vw with

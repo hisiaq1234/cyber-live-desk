@@ -60,6 +60,7 @@ test("the default overlay uses the two-camera split HUD and keeps each half clea
   assert.match(overlay, /const scene = pick\("scene", \["split", "pip"\], "split"\)/);
   assert.match(overlay, /html\[data-scene="split"\] #desk\.layout-alive \.slot/);
   assert.match(overlay, /html\[data-scene="split"\] #desk\.layout-alive #dock-right/);
+  assert.match(overlay, /html\[data-scene="split"\] #desk #music-plate/);
   assert.match(overlay, /scene === "split" \? "tl" : "tc"/);
   assert.match(overlay, /split \? 0\.44 : 0\.94/);
 });

@@ -844,7 +844,7 @@ import { createCridVoice } from "./crid-voice.js";
     }
   };
   const reloadPreview = () => {
-    try { previewFrame.src = "/desk?debug=0&r=" + Date.now(); } catch { /* ignore */ }
+    try { previewFrame.src = "/desk?debug=0&scene=split&r=" + Date.now(); } catch { /* ignore */ }
     toast("Preview refreshed");
   };
   const previewPanel = h("section", "panel preview-panel",

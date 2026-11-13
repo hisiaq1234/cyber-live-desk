@@ -1067,7 +1067,13 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // Positions are reported back in desk px so a screenshot can be checked by eye.
   try{window.__cridStage=()=>stage?{state:stage.state,key:stage.key,layer:stage.layer,
     walkX:Math.round(stage.walkX*UPX()+innerWidth/2),groundY:Math.round(stage.groundY*UPX()),
-    roll:+stage.roll.toFixed(3),pitch:+stage.pitch.toFixed(3),trace:stage.trace,hold:+stage.hold.toFixed(1)}:null}catch{}
+    roll:+stage.roll.toFixed(3),pitch:+stage.pitch.toFixed(3),trace:stage.trace,hold:+stage.hold.toFixed(1),
+    grounded:cridBody.grounded,supportId:cridBody.supportId,vx:+cridBody.vx.toFixed(3),vy:+cridBody.vy.toFixed(3)}:null}catch{}
+  try{window.__cridMotor=()=>({x:+cridBody.x.toFixed(4),y:+cridBody.y.toFixed(4),
+    vx:+cridBody.vx.toFixed(4),vy:+cridBody.vy.toFixed(4),grounded:cridBody.grounded,
+    supportId:cridBody.supportId,distanceTravelled:+cridBody.distanceTravelled.toFixed(4),
+    mass:cridBody.mass,strength:cridBody.strength,grip:cridBody.grip?{...cridBody.grip}:null,
+    platforms:world.platforms.map(p=>p.id)})}catch{}
   // Same read-only QA spirit for the loose bodies: a screenshot or a test can prove a sheet
   // fell, fluttered and came to rest without reaching into the closure.
   try{window.__cridPapers=()=>papers.map(p=>({x:Math.round(p.body.x),y:Math.round(p.body.y),

@@ -871,6 +871,48 @@ test("a vote with no poll running cannot write a result onto the segment", async
   assert.equal((await readState(store)).crid.result ?? null, null);
 });
 
+test("The Ascent is an authoritative, private-voter run with a quiet default when chat is absent", async () => {
+  const store = makeStore();
+  const started = await runAction(store, { action: "ascent-start" }, NOW);
+  assert.equal(started.state.ascent.status, "active");
+  assert.equal(started.state.ascent.progress, 0);
+  assert.equal(started.state.ascent.vote.options.length, 2);
+  assert.equal(started.state.ascent.vote.endsAt, NOW + 30_000);
+
+  const opened = started.state.ascent.vote;
+  const vote = await runAction(store, { action: "ascent-vote", choice: opened.options[1].id, viewerId: "viewer-22" }, NOW + 1);
+  assert.equal(vote.state.ascent.vote.options[1].count, 1);
+  assert.equal(vote.state.ascent.vote.voters["viewer-22"], opened.options[1].id);
+
+  const publicRun = publicProjection(vote.state).ascent;
+  assert.equal(publicRun.vote.options[1].count, 1);
+  assert.ok(!("voters" in publicRun.vote), "stable viewer ids never enter public overlay state");
+
+  const resolved = await publicState(store, null, opened.endsAt + 1);
+  assert.equal(resolved.body.ascent.vote, null);
+  assert.equal(resolved.body.ascent.progress, 34);
+  assert.equal(resolved.body.ascent.motion.kind, "climb");
+  assert.equal(resolved.body.ascent.motion.choice, opened.options[1].id);
+
+  const next = await publicState(store, null, opened.endsAt + 6_001);
+  assert.equal(next.body.ascent.vote.checkpoint, 1, "the next authored decision opens after the climb beat");
+});
+
+test("The Ascent separates support strength from the original body sizing ladder", async () => {
+  const store = makeStore();
+  await runAction(store, { action: "ascent-start" }, NOW);
+  let state = (await runAction(store, { action: "bot-engagement", kind: "sub", count: 1 }, NOW + 1)).state;
+  assert.equal(state.bot.subs, 1, "existing subscription growth remains intact");
+  assert.equal(state.ascent.strength.total, 1);
+  assert.equal(state.ascent.strength.tier, 0);
+
+  state = (await runAction(store, { action: "bot-engagement", kind: "gift", count: 2 }, NOW + 2)).state;
+  assert.equal(state.bot.subs, 3, "gift accounting retains the existing growth behavior");
+  assert.equal(state.ascent.strength.total, 3, "run strength is a separate persisted value");
+  assert.equal(state.ascent.strength.tier, 1);
+  assert.equal(state.ascent.beat.kind, "gift");
+});
+
 test("a state blob from before CRID reads with nothing on the card", async () => {
   const old = { ...DEFAULT_STATE };
   delete old.crid;

@@ -63,6 +63,9 @@ export const DEFAULT_STATE = {
   // and the words chat has claimed so far. null means no round has ever been opened, which is
   // how every frame looked before there was a game, so an old desk renders unchanged.
   letters: null, // { id, letters: string[7], openedAt, endsAt, status: "open"|"closed", closedAt, claims: [{word, user, score, at}], scores: {user: points}, best: {word, user, score}|null }
+  // The Ascent is a finite, authored overnight expedition. Voter identities stay in the private
+  // state document; publicProjection only releases the current decision and anonymous tally.
+  ascent: null, // { id, status, title, checkpoint, progress, strength, vote?, motion?, beat?, nextVoteAt? }
   // Music Desk — independent audio queue, independent of Spotify.
   music: null, // { queue: [{id, title, artist, audioUrl}], current: {id, title, artist, audioUrl}|null, playing: boolean, volume: number, muted: boolean }
   // X Space Radar — selected public X Spaces (info card + external link only).
@@ -463,6 +466,7 @@ export function publicProjection(state, now = Date.now()) {
     twitchChatEnabled,
     twitchAllowedUserIds,
     music,
+    ascent,
     location,
     locationHistory,
     ...rest
@@ -475,7 +479,12 @@ export function publicProjection(state, now = Date.now()) {
   } : null;
   // The public `location` is the delayed view, never the fresh fix: state.location and
   // state.locationHistory stay on the operator side.
-  return { ...rest, location: publicLocation(state, now), music: music ? { current: publicTrack, playing: Boolean(music.playing) } : null };
+  return {
+    ...rest,
+    ascent: publicAscent(ascent),
+    location: publicLocation(state, now),
+    music: music ? { current: publicTrack, playing: Boolean(music.playing) } : null,
+  };
 }
 
 // Answers the overlay's poll. Auto-advance is read-driven, so the card only moves when
@@ -486,6 +495,10 @@ export async function publicState(store, since, now = Date.now()) {
     const moved = await advanceIfExpired(store, state, now);
     if (moved) state = moved;
   }
+  // An overlay can reload or a quiet room can cast no vote at all. Advancing this persisted
+  // state on read keeps the run recoverable without a browser-local timer deciding the story.
+  const ascended = await advanceAscentIfDue(store, state, now);
+  if (ascended) state = ascended;
   if (since != null && since === String(state.version)) return { status: 204 };
   let card = null;
   if (state.mode === "cards" && state.visible && state.activeCardId) {
@@ -632,6 +645,140 @@ const wittyRewrite = (headline, summary) => {
 // node:crypto is reachable in the runtime, but globalThis.crypto keeps this file
 // importable by tests running under plain node.
 const cryptoRandomId = () => globalThis.crypto.randomUUID();
+
+// ---------- The Ascent ----------
+// A short authored route, rather than an endless score treadmill. Each checkpoint gives chat a
+// real decision; silence takes the named safe default so an overnight room is still a story.
+export const ASCENT_VOTE_MS = 30 * 1000;
+export const ASCENT_SETTLE_MS = 6 * 1000;
+export const ASCENT_STRENGTH_PER_TIER = 3;
+export const ASCENT_ROUTE = [
+  { id: "first-ledge", label: "THE FIRST LEDGE", prompt: "Which hand finds the first hold?", default: "left", choices: [
+    { id: "left", label: "LEFT GRIP", command: "!left" }, { id: "right", label: "RIGHT REACH", command: "!right" },
+  ] },
+  { id: "signal-rail", label: "THE SIGNAL RAIL", prompt: "Which way does CRID read the rail?", default: "right", choices: [
+    { id: "left", label: "HOLD LEFT", command: "!left" }, { id: "right", label: "SWING RIGHT", command: "!right" },
+  ] },
+  { id: "upper-light", label: "THE UPPER LIGHT", prompt: "One last move. Where does he commit?", default: "left", choices: [
+    { id: "left", label: "LEFT LIP", command: "!left" }, { id: "right", label: "RIGHT LIP", command: "!right" },
+  ] },
+];
+
+const ascentCheckpoint = (index) => ASCENT_ROUTE[Math.max(0, Math.min(ASCENT_ROUTE.length - 1, Number(index) || 0))];
+const ascentVote = (checkpoint, now) => ({
+  id: cryptoRandomId(),
+  checkpoint: ASCENT_ROUTE.findIndex((item) => item.id === checkpoint.id),
+  prompt: checkpoint.prompt,
+  opensAt: now,
+  endsAt: now + ASCENT_VOTE_MS,
+  options: checkpoint.choices.map((choice) => ({ ...choice, count: 0 })),
+  // This map is deliberately private. It enforces one vote per stable Twitch account without
+  // turning a public overlay endpoint into a viewer-identification endpoint.
+  voters: {},
+});
+
+export function startAscent(now = Date.now(), title = "THE ASCENT") {
+  const first = ascentCheckpoint(0);
+  return {
+    id: cryptoRandomId(), status: "active", title, goal: "Reach the upper light.",
+    startedAt: now, completedAt: null, checkpoint: 0, progress: 0,
+    strength: { total: 0, tier: 0 },
+    vote: ascentVote(first, now), nextVoteAt: null,
+    motion: { id: 1, kind: "prepare", label: first.label, at: now },
+    beat: null,
+  };
+}
+
+// Public shape: the overlay needs the legible choice/count/deadline but never the voter ledger.
+export function publicAscent(run) {
+  if (!run || typeof run !== "object") return null;
+  const vote = run.vote && typeof run.vote === "object" ? {
+    id: run.vote.id,
+    checkpoint: run.vote.checkpoint,
+    prompt: run.vote.prompt,
+    opensAt: run.vote.opensAt,
+    endsAt: run.vote.endsAt,
+    options: Array.isArray(run.vote.options)
+      ? run.vote.options.map((option) => ({ id: option.id, label: option.label, command: option.command, count: Math.max(0, Math.trunc(option.count || 0)) }))
+      : [],
+  } : null;
+  return {
+    id: run.id, status: run.status, title: run.title, goal: run.goal,
+    checkpoint: run.checkpoint, checkpoints: ASCENT_ROUTE.length,
+    progress: Math.max(0, Math.min(100, Math.trunc(run.progress || 0))),
+    strength: { total: Math.max(0, Math.trunc(run.strength?.total || 0)), tier: Math.max(0, Math.trunc(run.strength?.tier || 0)) },
+    vote, nextVoteAt: run.nextVoteAt ?? null,
+    motion: run.motion ? { ...run.motion } : null,
+    beat: run.beat ? { ...run.beat } : null,
+  };
+}
+
+export function ascentAdvancePlan(run, now = Date.now()) {
+  if (!run || run.status !== "active") return null;
+  if (run.vote?.endsAt != null && run.vote.endsAt <= now) {
+    const checkpoint = ascentCheckpoint(run.checkpoint);
+    const options = Array.isArray(run.vote.options) ? run.vote.options : [];
+    const top = Math.max(0, ...options.map((option) => Math.max(0, Math.trunc(option.count || 0))));
+    const leaders = options.filter((option) => Math.max(0, Math.trunc(option.count || 0)) === top);
+    const selected = top > 0 && leaders.length === 1
+      ? leaders[0].id
+      : checkpoint.default;
+    const nextCheckpoint = (Number(run.checkpoint) || 0) + 1;
+    const complete = nextCheckpoint >= ASCENT_ROUTE.length;
+    return {
+      ...run,
+      status: complete ? "complete" : "active",
+      checkpoint: nextCheckpoint,
+      progress: complete ? 100 : Math.ceil((nextCheckpoint / ASCENT_ROUTE.length) * 100),
+      vote: null,
+      nextVoteAt: complete ? null : now + ASCENT_SETTLE_MS,
+      motion: {
+        id: Math.max(0, Math.trunc(run.motion?.id || 0)) + 1,
+        kind: complete ? "arrive" : "climb",
+        choice: selected,
+        label: complete ? "REACHED THE UPPER LIGHT" : checkpoint.label,
+        at: now,
+      },
+    };
+  }
+  if (!run.vote && Number.isFinite(run.nextVoteAt) && run.nextVoteAt <= now) {
+    const checkpoint = ascentCheckpoint(run.checkpoint);
+    return {
+      ...run,
+      vote: ascentVote(checkpoint, now),
+      nextVoteAt: null,
+      motion: {
+        id: Math.max(0, Math.trunc(run.motion?.id || 0)) + 1,
+        kind: "consider",
+        label: checkpoint.label,
+        at: now,
+      },
+    };
+  }
+  return null;
+}
+
+export async function advanceAscentIfDue(store, state, now = Date.now()) {
+  const ascent = ascentAdvancePlan(state.ascent, now);
+  if (!ascent) return null;
+  const fresh = await commitStateIfCurrent(store, state.version, { ascent }, now);
+  return fresh.version > state.version ? fresh : null;
+}
+
+const ascentStrength = (run, kind, count, now) => {
+  if (!run || run.status !== "active" || !["sub", "gift"].includes(kind)) return run;
+  const gain = kind === "sub" ? 1 : Math.max(1, Math.min(1000, Math.trunc(count || 1)));
+  const total = Math.max(0, Math.trunc(run.strength?.total || 0)) + gain;
+  return {
+    ...run,
+    strength: { total, tier: Math.floor(total / ASCENT_STRENGTH_PER_TIER) },
+    beat: {
+      id: Math.max(0, Math.trunc(run.beat?.id || 0)) + 1,
+      kind, gain, at: now,
+      label: kind === "gift" ? `STRENGTH +${gain}` : "STRENGTH +1",
+    },
+  };
+};
 
 // ---------- operator actions ----------
 
@@ -815,6 +962,7 @@ export async function runAction(store, b, now = Date.now()) {
   let patch;
   // Letters answers its caller with what it decided, and a refusal must not repaint the board.
   let lettersResult = null;
+  let ascentResult = null;
   let quiet = false;
   switch (b.action) {
     case "show": {
@@ -1013,6 +1161,37 @@ export async function runAction(store, b, now = Date.now()) {
     case "twitch-allow": {
       const ids = Array.isArray(b.ids) ? b.ids : String(b.ids ?? "").split(/[^0-9]+/);
       patch = { twitchAllowedUserIds: [...new Set(ids.map(String).filter((id) => /^\d+$/.test(id)))].slice(0, 100) };
+      break;
+    }
+    // ---------- The Ascent ----------
+    case "ascent-start": {
+      if (state.ascent?.status === "active") throw new HttpError(409, "The Ascent is already in progress.");
+      const title = text(b.title, LIMITS.cridTitle, "title") || "THE ASCENT";
+      patch = { ascent: startAscent(now, title) };
+      break;
+    }
+    case "ascent-stop":
+      patch = { ascent: null };
+      break;
+    case "ascent-vote": {
+      const ascent = state.ascent;
+      const vote = ascent?.vote;
+      if (!ascent || ascent.status !== "active" || !vote) throw new HttpError(409, "No Ascent route vote is open.");
+      if (vote.endsAt <= now) throw new HttpError(409, "That Ascent vote is over.");
+      const choice = String(b.choice ?? "").toLowerCase();
+      const option = vote.options?.find((item) => item.id === choice);
+      if (!option) throw new HttpError(422, "Choose one of the open Ascent routes.");
+      const viewerId = String(b.viewerId ?? "").trim();
+      if (!/^[A-Za-z0-9_-]{1,64}$/.test(viewerId)) throw new HttpError(422, "A stable viewer id is required for an Ascent vote.");
+      if (vote.voters?.[viewerId]) {
+        ascentResult = { accepted: false, reason: "already-voted", choice: vote.voters[viewerId] };
+        quiet = true;
+        break;
+      }
+      const voters = { ...(vote.voters ?? {}), [viewerId]: option.id };
+      const options = vote.options.map((item) => item.id === option.id ? { ...item, count: Math.max(0, Math.trunc(item.count || 0)) + 1 } : item);
+      patch = { ascent: { ...ascent, vote: { ...vote, voters, options } } };
+      ascentResult = { accepted: true, choice: option.id, remainingMs: vote.endsAt - now };
       break;
     }
     case "clip-create": {
@@ -1245,7 +1424,10 @@ export async function runAction(store, b, now = Date.now()) {
       const delta = kind === "sub" ? 1 : kind === "gift" ? count : 0;
       const currentSubs = Number.isFinite(state.bot?.subs) ? Math.max(0, Math.trunc(state.bot.subs)) : 0;
       const label = kind === "sub" ? "+SUB" : kind === "gift" ? `GIFT ×${count}` : `${count.toLocaleString("en-US")} BITS`;
-      patch = { bot: { ...(state.bot ?? {}), on: state.bot?.on ?? true, ...(delta ? { subs: currentSubs + delta } : {}), react: { kind, label, n: (state.bot?.react?.n ?? 0) + 1 } } };
+      patch = {
+        bot: { ...(state.bot ?? {}), on: state.bot?.on ?? true, ...(delta ? { subs: currentSubs + delta } : {}), react: { kind, label, n: (state.bot?.react?.n ?? 0) + 1 } },
+        ...(state.ascent ? { ascent: ascentStrength(state.ascent, kind, count, now) } : {}),
+      };
       break;
     }
     case "bot-cue": {
@@ -1357,12 +1539,12 @@ export async function runAction(store, b, now = Date.now()) {
       throw new HttpError(422, "Unknown action.");
   }
 
-  if (quiet) return { state, queueLength: queue.length, ...(lettersResult ? { letters: lettersResult } : {}) };
+  if (quiet) return { state, queueLength: queue.length, ...(lettersResult ? { letters: lettersResult } : {}), ...(ascentResult ? { ascent: ascentResult } : {}) };
   const committed = await commitState(store, state, patch, now);
   // A minted cue is remembered, because the state only ever carries the newest one: a report about
   // the cue it replaced is still a report about a stamp this desk really issued.
   if (b.action === "bot-cue") await recordIssuedCue(store, committed.bot?.cue, now);
-  return { state: committed, queueLength: queue.length, ...(lettersResult ? { letters: lettersResult } : {}) };
+  return { state: committed, queueLength: queue.length, ...(lettersResult ? { letters: lettersResult } : {}), ...(ascentResult ? { ascent: ascentResult } : {}) };
 }
 
 // ---------- Twitch clipping ----------

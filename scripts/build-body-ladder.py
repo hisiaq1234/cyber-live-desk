@@ -96,8 +96,9 @@ def alpha_bbox(im):
 
 def ink(im):
     x0, y0, x1, y1 = alpha_bbox(im)
+    area = sum(im.getchannel("A").histogram()[ALPHA_MIN + 1:])
     return {"x0": x0, "y0": y0, "x1": x1, "y1": y1, "w": x1 - x0, "h": y1 - y0,
-            "cx": round((x0 + x1) / 2, 1), "bottom": y1}
+            "cx": round((x0 + x1) / 2, 1), "bottom": y1, "area": area}
 
 
 def mid_torso_axis(im):

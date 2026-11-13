@@ -7,9 +7,7 @@ Owner's words (2026-11-12): *"the bag can sometimes be a drag for him when he is
 might be struggling to climb with it sometimes… he needs gravity, I need realism… it's like a
 proper real engine world. If paper falls from the bag, gravity really had to work for all."*
 
-This extends `crid-backpack-spec.md`. Everything below is one world with one set of rules — the
-character, the bag and any loose object obey the same gravity, the same floor and the same mass
-maths. No element gets to cheat for looks.
+This extends `crid-backpack-spec.md`. Physical traversal and props use one world with one set of rules — the character, the bag and any loose object obey the same gravity, support and mass maths. The desk's separate cue-layout navigation is explicitly kinematic presentation, not game-world traversal.
 
 ## The world
 - **One gravity.** A single downward acceleration for every body, in screen units per second².
@@ -43,13 +41,13 @@ maths. No element gets to cheat for looks.
   (`halfW/halfH`), velocity, strength, grounded/support id, motor intent and optional hand grip.
   One gravity constant, one fixed-step accumulator (1/120 s), one body set and one floor plane.
   The existing bag and loose paper stay in this same integrator. No third-party engine, no canvas,
-  no second character simulation loop.
+  no second character simulation loop. Cue-layout navigation is a mutually exclusive screen-space mode; it is not stepped by this world.
 - The layer registry supplies static platform rectangles to that world. The motor resolves solid
   sides, platform tops and undersides; the stage planner requests movement but cannot write root
   trajectories. Walk speed/acceleration and grip capacity use strength divided by character mass
   plus carried load. Jump impulses use the same gravity. A ledge grip is a bounded world-space
   anchor; climbing is a force-limited motor toward a target, and sustained overload releases it.
-- The DOM host is positioned from the physics body's root. `crid-3d.js` remains a pose renderer:
+- During physical stage traversal, the DOM host is positioned from the physics body's root. During cue-layout navigation, `startWalk()/advanceWalk()` owns the screen-space position and the stage motor is bypassed; measured displacement still feeds the distance gait. These modes never write the root simultaneously. `crid-3d.js` remains a pose renderer:
   gait phase comes from measured root distance / stride length, stance ankles retain screen-space
   anchors while the root moves, and the existing two-bone IK solves the leg/arm chains. The stage
   state machine only completes a climb/hop after the physics body reports support on that layer.
@@ -58,7 +56,7 @@ maths. No element gets to cheat for looks.
 
 ## What this is not
 - Not a 3D ragdoll and not a full rigid-body engine. Two dimensions, one gravity, a floor, a handful
-  of bodies — but every visible body in the frame obeys it.
+  of bodies — but every physical actor and prop in the world obeys it. Cue-layout presentation is deliberately outside that world.
 - Not random. Every stumble, slip and bounce is derived from mass and velocity so it reads as cause
   and effect, and the same input always produces the same result.
 

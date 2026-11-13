@@ -55,10 +55,10 @@ test("solid platform side blocks horizontal travel",()=>{
 });
 
 test("a reachable ledge grip drives a weighted mantle onto the platform",()=>{
-  const {world,body,run}=make({x:70,y:-50,gravity:8});
-  world.setPlatforms([{id:"ledge",left:100,right:200,top:-200,bottom:0}]);
-  assert.equal(world.grabCharacter(body,{id:"ledge",x:100,y:-200},{side:-1,reach:180}),true);
-  assert.equal(world.climbCharacter(body,{x:140,feetY:-200},{strength:1,load:.5}),true);
+  const {world,body,run}=make({x:.7,y:-.2,halfW:.1,halfH:.2,gravity:8});
+  world.setPlatforms([{id:"ledge",left:1,right:2,top:-.8,bottom:0}]);
+  assert.equal(world.grabCharacter(body,{id:"ledge",x:1,y:-.8},{side:-1,reach:1.8}),true);
+  assert.equal(world.climbCharacter(body,{x:1.4,feetY:-.8},{strength:1,load:.5}),true);
   run(2);
   assert.equal(body.supportId,"ledge");
   assert.equal(body.grip.id,"ledge");
@@ -73,7 +73,7 @@ test("out-of-reach ledge anchors are rejected",()=>{
 
 test("releasing a grip returns the character to gravity and floor support",()=>{
   const {world,body,run}=make({x:140,y:-250,grounded:false,supportId:null});
-  world.setPlatforms([{id:"ledge",left:100,right:200,top:-200,bottom:0}]);
+  world.setPlatforms([]);
   world.releaseGrip(body);
   run(1);
   assert.equal(body.grounded,true);

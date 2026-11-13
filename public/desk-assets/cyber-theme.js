@@ -191,7 +191,7 @@ ${T} #desk{
 ${T} #desk :is(.card,.court-wrap,.music-wrap,.space-wrap,.ledger-wrap,.riad-wrap,#x-feed){
   background:var(--gta-panel);border:1px solid var(--gta-line-soft);border-left:3px solid var(--gta-amber);
   border-radius:2px;box-shadow:0 5px 18px rgba(0,0,0,.34);backdrop-filter:none;-webkit-backdrop-filter:none;
-  color:var(--ink-1);rotate:0deg;--lean:0deg;--chaos-radius:2px;--sticker:none
+  color:var(--ink-1);rotate:0deg;--lean:0deg;--chaos-radius:2px
 }
 
 ${T} #desk .card{padding:.78em .95em .82em;max-height:32dvh}
@@ -320,7 +320,6 @@ ${T} #desk #swae-chat .swae-chat-text{color:#f0f1ed}
 
 ${T} #desk #music-plate .music-wrap{max-height:28dvh}
 
-${T} #desk #time-dock{backdrop-filter:none;-webkit-backdrop-filter:none}
 
 html.swae ${T} #desk :is(.card,.court-wrap,.music-wrap,.space-wrap,.ledger-wrap,.riad-wrap,#x-feed,#crid-live,#loc-map,#auto-headlines){
   backdrop-filter:none!important;-webkit-backdrop-filter:none!important

@@ -62,7 +62,7 @@ test("a reachable ledge grip drives a weighted mantle onto the platform",()=>{
   run(2);
   assert.equal(body.supportId,"ledge");
   assert.equal(body.grip,null);
-  assert.ok(body.x>1);
+  assert.ok(body.x>1,"body never cleared the ledge edge: x="+body.x+" y="+body.y+" vx="+body.vx+" vy="+body.vy);
 });
 
 test("out-of-reach ledge anchors are rejected",()=>{
@@ -87,6 +87,12 @@ test("a grip releases after sustained load exceeds its force capacity",()=>{
   run(.5);
   assert.equal(body.grip,null);
   assert.equal(body.gripFailed,true);
+});
+
+test("ledge grip respects the supplied world-space arm reach",()=>{
+  const {world,body}=make({x:0,y:0,halfW:.1,halfH:.2});
+  assert.equal(world.grabCharacter(body,{id:"far",x:5,y:-5},{reach:.4}),false);
+  assert.equal(body.grip,null);
 });
 
 test("carried load reduces attainable motor speed",()=>{

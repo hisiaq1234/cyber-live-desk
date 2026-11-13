@@ -232,7 +232,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // ---- the 3D body -----------------------------------------------------------------------
   // His real rigged Bitmoji (crid-3d.js): Snap's own GLB, 167 bones, facial morphs. The canvas
   // is him. The SVG figure is hidden the moment the model is on the GPU and is not put back.
-  let crid3d=null,lastPose=null,disposed3d=false,crid3dFailed=false;
+  let crid3d=null,lastPose=null,disposed3d=false,crid3dFailed=false,subs=0;
   const hideFigure=()=>{parts.avatarBase.setAttribute("display","none");parts.rigG.setAttribute("display","none");parts.ph.setAttribute("display","none");host.classList.add("has-glb")};
   // The stage machine's lean states don't set leanAt (that's the verb path) —
   // synthesize the same contract for the renderer: roll/pitch/lift plus a

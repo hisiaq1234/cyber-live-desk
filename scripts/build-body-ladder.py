@@ -240,9 +240,14 @@ def build_all():
     masters = {b: master(b) for b in BODIES}
     # Solve the shared frame from the approved leanest front-facing build, not body=0.
     base = masters[BODIES[0]]
-    dx = AXIS - mid_torso_axis(base)
+    dx = int(round(AXIS - mid_torso_axis(base)))
     dy = GROUND - ink(base)["bottom"]
+    # Correct the shared frame against the measured torso axis after integer-pixel placement.
+    # This keeps the approved face and every body stage on one identical vertical axis.
+    provisional = frame(base, dx, dy)
+    dx += int(round(AXIS - mid_torso_axis(provisional)))
     canonical = frame(base, dx, dy)
+    canonical_height = ink(canonical)["h"]
     stages, areas = [], []
     for i, body in enumerate(BODIES):
         out = lock_head(canonical, frame(masters[body], dx, dy))
@@ -251,7 +256,7 @@ def build_all():
         m = ink(out)
         if abs(m["w"] - target_w) > 2:
             raise RuntimeError(f"body {body}: expected width {target_w}, got {m['w']}")
-        if m["h"] != 1190 or m["bottom"] != GROUND:
+        if m["h"] != canonical_height or m["bottom"] != GROUND:
             raise RuntimeError(f"body {body}: frame drift {m}")
         if abs(mid_torso_axis(out) - AXIS) > 3:
             raise RuntimeError(f"body {body}: torso axis drift {mid_torso_axis(out):.1f}")

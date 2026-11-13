@@ -472,7 +472,7 @@ export async function initCrid3D(host,getState,onReady,onFail){
       // is a settle, not a cut. Phase keeps its own clock; only amplitude blends.
       walkW+=((walking?1:0)-walkW)*Math.min(1,dt*5);
       if(walking){
-        if(st.motorState&&Number.isFinite(st.motorState.screenX)){
+        if(st.motorState?.active&&Number.isFinite(st.motorState.screenX)){
           const strideLength=Math.max(.08,st.motorState.strideLength||.3);
           phase=(st.motorState.distanceTravelled/strideLength)%1;
         } else phase=(phase+dt*(reduced?3.4:5.2))%1;

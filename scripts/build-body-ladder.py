@@ -58,6 +58,7 @@ LADDER_JSON = CRID / "ladder.json"
 FRAME_W, FRAME_H = 1050, 1400
 GROUND = 1325         # ink bottom, the y crid-bot.js maps onto the floor line
 AXIS = 560            # torso axis, the x crid-bot.js maps onto the sprite centre
+# Ignore near-transparent WebP edge fringe; the pinned r7's visible ink is 307x1156.
 ALPHA_MIN = 8
 QUALITY = 88          # webp quality: a 1050x1400 frame still has to be light to load on air
 
@@ -301,8 +302,8 @@ def build_all():
     if any(b <= a for a, b in zip(areas, areas[1:])):
         raise RuntimeError(f"body area must increase at every stage: {areas}")
     heights = {s["ink"]["h"] for s in stages}
-    if heights != {1185}:
-        raise RuntimeError(f"all body stages must retain the selected r7 ink height of 1185px: {sorted(heights)}")
+    if heights != {1156}:
+        raise RuntimeError(f"all body stages must retain the selected r7 ink height of 1156px: {sorted(heights)}")
     diffs = [{"from":stages[i]["key"],"to":stages[i+1]["key"],
               "dw":stages[i+1]["ink"]["w"]-stages[i]["ink"]["w"],
               "dh":stages[i+1]["ink"]["h"]-stages[i]["ink"]["h"]}

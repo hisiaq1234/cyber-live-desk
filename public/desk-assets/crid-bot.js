@@ -28,7 +28,6 @@
 import{RIGS}from"./crid/rig.mjs";
 import{initCrid3D}from"./crid-3d.js";
 import{createWorld}from"./physics.mjs";
-import{createCharacterMotor}from"./character-motor.mjs";
 import{createBeing}from"./being.mjs";
 import{createStage}from"./stage.mjs";
 const NS="http://www.w3.org/2000/svg",XLINK="http://www.w3.org/1999/xlink",PAL={onyx:"#1F1736",screen:"#0F0B17",edge:"#3A1D9E",indigo:"#6531F8",indigoDk:"#3A1D9E",mint:"#86F6BC",bone:"#A98BFF",ink:"#F4F0FF",slate:"#2B2738",red:"#FF5B57",dead:"#5E5873"},

@@ -82,8 +82,8 @@ test("releasing a grip returns the character to gravity and floor support",()=>{
 });
 
 test("a grip releases after sustained load exceeds its force capacity",()=>{
-  const {world,body,run}=make({gravity:8,mass:1,strength:1});
-  assert.equal(world.grabCharacter(body,{id:"ledge",x:0,y:-.2},{reach:2,strength:1,load:1}),true);
+  const {world,body,run}=make({gravity:8,mass:1,strength:1,halfW:.1,halfH:.2,y:-.2});
+  assert.equal(world.grabCharacter(body,{id:"ledge",x:0,y:-.2},{reach:.4,strength:1,load:1}),true);
   run(.5);
   assert.equal(body.grip,null);
   assert.equal(body.gripFailed,true);

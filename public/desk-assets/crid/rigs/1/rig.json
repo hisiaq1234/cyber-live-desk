@@ -19,15 +19,15 @@
   "pivot": {
     "head": {
       "x": 560,
-      "y": 481
+      "y": 480
     },
     "shoulder-l": {
-      "x": 387.2,
-      "y": 616
+      "x": 388.2,
+      "y": 615
     },
     "shoulder-r": {
-      "x": 729.0,
-      "y": 616
+      "x": 728.0,
+      "y": 615
     },
     "elbow-l": {
       "x": 351.0,
@@ -85,23 +85,23 @@
     },
     "torso": {
       "x": 294,
-      "y": 473,
+      "y": 472,
       "w": 527,
-      "h": 430,
+      "h": 431,
       "src": "./desk-assets/crid/rigs/1/torso.png"
     },
     "head": {
-      "x": 410,
-      "y": 137,
-      "w": 293,
-      "h": 352,
+      "x": 456,
+      "y": 166,
+      "w": 204,
+      "h": 322,
       "src": "./desk-assets/crid/rigs/1/head.png"
     },
     "arm-upper-l": {
-      "x": 320,
-      "y": 611,
-      "w": 106,
-      "h": 113,
+      "x": 321,
+      "y": 610,
+      "w": 105,
+      "h": 114,
       "src": "./desk-assets/crid/rigs/1/arm-upper-l.png"
     },
     "arm-fore-l": {
@@ -113,9 +113,9 @@
     },
     "arm-upper-r": {
       "x": 687,
-      "y": 611,
+      "y": 610,
       "w": 112,
-      "h": 113,
+      "h": 114,
       "src": "./desk-assets/crid/rigs/1/arm-upper-r.png"
     },
     "arm-fore-r": {

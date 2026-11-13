@@ -19,23 +19,23 @@
   "pivot": {
     "head": {
       "x": 560,
-      "y": 478
+      "y": 485
     },
     "shoulder-l": {
-      "x": 438.1,
-      "y": 613
+      "x": 437.1,
+      "y": 620
     },
     "shoulder-r": {
-      "x": 679.0,
-      "y": 613
+      "x": 681.0,
+      "y": 620
     },
     "elbow-l": {
-      "x": 411.0,
-      "y": 714
+      "x": 409.5,
+      "y": 719
     },
     "elbow-r": {
-      "x": 708.0,
-      "y": 714
+      "x": 708.5,
+      "y": 719
     },
     "hip-l": {
       "x": 500.5,
@@ -84,45 +84,45 @@
       "src": "./desk-assets/crid/rigs/4/shin-r.png"
     },
     "torso": {
-      "x": 371,
-      "y": 470,
-      "w": 376,
-      "h": 433,
+      "x": 370,
+      "y": 477,
+      "w": 377,
+      "h": 426,
       "src": "./desk-assets/crid/rigs/4/torso.png"
     },
     "head": {
-      "x": 410,
-      "y": 137,
-      "w": 293,
-      "h": 349,
+      "x": 456,
+      "y": 166,
+      "w": 204,
+      "h": 327,
       "src": "./desk-assets/crid/rigs/4/head.png"
     },
     "arm-upper-l": {
-      "x": 391,
-      "y": 608,
-      "w": 73,
-      "h": 114,
+      "x": 390,
+      "y": 615,
+      "w": 72,
+      "h": 112,
       "src": "./desk-assets/crid/rigs/4/arm-upper-l.png"
     },
     "arm-fore-l": {
       "x": 372,
-      "y": 706,
-      "w": 59,
-      "h": 184,
+      "y": 711,
+      "w": 58,
+      "h": 179,
       "src": "./desk-assets/crid/rigs/4/arm-fore-l.png"
     },
     "arm-upper-r": {
-      "x": 652,
-      "y": 608,
-      "w": 77,
-      "h": 114,
+      "x": 655,
+      "y": 615,
+      "w": 75,
+      "h": 112,
       "src": "./desk-assets/crid/rigs/4/arm-upper-r.png"
     },
     "arm-fore-r": {
       "x": 688,
-      "y": 706,
+      "y": 711,
       "w": 57,
-      "h": 184,
+      "h": 179,
       "src": "./desk-assets/crid/rigs/4/arm-fore-r.png"
     }
   }

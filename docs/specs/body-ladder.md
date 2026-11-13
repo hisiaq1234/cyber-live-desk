@@ -4,7 +4,7 @@
 
 The user-selected face and lean reference is [body-000-r7](https://github.com/hisiaq1234/cyber-live-desk/blob/cc1902269b6d36a4d086af3f67241af79a5bcbb0/public/desk-assets/crid/body-000-r7.webp). Its source commit is `cc1902269b6d36a4d086af3f67241af79a5bcbb0` and its verified Git blob is `864979d00e0e76de5ca87c30b6a99df57a33a417`.
 
-The old r7 set is **not** reused as the production ladder: its companion frames change camera angle/pose and include attached straps. The selected `000` frame is now the actual production leanest render: the build fetches its exact bytes from the pinned source commit, preserves it as `body-3-r0.webp`, and uses its decoded pixels as the canonical head/face source for all six heavier stages. The production bag remains a separate prop.
+The full old r7 set is **not** reused as the production ladder because its companion frames change camera angle/pose. The selected `000` frame is the actual production leanest render: the build fetches its exact bytes from the pinned source commit, preserves it as `body-3-r0.webp`, and uses its decoded pixels as the canonical head/face source for all six heavier stages. The production bag remains a separate prop.
 
 ## Verified historical sizing
 
@@ -24,7 +24,7 @@ All reference frames were 1050×1400. The selected lean frame measures 307×1156
 
 ## Production ladder rules
 
-- Render one front-facing pose at rotation 0 for body keys `3, 0, 4, 5, 1, 11, 2`.
+- Use the exact archived `body-000-r7.webp` as key `3` (leanest); render the other six Snap body values `0, 4, 5, 1, 11, 2` at rotation 0.
 - Restore the historical r7 facial parameter values selected by the user. Keep the face identical across every body stage.
 - Keep all frames 1050×1400 and preserve the selected r7 head/face pixels exactly across stages. Align each body to the reference torso axis and floor y=1325. Preserve the 1156 px ink height; body growth is horizontal only and must not change the character's overall height.
 - Apply deterministic horizontal body-only deformation below the head lock line. Blend through the shoulders and taper the lower legs; never scale the head or move the feet.

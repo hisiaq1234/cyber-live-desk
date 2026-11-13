@@ -258,7 +258,10 @@ export async function initCrid3D(host,getState,onReady,onFail){
     // so "swing" written there was a twist, and easing three local slots is not
     // a rotation near a bent joint.
     const E=new THREE.Euler(),Q=new THREE.Quaternion(),Q2=new THREE.Quaternion();
+    // Bones the stage channels own this frame — pose() must not write them.
+    let stageOwned=null;
     const rot=(n,x=0,y=0,z=0)=>{const b=B(n);if(!b)return;
+      if(stageOwned&&stageOwned.has(n))return;
       const P=restPQ.get(n);
       if(!P){E.set(x,y,z,"XYZ");Q.setFromEuler(E);Q2.copy(b.userData.q0).multiply(Q);b.quaternion.copy(Q2);return}
       E.set(x,y,z,"XYZ");Q.setFromEuler(E);
@@ -266,7 +269,7 @@ export async function initCrid3D(host,getState,onReady,onFail){
       b.quaternion.copy(b.userData.q0).premultiply(Q2)};
 
     const J={
-      pelvis:"C_pelvis0001_bind_JNT",spine2:"C_spine0002_bind_JNT",spine3:"C_spine0003_bind_JNT",
+      pelvis:"C_pelvis0001_bind_JNT",spine1:"C_spine0001_bind_JNT",spine2:"C_spine0002_bind_JNT",spine3:"C_spine0003_bind_JNT",
       neck1:"C_neck0001_bind_JNT",neck2:"C_neck0002_bind_JNT",head:"C_head_bind_JNT",
       thighL:"L_legUpper0001_bind_JNT",shinL:"L_legLower0001_bind_JNT",footL:"L_foot0001_bind_JNT",
       thighR:"R_legUpper0001_bind_JNT",shinR:"R_legLower0001_bind_JNT",footR:"R_foot0001_bind_JNT",
@@ -310,8 +313,7 @@ export async function initCrid3D(host,getState,onReady,onFail){
     // body instead of posing as one rigid cut-out.
     const CH_TAU=n=>/head/.test(n)?.10:/neck/.test(n)?.07:/spine0003|spine0002/.test(n)?.17:/spine/.test(n)?.14
       :/pelvis/.test(n)?.20:/eye/.test(n)?.05:/arm|clavicle/.test(n)?.18:/foot|leg/.test(n)?.24:.14;
-    const applyStageChannels=(c,dt=1/60)=>{
-      CH_ACC.clear();const g=n=>c[n]||0;
+    const accStageChannels=c=>{CH_ACC.clear();const g=n=>c[n]||0;
       const lf=g("leanFwd"),ls=g("leanSide")||0,tw=g("twist")||0;
       chanAdd("C_pelvis0001_bind_JNT",-lf*.10,tw*.25,-ls*.10);
       chanAdd("C_spine0001_bind_JNT",-lf*.25,tw*.25,-ls*.25);
@@ -330,7 +332,12 @@ export async function initCrid3D(host,getState,onReady,onFail){
       chanAdd("L_legLower0001_bind_JNT",g("kneeL"),0,0);
       chanAdd("R_legLower0001_bind_JNT",g("kneeR"),0,0);
       chanAdd("L_foot0001_bind_JNT",-(g("ankleL")||0)*.5,0,0);
-      chanAdd("R_foot0001_bind_JNT",-(g("ankleR")||0)*.5,0,0);
+      chanAdd("R_foot0001_bind_JNT",-(g("ankleR")||0)*.5,0,0)};
+    // flushStageChannels writes each accumulated channel as an ABSOLUTE pose on
+    // the bone's rest quaternion — _CH_D * q0, the rig page's copy(base).premultiply.
+    // Stage-owned bones are never premultiplied on top of a walk: pose() skips
+    // whatever CH_ACC names, so a climbing step is the stage's alone.
+    const flushStageChannels=(dt=1/60)=>{
       CH_ACC.forEach((a,n)=>{const b=bones[n],P=restPQ.get(n);if(!b||!P)return;
         let s=CH_LAG.get(n);
         if(!s){s=[a[0],a[1],a[2]];CH_LAG.set(n,s)}
@@ -338,7 +345,8 @@ export async function initCrid3D(host,getState,onReady,onFail){
           s[0]+=(a[0]-s[0])*k;s[1]+=(a[1]-s[1])*k;s[2]+=(a[2]-s[2])*k}
         _CH_Q.setFromEuler(_CH_E.set(s[0],s[1],s[2],"XYZ"));
         _CH_D.copy(P).invert().multiply(_CH_Q).multiply(P);
-        b.quaternion.premultiply(_CH_D)})};
+        b.quaternion.copy(b.userData.q0).premultiply(_CH_D)})};
+    const applyStageChannels=(c,dt=1/60)=>{accStageChannels(c);flushStageChannels(dt)};
     // Channels that went quiet must release home too, or a finished reach would
     // hold its last lagged pose forever.
     const releaseStageChannels=dt=>{CH_LAG.forEach((s,n)=>{const k=1-Math.exp(-dt/CH_TAU(n));
@@ -436,7 +444,7 @@ export async function initCrid3D(host,getState,onReady,onFail){
     // looks arc instead of tracking a straight line.
     const LAG_TAU={
       neck1:[.05,.06,.05],neck2:[.07,.10,.08],head:[.09,.13,.11],
-      spine2:[.14,.15,.14],spine3:[.17,.19,.17],pelvis:[.20,.20,.20],
+      spine1:[.15,.16,.15],spine2:[.14,.15,.14],spine3:[.22,.24,.22],pelvis:[.20,.20,.20],
       armL:[.14,.16,.14],foreL:[.19,.22,.19],armR:[.14,.16,.14],foreR:[.19,.22,.19],
       thighL:[.18,.20,.18],shinL:[.22,.24,.22],footL:[.26,.28,.26],toeL:[.30,.32,.30],
       thighR:[.18,.20,.18],shinR:[.22,.24,.22],footR:[.26,.28,.26],toeR:[.30,.32,.30]};
@@ -462,8 +470,7 @@ export async function initCrid3D(host,getState,onReady,onFail){
       walkW+=((walking?1:0)-walkW)*Math.min(1,dt*5);
       if(walking)phase=(phase+dt*(reduced?3.4:5.2))%1;
       const u=phase,gait=Math.sin(TAU*u),          // one full gait cycle per phase wrap
-        kL=swingOf(((u*2)%1+.5)%1)*walkW,kR=swingOf(((u*2+.5)%1+.5)%1)*walkW,
-        wL=-gait*walkW,wR=gait*walkW;
+        kL=swingOf(((u*2)%1+.5)%1)*walkW,kR=swingOf(((u*2+.5)%1+.5)%1)*walkW;
 
       // Facing: eased yaw toward travel direction; a lean pulls him toward the panel.
       const dir=st.walkDir||(st.fx<0?-1:1),
@@ -473,6 +480,14 @@ export async function initCrid3D(host,getState,onReady,onFail){
       // stagePose: roll/pitch from the climb/lean state machine (radians). The
       // lean verb's z-tilt and the stage's roll add — they never run together.
       const sp=st.stagePose||null;
+      // Stage channels accumulate FIRST so pose() knows which bones they own
+      // this frame — a climbing step is the stage's alone, never a walk pose
+      // with a channel premultiplied on top. flush happens after the pose
+      // section, before IK, same slot it always had.
+      let stageC=null;
+      if(sp&&sp.ref){freezeChan();stageC=stageChannels(sp.ref,t);accStageChannels(stageC);
+        stageOwned=new Set(CH_ACC.keys())}
+      else stageOwned=null;
       turn.rotation.x=sp?sp.pitch:0;
       turn.rotation.z=(st.lean?st.lean.angle*Math.PI/180*.55:0)+(sp?sp.roll:0);
 
@@ -507,15 +522,17 @@ export async function initCrid3D(host,getState,onReady,onFail){
       const shift=Math.sin(t*.5);                         // hip to hip, about 12s
       const look=Math.sin(t*.33),look2=Math.sin(t*.19+1.4);
 
-      // Legs: world axes now — X is the swing/flex line (same convention as
-      // applyStageChannels: legFwd and knee bend on X, lift on Z). Knees still
-      // fold the same way; idle settles onto the weighted foot, not locked.
-      if(has("thighL"))pose("thighL",-(gait*.55*walkW+still*(shift*.04)),0,0);
-      if(has("shinL"))pose("shinL",(kL*.85+still*Math.max(0,shift)*.12)*calm,0,0);
-      if(has("footL"))pose("footL",-((wL-kL)*.22+still*shift*.03)*.5,0,0);
-      if(has("thighR"))pose("thighR",gait*.55*walkW+still*(shift*.04),0,0);
-      if(has("shinR"))pose("shinR",(kR*.85+still*Math.max(0,-shift)*.12)*calm,0,0);
-      if(has("footR"))pose("footR",((wR-kR)*.22+still*shift*.03)*.5,0,0);
+      // Legs: each step is a planted foot and a swinging foot. kL/kR are the
+      // per-leg swing curves — zero through stance, a bump while that foot is
+      // up — so the planted thigh and knee hold still at rest for the foot-lock
+      // IK to own, and only the swinging knee bends, on world +X, same sign on
+      // both legs. A knee bending on the planted leg is the puppet.
+      if(has("thighL"))pose("thighL",-kL*.55+still*(shift*.04),0,0);
+      if(has("shinL"))pose("shinL",kL*.85*calm+still*Math.max(0,shift)*.12*calm,0,0);
+      if(has("footL"))pose("footL",-(kL*.22+still*shift*.03)*.5,0,0);
+      if(has("thighR"))pose("thighR",-kR*.55-still*(shift*.04),0,0);
+      if(has("shinR"))pose("shinR",kR*.85*calm+still*Math.max(0,-shift)*.12*calm,0,0);
+      if(has("footR"))pose("footR",-(kR*.22-still*shift*.03)*.5,0,0);
 
       // Arms hang and drift against the weight. X is the swing line, Z the lift
       // out to the side — mirrored signs on R exactly as applyStageChannels has.
@@ -546,15 +563,19 @@ export async function initCrid3D(host,getState,onReady,onFail){
       // Toes: the foot has a real toe joint (foot0002). It rolls through the
       // step — dorsiflexed in swing, plantar-flexed at push-off — instead of
       // the whole foot pivoting like a board.
-      const toe=((Math.sin(TAU*u+2.4)*.5-.15)*gait*.9)*walkW+still*.04;
-      if(has("toeL"))pose("toeL",toe,0,0);
-      if(has("toeR"))pose("toeR",-toe,0,0);
+      if(has("toeL"))pose("toeL",kL*.35+still*.04,0,0);
+      if(has("toeR"))pose("toeR",kR*.35-still*.04,0,0);
 
-      // Torso: breath lifts the chest, the pelvis carries the weight shift.
-      if(has("spine2"))pose("spine2",(.07*br-pr*.55+(p.tr||0)*.004)*life,(look*.05)*life,
+      // Torso: one lean carried by pelvis and spine0001 together — they are
+      // siblings under ROOT, never reparented — while spine0003 arrives late
+      // on its own slower clock. Breath stays on the chest, the head follows
+      // the shift late, and looks off-axis so he is not staring through the lens.
+      const leanX=(-pr*.55+(p.tr||0)*.004)*life;
+      if(has("pelvis"))pose("pelvis",leanX,0,shift*.1*life);
+      if(has("spine1"))pose("spine1",leanX,(look*.04)*life,shift*.06*life);
+      if(has("spine2"))pose("spine2",(.07*br)*life+leanX*.5,(look*.05)*life,
         (shift*.09+(p.hr||0)*.004+(grooving?.08*Math.sin(t*3):0))*life);
-      if(has("spine3"))pose("spine3",(.05*br-pr*.2)*life,look*.04*life,shift*.04*life);
-      if(has("pelvis"))pose("pelvis",br*.015*life,0,shift*.1*life);
+      if(has("spine3"))pose("spine3",leanX*.25+(.05*br)*life,look*.04*life,shift*.04*life);
 
       // Head follows the shift late, and looks off-axis so he is not staring through the lens.
       const gx=(p.gx||0)/60,gy=(p.gy||0)/60;
@@ -602,8 +623,8 @@ export async function initCrid3D(host,getState,onReady,onFail){
       // beats, applied with the rig page's own world-axis convention
       // (applyChannels/applyAcc above). Runs before IK so the solver still owns
       // the arm chain while a lean is planted.
-      if(sp&&sp.ref){freezeChan();const C=stageChannels(sp.ref,t);applyStageChannels(C,dt);C_leanF=C.leanFwd||0;
-        if(C.rootY)model.position.y+=C.rootY*s}
+      if(sp&&sp.ref){flushStageChannels(dt);C_leanF=stageC.leanFwd||0;
+        if(stageC.rootY)model.position.y+=stageC.rootY*s}
       else{C_leanF*=Math.max(0,1-dt*4);releaseStageChannels(dt)}
 
       // Hand plant (Phase C groundwork): while he leans on a panel, the touching
@@ -653,16 +674,25 @@ export async function initCrid3D(host,getState,onReady,onFail){
       // the body rolls into a lean or drifts on a panel lip instead of skating.
       const locked=!!(sp&&alive&&!sp.ref.walking&&["top","seat","lean","lean-in"].includes(sp.state));
       footW+=((locked?1:0)-footW)*Math.min(1,dt*5);
-      if(footW>.02&&footBind.L&&footBind.R){
+      // Planted-foot lock during a free walk: the foot whose swing curve sits
+      // at zero carries him — the same ankle IK the lean uses runs on it while
+      // the other leg is up. A leg the stage channels own this frame is theirs;
+      // the lock does not fight the stage's own stepping.
+      const legFree=sd=>!(stageOwned&&(stageOwned.has(J["thigh"+sd])||stageOwned.has(J["shin"+sd])));
+      const plant={L:walking&&legFree("L")?clamp(walkW-kL,0,1):0,
+                   R:walking&&legFree("R")?clamp(walkW-kR,0,1):0};
+      const wLock={L:Math.max(locked?footW:0,plant.L),R:Math.max(locked?footW:0,plant.R)};
+      if((wLock.L>.02||wLock.R>.02)&&footBind.L&&footBind.R){
         footDbg=0;B(J.pelvis).getWorldPosition(_ip);const floorY=shadowY();
         // Stance offsets and the knee pole rotate with his heading — a lean
         // that yaws him 0.85 rad must not leave the feet planted on bind axes.
         const cy=Math.cos(heading),sy=Math.sin(heading);
-        for(const sd of["L","R"]){const fb=footBind[sd],th=B(J["thigh"+sd]),sn=B(J["shin"+sd]),ft=B(J["foot"+sd]);
+        for(const sd of["L","R"]){const w=wLock[sd];if(w<.02)continue;
+          const fb=footBind[sd],th=B(J["thigh"+sd]),sn=B(J["shin"+sd]),ft=B(J["foot"+sd]);
           if(!th||!sn||!ft)continue;
           ft.getWorldPosition(_it);                                   // current ankle
           _ic.set(_ip.x+fb.x*cy+fb.z*sy,floorY+fb.ankleH,_ip.z-fb.x*sy+fb.z*cy);
-          _it.lerp(_ic,footW);                                        // eased reach, like the hand plant
+          _it.lerp(_ic,w);                                            // eased reach, like the hand plant
           _id.set(_it.x+sy*.5,_it.y+.5,_it.z+cy*.5);                  // pole: knees back along facing
           const r2=ikSolver.solve({rootBone:th,middleBone:sn,endBone:ft,target:_it,poleTarget:_id,preserveEndRotation:!0});
           if(r2&&!r2.reachable)footDbg=1}

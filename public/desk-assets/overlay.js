@@ -755,6 +755,21 @@ html.gta #desk #loc-map .loc-marker::after{background:#0a130c;border-color:#4dff
 html.gta #desk #loc-map .cr-map{filter:hue-rotate(80deg) saturate(1.9) brightness(.82) contrast(1.1)}
 html.gta #desk #auto-headlines{border-color:rgba(77,255,106,.45);border-left-color:#4dff6a}
 html.gta #desk #auto-headlines .headline-feed-kicker{color:#4dff6a}
+
+/* Final split overrides come after the base and phone rules so no legacy full-frame width
+   can push a plate across the centre seam. */
+html[data-scene="split"] #desk.layout-alive .slot{width:min(460px,calc(50vw - 2*var(--m)))}
+html[data-scene="split"] #desk.layout-alive #dock-right{width:min(360px,calc(50vw - 2*var(--m)));max-height:calc(100svh - 2*var(--m))}
+html[data-scene="split"] #desk #time-dock{min-width:0;width:min(390px,calc(50vw - 2*var(--m)));max-width:calc(50vw - 2*var(--m))}
+html[data-scene="split"] #desk #loc-map{max-width:calc(50vw - 2*var(--m))}
+html[data-scene="split"] #desk #music-plate{width:min(342px,calc(50vw - 2*var(--m)))}
+html[data-scene="split"] #desk #auto-headlines{width:min(36vw,calc(50vw - 2*var(--m)))}
+@media(max-width:520px){
+  html[data-scene="split"] #desk #time-dock{padding:10px 10px 10px 12px}
+  html[data-scene="split"] #desk #time-dock .clock-time{font-size:clamp(12px,3.2vw,22px)}
+  html[data-scene="split"] #desk #time-dock .clock-top,
+  html[data-scene="split"] #desk #time-dock .clock-detail{font-size:clamp(8px,1.8vw,10px)}
+}
 `;
 
 // ---------- upgraded DOM helper ----------

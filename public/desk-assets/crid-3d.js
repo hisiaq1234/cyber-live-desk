@@ -245,7 +245,7 @@ export async function initCrid3D(host,getState,onReady,onFail){
     // The bind pose holds his arms wide (A-pose); the relaxed hang is the baseline of every pose.
     const RELAX={armL:{z:1.12},armR:{z:-1.12},foreL:{x:.3},foreR:{x:-.3}};
 
-    let disposed=!1,raf=0,ready=!1,phase=0,heading=0,bagShown=true,ikW=0,footW=0,footDbg=0;
+    let disposed=!1,raf=0,ready=!1,phase=0,heading=0,bagShown=true,ikW=0,footW=0,footDbg=0,curlW=0;
     const ikSolver=new TwoBoneIK();let ikLast=null,ikDbg="";
     const _iv=new THREE.Vector3(),_id=new THREE.Vector3(),_it=new THREE.Vector3(),
       _ic=new THREE.Vector3(),_ip=new THREE.Vector3(),_io=new THREE.Vector3(),
@@ -323,10 +323,13 @@ export async function initCrid3D(host,getState,onReady,onFail){
       if(has("foreR"))rot(J.foreR,RELAX.foreR.x-still*Math.sin(t*.7+2)*.08-gait*.16*swing,0,0);
 
       // Fingers: a relaxed hand is not straight — base curl .14; a planted
-      // grip (the IK lean, soon the stage machine's reach/seat) closes toward
+      // grip (the IK lean, the stage machine's reach/seat) closes toward
       // .85; dying lets them go slack. st.grip is the stage machine's channel.
+      // curlW eases the grip in — fingers are flesh on springs, not switches.
       // TUNE: the curl axis is first-pass local Z — check a grip screenshot.
-      const grip=clamp(Math.max(ikW||0,(sp&&sp.grip)||st.grip||0,dying?.25:0),0,1);
+      const gripT=clamp(Math.max(ikW||0,(sp&&sp.grip)||st.grip||0,dying?.25:0),0,1);
+      curlW+=(gripT-curlW)*Math.min(1,dt*(gripT>curlW?14:7));
+      const grip=curlW;
       // Only the planted hand fully closes — the free hand keeps a relaxed curl
       // so it doesn't claw at air during a one-armed lean.
       const plantSide=st.lean?(st.lean.dir>0?"R":"L"):null;

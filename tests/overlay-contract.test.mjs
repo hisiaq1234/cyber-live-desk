@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const overlay = readFileSync(new URL("../public/desk-assets/overlay.js", import.meta.url), "utf8");
+const control = readFileSync(new URL("../public/desk-assets/control.js", import.meta.url), "utf8");
 
 test("the selected alive layout class is applied to the overlay root", () => {
   assert.match(overlay, /layout:\s*pick\("layout",\s*\["alive",\s*"classic"\],\s*"alive"\)/);
@@ -77,4 +78,13 @@ test("the default overlay uses the two-camera split HUD and keeps each half clea
   assert.match(overlay, /html\[data-scene="split"\] #desk #music-plate/);
   assert.match(overlay, /scene === "split" \? "tl" : "tc"/);
   assert.match(overlay, /split \? 0\.44 : 0\.94/);
+});
+
+
+test("live GPS is explicit in the private controller and clears its public history on stop", () => {
+  assert.ok(control.includes("navigator.geolocation.watchPosition"));
+  assert.ok(control.includes('api("/api/desk/location", { lat: latitude, lon: longitude, alt: altitude })'));
+  assert.ok(control.includes('api("/api/desk/location", { clear: true })'));
+  assert.ok(control.includes("await gpsWritePending.catch(() => {})"));
+  assert.ok(!overlay.includes("navigator.geolocation"));
 });

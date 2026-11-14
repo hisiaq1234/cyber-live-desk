@@ -272,10 +272,26 @@ test("a stalled climb times out to slip and waits for real floor contact",()=>{
   assert.equal(stage.state,"floor");
 });
 
+test("groundY tracks the plan: topY on the panel top, seatY on the seat, 0 back on floor", () => {
+  const { stage } = makeStage();
+  drive(stage, climbIntent, 8);
+  assert.equal(stage.state, "top");
+  assert.equal(stage.groundY, stage.topY, "standing on the panel means groundY is the panel top");
+  // sit-on off the same panel: finish the climb, walk down, then hop to the seat
+  drive(stage, { key: "climb", phase: "end", layer: "panel-r", x: 0.5 }, 8);
+  assert.equal(stage.state, "floor");
+  assert.equal(stage.groundY, 0);
+  const sit = { key: "sit-on", phase: "start", layer: "panel-r", x: 0.5 };
+  drive(stage, sit, 10);
+  assert.equal(stage.state, "seat");
+  assert.equal(stage.groundY, stage.seatY, "seated means groundY is the seat height");
+});
+
 test("the stage planner never writes motor-owned root coordinates",()=>{
   const {stage}=makeStage();
-  const x=stage.walkX,y=stage.groundY;
+  const x=stage.walkX;
   stage.step(50,climbIntent,.05);
   assert.equal(stage.walkX,x);
-  assert.equal(stage.groundY,y);
+  // groundY is the one exception: the planner tracks the climb's intended height so
+  // fromY/drop math is right; on /desk the physics motor still owns the measured value.
 });

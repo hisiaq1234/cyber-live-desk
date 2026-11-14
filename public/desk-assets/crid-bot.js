@@ -260,13 +260,23 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // contact point on the panel edge so the IK hand-plant keeps working.
   const stageLean=()=>{
     if(!stage||!["lean","lean-in","reach","pull"].includes(stage.state)||!stage.layer)return null;
-    const dir=stage.side==="right"?1:-1,angle=dir*.42;
+    const dir=stage.side==="right"?1:-1;
     if(stage.state==="reach"||stage.state==="pull"){
-      const g=cridBody.grip;if(!g)return null;
-      return {dir,angle,contact:{x:innerWidth/2+g.x*UPX(),y:deskFeet()+g.y*UPX()},
+      // The climb's contact is the panel's top lip, not a lean: no roll, and the
+      // IK hand plants on the edge even before the grip anchor exists. Once the
+      // motor has him hanging on, the grip point is the truer contact.
+      const g=cridBody.grip;
+      if(g)return {dir,angle:0,contact:{x:innerWidth/2+g.x*UPX(),y:deskFeet()+g.y*UPX()},
         worldAnchor:{id:g.id,position:{x:g.x,y:-g.y,z:0},
           normal:{x:g.normal?.x||0,y:-(g.normal?.y??-1),z:g.normal?.z||0}}};
+      const lb=layerOf(stage.layer),e=lb&&lb.edge;
+      if(!e)return null;
+      const pxX=dir>0?e.right-10:e.left+10,pxY=e.top;
+      return {dir,angle:0,layer:stage.layer,contact:{x:pxX,y:pxY},
+        worldAnchor:{id:stage.layer,position:{x:stagePX(pxX),y:(deskFeet()-pxY)/UPX(),z:0},
+          normal:{x:0,y:1,z:0}}};
     }
+    const angle=dir*.42;
     const b=stageBoxes[stage.layer];if(!b)return null;
     // stageBoxes are world units (x centred on screen middle, y up from the
     // floor line) — convert back to px for the contact point the IK plants on.
@@ -1070,7 +1080,8 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     return m?{x:+m[1]/innerWidth*100,y:+m[2]/innerHeight*100}:null};
   const stageTick=()=>{
     if(!stage)return;
-    if(stageTick.lastState!==stage.state){stageTick.lastState=stage.state;if(stage.state==="hop")stageTick.hopStarted=false}
+    const now=Date.now(),sdt=stageTick.lastT?Math.min(.1,(now-stageTick.lastT)/1000):.016; stageTick.lastT=now;
+    if(stageTick.lastState!==stage.state){stageTick.lastState=stage.state;stageTick.stallT=0;if(stage.state==="hop")stageTick.hopStarted=false}
     if(mode!=="on"||dying){world.stopCharacter(cridBody);return}
     const bodySpec=build(),fw=stageHW.w||host.offsetWidth||180,fh=stageHW.h||host.offsetHeight||220;
     const bodyWpx=fw*bodySpec.w/FRAME.w,bodyHpx=fh*bodySpec.h/FRAME.h,slow=Math.max(1,bodySpec.slow||1),heft=bodySpec.heft,load=bag.worn?BAG_MASS:0,
@@ -1095,10 +1106,29 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     if(stage.state==="top"&&cridBody.grounded&&cridBody.supportId===stage.layer)
       world.releaseGrip(cridBody);
     if(stage.walking&&["approach","floor","top"].includes(stage.state)){
+      // A panel is a wall, not a doorway: if the stand point begin() picked is on the far
+      // side of a solid face he is already pressed against, the motor can never arrive.
+      // Stall detection re-aims him at the edge on the side he is actually standing on.
+      if(stage.state==="approach"){
+        const b=stageBoxes[stage.layer];
+        if(b&&Math.abs(stage.targetX-cridBody.x)>.05&&Math.abs(cridBody.vx)<.03){
+          stageTick.stallT=(stageTick.stallT||0)+sdt;
+          if(stageTick.stallT>.35){
+            const clr=cridBody.halfW+10/UPX(),lip=Math.min(cridBody.halfW+6/UPX(),(b.right-b.left)/2),
+              leftSide=cridBody.x<(b.left+b.right)/2;
+            stage.side=leftSide?"left":"right";
+            stage.targetX=leftSide?b.left-clr:b.right+clr;
+            stage.lipX=leftSide?b.left+lip:b.right-lip;
+            stageTick.stallT=0;
+          }
+        } else stageTick.stallT=0;
+      }
       world.moveCharacter(cridBody,stage.targetX,{maxSpeed:walkSpeed,
         acceleration:walkAccel,strength:effort,load});
     } else if(stage.state==="pull"&&cridBody.grip){
-      world.climbCharacter(cridBody,{x:stage.lipX,feetY:-stage.topY},
+      // Aim a hand's width past the lip: the climb spring settles a few px short
+      // of its target under load, and the mantle only fires inside its tolerance.
+      world.climbCharacter(cridBody,{x:stage.lipX,feetY:-stage.topY-.03},
         {strength:effort,load,maxAcceleration:24,stiffness:18/slow,damping:8/slow});
     } else if(stage.state==="reach"&&!cridBody.grip){
       const box=stageBoxes[stage.layer],side=stage.side==="right"?-1:1;
@@ -1109,7 +1139,15 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       world.releaseGrip(cridBody);
       world.moveCharacter(cridBody,stage.fromX,{maxSpeed:walkSpeed,
         acceleration:walkAccel,strength:effort,load});
-    } else if(["slip","crouch"].includes(stage.state)){
+    } else if(stage.state==="slip"){
+      // A slip has to actually leave the lip: stopCharacter would leave him
+      // standing on the panel forever, and the planner's recover gate waits on
+      // real floor contact. Walk him back to the floor stand point and let the
+      // edge drop him the rest of the way.
+      world.releaseGrip(cridBody);
+      world.moveCharacter(cridBody,stage.fromX,{maxSpeed:walkSpeed,
+        acceleration:walkAccel,strength:effort,load});
+    } else if(stage.state==="crouch"){
       world.releaseGrip(cridBody);world.stopCharacter(cridBody);
     } else if(stage.state==="hop"&&!stageTick.hopStarted){
       stageTick.hopStarted=true;
@@ -1170,15 +1208,17 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // Read-only QA handle for the stage machine — same spirit as __cridIk/__cridFace.
   // Positions are reported back in desk px so a screenshot can be checked by eye.
   try{window.__cridStage=()=>stage?{state:stage.state,key:stage.key,layer:stage.layer,
-    walkX:Math.round(stage.walkX*UPX()+innerWidth/2),groundY:Math.round(stage.groundY*UPX()),
+    walkX:Math.round(stage.walkX*UPX()+innerWidth/2),targetX:+stage.targetX.toFixed(3),groundY:Math.round(stage.groundY*UPX()),
     roll:+stage.roll.toFixed(3),pitch:+stage.pitch.toFixed(3),trace:stage.trace,hold:+stage.hold.toFixed(1),
     grounded:cridBody.grounded,supportId:cridBody.supportId,handContact:stageLean()?.contact||null,worldAnchor:stageLean()?.worldAnchor||null,vx:+cridBody.vx.toFixed(3),vy:+cridBody.vy.toFixed(3)}:null}catch{}
   try{window.__crid3D=()=>({active:!!(crid3d&&crid3d.active),failed:!!crid3dFailed})}catch{}
   try{window.__cridMotor=()=>({x:+cridBody.x.toFixed(4),y:+cridBody.y.toFixed(4),
     vx:+cridBody.vx.toFixed(4),vy:+cridBody.vy.toFixed(4),grounded:cridBody.grounded,
     supportId:cridBody.supportId,distanceTravelled:+cridBody.distanceTravelled.toFixed(4),
-    mass:cridBody.mass,strength:cridBody.strength,grip:cridBody.grip?{...cridBody.grip}:null,
-    platforms:world.platforms.map(p=>p.id)})}catch{}
+    mass:cridBody.mass,strength:cridBody.strength,halfW:+cridBody.halfW.toFixed(3),halfH:+cridBody.halfH.toFixed(3),
+    motor:cridBody.motor?{targetX:+cridBody.motor.targetX.toFixed(3),maxSpeed:+cridBody.motor.maxSpeed.toFixed(3)}:null,
+    grip:cridBody.grip?{...cridBody.grip}:null,
+    platforms:world.platforms.map(p=>({id:p.id,left:+p.left.toFixed(2),right:+p.right.toFixed(2),top:+p.top.toFixed(2)}))})}catch{}
   // Same read-only QA spirit for the loose bodies: a screenshot or a test can prove a sheet
   // fell, fluttered and came to rest without reaching into the closure.
   try{window.__cridPapers=()=>papers.map(p=>({x:Math.round(p.body.x),y:Math.round(p.body.y),

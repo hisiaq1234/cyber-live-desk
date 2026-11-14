@@ -793,7 +793,8 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
       headTurnS+= (clamp(Math.hypot(headYaw-prevHeadYaw,headPitch-prevHeadPitch)/Math.max(dt,1e-3)*.05,0,1)-headTurnS)*Math.min(1,dt*9);
       prevHeadYaw=headYaw;prevHeadPitch=headPitch;
       face.update(dt,{t,dt,talking:!!st.talking,mode,dying,reduced,gx:p.gx,gy:p.gy,
-        attend:st.attend||idleOut.attend,lookBias:st.lookBias,headTurn:headTurnS,speech:st.speech});
+        attend:st.attend||idleOut.attend,lookBias:st.lookBias,headTurn:headTurnS,
+        speech:clamp(Math.max(Number(st.speech)||0,vj.jaw||0),0,1)});
       const fc=face.channels();
       for(const k in fc)setMorph(k,fc[k]);
       // Weight shows in the face too: the heavier builds carry a touch of cheek
@@ -934,7 +935,10 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
       // seat, lean — not mid-pull, not stepping), each ankle is IK'd onto its
       // bind stance at floor height. This is what keeps his feet planted when
       // the body rolls into a lean or drifts on a panel lip instead of skating.
-      const locked=!!(sp&&alive&&!sp.ref.walking&&["top","seat","lean","lean-in"].includes(sp.state));
+      // crouch/anticipate/reach also hold the feet: the stage channels fold the
+      // knees there, and without the lock the ankles would drag through the floor
+      // while model.position.y drops out from under them.
+      const locked=!!(sp&&alive&&!sp.ref.walking&&["top","seat","lean","lean-in","crouch","anticipate","reach"].includes(sp.state));
       footW+=((locked?1:0)-footW)*Math.min(1,dt*5);
       // Planted-foot lock during a free walk: the foot whose swing curve sits
       // at zero carries him — the same ankle IK the lean uses runs on it while
@@ -976,7 +980,9 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
           if(footPlant[sd])_ic.copy(footPlant[sd]);
           else _ic.set(_ip.x+fb.x*cy+fb.z*sy,floorY+fb.ankleH,_ip.z-fb.x*sy+fb.z*cy);
           _it.lerp(_ic,w);                                            // eased reach, like the hand plant
-          _id.set(_it.x+sy*.5,_it.y+.5,_it.z+cy*.5);                  // pole: knees back along facing
+          // Pole toward his facing: the bind pose faces +Z but model.rotation.y=π
+          // turns him to the camera, so forward is (-sy, 0, -cy) — knees flex forward.
+          _id.set(_it.x-sy*.5,_it.y+.5,_it.z-cy*.5);                  // pole: knees forward along facing
           markW(J["thigh"+sd]);markW(J["shin"+sd]);markW(J["foot"+sd]);
           const r2=ikSolver.solve({rootBone:th,middleBone:sn,endBone:ft,target:_it,poleTarget:_id,preserveEndRotation:!0});
           if(r2&&!r2.reachable)footDbg=1}

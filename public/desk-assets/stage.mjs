@@ -85,7 +85,7 @@ export function createStage({
   function endStage() {
     if (!stage.abandoned && stage.key) stage.trace = stage.key + " · done";
     stage.abandoned = false; stage.key = null; stage.layer = null; stage.surface = null;
-    stage.roll = 0; stage.pitch = 0; stage.walking = false;
+    stage.roll = 0; stage.pitch = 0; stage.walking = false; stage.groundY = 0;
     stage.next = null; stage.squashAt = null; stage.squashEnv = 0;
     go("floor");
   }
@@ -106,11 +106,15 @@ export function createStage({
   }
 
   // Where he stands to use a panel: the edge that faces the room, at his own clearance.
+  // The stand point is the nearer of the two edges — picking by panel centre can aim him
+  // through the panel's solid face when he is already inside its column, and the motor
+  // has no way around a wall it cannot path through.
   function standFor(name) {
     const b = boxOf(name); if (!b) return null;
     const l = leftOf(b), r = rightOf(b), clr = clearance();
-    const side = (l + r) / 2 < stage.walkX ? "right" : "left";
-    return { b, side, l, r, top: topOf(b), x: side === "right" ? r + clr : l - clr };
+    const xl = l - clr, xr = r + clr;
+    const side = Math.abs(xr - stage.walkX) < Math.abs(xl - stage.walkX) ? "right" : "left";
+    return { b, side, l, r, top: topOf(b), x: side === "right" ? xr : xl };
   }
 
   // The brain says which panel; the body decides how he gets on it and where he stands.
@@ -235,21 +239,26 @@ export function createStage({
           }
         }
 
+        // The climb is a plan, not a script: groundY tracks the intended height so
+        // fromY/abandon/drop math is right even before the motor reports in. On /desk
+        // the physics body overwrites it with the measured value every frame.
+        stage.groundY = stage.topY * ease(stage.t / 0.75);
         if (stage.t >= 0.75) {
           if (!canCompleteClimb(stage)) {
             if (stage.t >= 2.5) { stage.gripFailed = true; stage.reason = "stalled"; stage.trace = "climb · stalled"; go("slip"); }
             break;
           }
+          stage.groundY = stage.topY;
           stage.surface = { name: stage.layer, top: stage.topY };
           stage.squashAt = nowMs; stage.hold = 2.5; go("top");
         }
         break;
       }
       case "slip": {                               // hands lose the lip: slide back down the face
-
+        stage.groundY = stage.slipFromY * (1 - ease(stage.t / 0.8));
         if (stage.t >= 0.8) {
           if (!canCompleteDrop(stage)) break;
-          stage.surface = null; stage.squashAt = nowMs; go("recover");
+          stage.groundY = 0; stage.surface = null; stage.squashAt = nowMs; go("recover");
         }
         break;
       }
@@ -262,6 +271,7 @@ export function createStage({
         }
         break;
       case "top": {                                // standing on it, drifting along the top
+        stage.groundY = stage.topY;
         const b = boxOf(stage.layer);
         if (b) {
           const lo = leftOf(b) + hisW / 2 + 4 * pxW(), hi = rightOf(b) - hisW / 2 - 4 * pxW();
@@ -278,10 +288,10 @@ export function createStage({
         if (stage.t >= 0.28) go("drop");
         break;
       case "drop": {                               // a controlled drop with a landing, not a fall
-
+        stage.groundY = stage.fromY * (1 - ease(stage.t / 0.4));
         if (stage.t >= 0.4) {
           if (!canCompleteDrop(stage)) break;
-          stage.surface = null; stage.squashAt = nowMs; go("settle");
+          stage.groundY = 0; stage.surface = null; stage.squashAt = nowMs; go("settle");
         }
         break;
       }
@@ -308,27 +318,32 @@ export function createStage({
         break;
       }
       case "hop": {                                // up onto the panel to sit on its lip
-
+        // seatY is the lip height minus his hip — computed here, not read off stage.seatY,
+        // so a second sit on a different panel can't inherit the first one's height.
+        const seatTarget = stage.topY - hipY + 0.02, u = clamp(stage.t / 0.55, 0, 1);
+        stage.groundY = seatTarget * ease(u) + Math.sin(Math.PI * u) * 0.12;
         if (stage.t >= 0.55) {
           if (!canCompleteHop(stage)) {
             if (stage.t >= 2.5 && canCompleteDrop(stage)) { stage.reason = "missed"; stage.abandoned = true; stage.surface = null; stage.squashAt = nowMs; go("recover"); }
             break;
           }
-          stage.seatY = stage.topY - hipY + 0.02; stage.surface = { name: stage.layer, top: stage.topY };
+          stage.seatY = seatTarget; stage.groundY = seatTarget;
+          stage.surface = { name: stage.layer, top: stage.topY };
           stage.squashAt = nowMs; stage.hold = 3; go("seat");
         }
         break;
       }
       case "seat":
+        stage.groundY = stage.seatY;
         stage.walking = false;
         stage.hold = Math.max(0, stage.hold - dt);
         if (stage.hold <= 0 && ((intent && intent.phase === "end") || !intent || intent.key !== stage.key)) { stage.surface = null; finishStage(); }
         break;
       case "hop-down": {
-
+        stage.groundY = stage.fromY * (1 - ease(stage.t / 0.5));
         if (stage.t >= 0.5) {
           if (!canCompleteDrop(stage)) break;
-          stage.squashAt = nowMs; go("settle");
+          stage.groundY = 0; stage.squashAt = nowMs; go("settle");
         }
         break;
       }

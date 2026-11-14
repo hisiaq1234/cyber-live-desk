@@ -132,8 +132,8 @@ const LAYERS = {
   link: () => linkEl,
 };
 
-const DRAG_X = { left: "-38vw", right: "38vw", up: "0px", down: "0px" };
-const DRAG_Y = { left: "0px", right: "0px", up: "-26vh", down: "26vh" };
+const DRAG_X = { left: "-38vw", right: "38vw", center: "-18vw", up: "0px", down: "0px" };
+const DRAG_Y = { left: "0px", right: "0px", center: "6vh", up: "-26vh", down: "26vh" };
 
 /* ---------- apply ---------- */
 
@@ -172,7 +172,7 @@ function applyCommand(cmd) {
       bot.say(p.text, p.duration || cmd.ttl || 5000);
       break;
     case "card":
-      showCard(p.title, p.subtitle, cmd.ttl || 8000);
+      showCard(p.title, p.subtitle, cmd.ttl || 8000, p.art || "default");
       break;
     case "effect":
       playEffect(p.type, p.intensity, p.duration);
@@ -217,8 +217,10 @@ function onCommand(cmd) {
 
 /* ---------- surfaces ---------- */
 
-function showCard(title, subtitle, ttl) {
+function showCard(title, subtitle, ttl, art = "default") {
   releaseLayer(cardEl);
+  recapEl?.classList.remove("on"); // a card and a recap never share the corner
+  cardEl.dataset.art = art || "default";
   cardEl.querySelector(".card-title").textContent = title || "";
   cardEl.querySelector(".card-sub").textContent = subtitle || "";
   cardEl.classList.add("on");
@@ -289,11 +291,16 @@ function playEffect(type, intensity = 0.6, duration) {
 
 /* ---------- tears: animated water drops, drawn in CSS, anchored to his face ---------- */
 
-// Eye positions as a fraction of the body box (crid-bot.js draws the avatar across
-// x 18..130 of a 160×168 viewBox, so the face sits high and slightly left of centre).
+// Eye positions as a fraction of the body box. The 2D sprite draws the avatar
+// across x 18..130 of a 160×168 viewBox (face high and slightly left); the 3D
+// GLB renders centred, so his eyes sit symmetrically instead.
 const EYE_SOURCES = [
   [40, 27],
   [50, 27],
+];
+const EYE_SOURCES_3D = [
+  [46.5, 22.5],
+  [53.5, 22.5],
 ];
 
 let tearLayer = null;
@@ -310,7 +317,8 @@ function playTears(intensity = 0.8, duration = 6000) {
   tearLayer.textContent = "";
   tearLayer.style.opacity = String(Math.min(1, Math.max(0.35, intensity)));
   const drops = intensity > 0.7 ? 3 : 2;
-  for (const [x, y] of EYE_SOURCES) {
+  const eyes = host.classList.contains("has-glb") ? EYE_SOURCES_3D : EYE_SOURCES;
+  for (const [x, y] of eyes) {
     for (let i = 0; i < drops; i++) {
       const drop = document.createElement("i");
       drop.className = "crid-tear";
@@ -460,7 +468,7 @@ function moveLayer(p) {
     el.style.setProperty("--drag-y", DRAG_Y[side]);
     dragTimer = setTimeout(() => {
       if (leaned) bot.unlean(); else goHome(); // he lets go, leaving the layer where he put it
-      el.classList.remove("dragging");
+      releaseLayer(el); // clears .dragging AND the --drag-x/--drag-y offsets
     }, dragMs + 600);
   }, travelMs);
 }

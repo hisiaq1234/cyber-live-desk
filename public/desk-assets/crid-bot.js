@@ -556,6 +556,12 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const showSay=(text,ms,onDone)=>{sayBusy=true; sayUntil=Date.now()+ms+300; activeSpeechText=String(text);
     let b=host.querySelector(".bot-bubble"); if(!b){b=document.createElement("div"); b.className="bot-bubble"; host.append(b);}
     b.style.transition=reduced?"none":""; b.textContent=text; b.style.opacity="1";
+    // Viewport clamp: centered on him, the bubble can hang off either screen
+    // edge when he leans a corner panel — nudge it back inside, pointer stays.
+    b.style.transform="translateX(-50%)";
+    const br=b.getBoundingClientRect(),pad=12;
+    if(br.left<pad)b.style.transform=`translateX(calc(-50% + ${Math.round(pad-br.left)}px))`;
+    else if(br.right>innerWidth-pad)b.style.transform=`translateX(calc(-50% - ${Math.round(br.right-(innerWidth-pad))}px))`;
     clearTimeout(bubbleTimer);
     bubbleTimer=setTimeout(()=>{b.style.opacity="0"; sayBusy=false; activeSpeechText=""; if(onDone)onDone();
       const n=sayQ.shift(); if(n)showSay(n.text,n.ms,n.onDone);},ms);};

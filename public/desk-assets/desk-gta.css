@@ -1,0 +1,114 @@
+/* ==========================================================================
+   CYBER LIVE DESK — GTA V RADAR / LOWER-THIRD HUD LAYER
+   Visual lock-in for #time-dock and #auto-headlines. Preserves the exact
+   bounding boxes crid-bot.js measures for floor height, walk corridor and
+   panel-edge leans — this file changes paint only, never geometry.
+   ========================================================================== */
+
+:root {
+  --gta-radar-bg: rgba(8, 11, 16, 0.88);
+  --gta-radar-frame: rgba(255, 255, 255, 0.22);
+  --gta-radar-inner: rgba(0, 0, 0, 0.85);
+  --gta-health: #5CE68A;
+  --gta-armor: #4DA6FF;
+  --gta-special: #F5C242;
+}
+
+#time-dock {
+  background: var(--gta-radar-bg) !important;
+  border: 2px solid var(--gta-radar-frame) !important;
+  outline: 2px solid var(--gta-radar-inner);
+  border-radius: 2px !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.72), inset 0 0 0 1px rgba(255, 255, 255, 0.06) !important;
+  overflow: hidden;
+}
+
+#time-dock::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 22px rgba(0, 0, 0, 0.58);
+  border-bottom: 4px solid rgba(0, 0, 0, 0.75);
+  z-index: 4;
+}
+
+#time-dock .gta-vitals,
+#crid-vitals {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 3px;
+  height: 5px;
+  width: 100%;
+  background: rgba(0, 0, 0, 0.9);
+  padding: 1px;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  z-index: 6;
+}
+
+#time-dock .gta-vitals > i,
+#crid-vitals > i {
+  display: block;
+  height: 100%;
+  border-radius: 0;
+  background: var(--gta-health);
+  opacity: 0.92;
+  transition: width 0.4s ease, opacity 0.3s ease;
+}
+#time-dock .gta-vitals > i:nth-child(2),
+#crid-vitals > i:nth-child(2) { background: var(--gta-armor); }
+#time-dock .gta-vitals > i:nth-child(3),
+#crid-vitals > i:nth-child(3) { background: var(--gta-special); }
+
+.gta-player-blip {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 14px;
+  height: 14px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 5;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.95));
+}
+.gta-player-blip::before {
+  content: "";
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #FFFFFF;
+  clip-path: polygon(50% 0%, 100% 100%, 50% 76%, 0% 100%);
+}
+
+#auto-headlines {
+  background: var(--gta-radar-bg) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  border-left: 4px solid var(--gta-special) !important;
+  border-radius: 2px !important;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.68) !important;
+  color: #F4F6FA !important;
+  font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace !important;
+}
+
+#auto-headlines .ticker-tag,
+#auto-headlines [data-tag] {
+  display: inline-block;
+  padding: 2px 6px;
+  margin-right: 8px;
+  background: var(--gta-special);
+  color: #080B10;
+  font: 800 10px/1.1 "Barlow Condensed", "Oswald", sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 1px;
+}
+
+.chaos-nudged,
+[data-crid-lean="true"] {
+  border-color: rgba(124, 92, 255, 0.65) !important;
+  box-shadow: 0 0 0 1px rgba(124, 92, 255, 0.35), 0 14px 34px rgba(0, 0, 0, 0.75) !important;
+}

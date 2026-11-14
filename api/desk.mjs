@@ -77,7 +77,9 @@ const PAGE = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
   "&family=Inter:wght@400;700&family=JetBrains+Mono:wght@400;700" +
   "&family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700" +
   "&family=Anton&family=Instrument+Serif:ital@0;1&display=swap\">" +
-  "<style>html,body{margin:0;background:transparent}</style></head>" +
+  "<style>html,body{margin:0;background:transparent}</style>" +
+  "<link rel=\"stylesheet\" href=\"/desk-assets/desk-gta.css\">" +
+  "</head>" +
   "<body><script>window.__DESK_CUE_REPORT__=__CUE_REPORT__</script>" +
   "<script type=\"module\" src=\"__OVERLAY_JS__\"></script></body></html>";
 

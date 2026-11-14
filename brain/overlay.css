@@ -794,3 +794,201 @@ body.preview {
 #crid-link[data-state="connecting"] .dot {
   background: #ffcf57;
 }
+
+/* ==========================================================================
+   GTA V HUD VISUAL LAYER (appended — overrides the cyber base for the brain
+   overlay only; crid-bot.js's own desk theme is untouched)
+   Sharp tactical geometry, obsidian plates, semantic accent bars, GPU-only
+   transitions. Every selector keeps the DOM hooks the JS already measures.
+   ========================================================================== */
+
+:root {
+  --gta-bg: rgba(10, 12, 16, 0.86);
+  --gta-bg-deep: rgba(6, 8, 12, 0.92);
+  --gta-border: rgba(255, 255, 255, 0.14);
+  --gta-text: #F4F6FA;
+  --gta-muted: #9BA3B4;
+  --gta-mint: #5CE68A;
+  --gta-blue: #4DA6FF;
+  --gta-gold: #F5C242;
+  --gta-red: #FF5252;
+  --gta-indigo: #7C5CFF;
+  --font-gta-head: "Barlow Condensed", "Oswald", "Arial Narrow", Impact, sans-serif;
+  --font-gta-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+}
+
+#crid-card {
+  top: clamp(18px, 3.2vh, 36px);
+  right: clamp(18px, 2.6vw, 40px);
+  left: auto;
+  bottom: auto;
+  width: min(360px, 86vw);
+  min-width: 0;
+  max-width: none;
+  padding: 12px 16px 13px;
+  background: var(--gta-bg);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--gta-border);
+  border-top: 3px solid var(--gta-indigo);
+  border-radius: 2px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  color: var(--gta-text);
+  text-align: left;
+  transform: translate3d(24px, 0, 0);
+}
+#crid-card.on {
+  transform: translate3d(0, 0, 0);
+}
+#crid-card.dragging {
+  transform: translate3d(var(--drag-x, 0px), var(--drag-y, 0px), 0) rotate(-1.2deg);
+  transition: transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.8);
+}
+#crid-card::before {
+  content: "DESK INTEL";
+  display: block;
+  position: static;
+  height: auto;
+  border-radius: 0;
+  background: none;
+  opacity: 1;
+  font: 700 10px/1 var(--font-gta-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gta-indigo);
+  margin-bottom: 5px;
+}
+#crid-card[data-art="lookup"] { border-top-color: var(--gta-mint); }
+#crid-card[data-art="lookup"]::before { content: "VERIFIED RECEIPT // SEARCH"; color: var(--gta-mint); }
+#crid-card[data-art="sub"], #crid-card[data-art="gift"] { border-top-color: var(--gta-blue); }
+#crid-card[data-art="sub"]::before, #crid-card[data-art="gift"]::before { content: "CREW ROSTER // SUB"; color: var(--gta-blue); }
+#crid-card[data-art="raid"], #crid-card[data-art="win"] { border-top-color: var(--gta-gold); }
+#crid-card[data-art="raid"]::before { content: "INCOMING CROWD // RAID"; color: var(--gta-gold); }
+#crid-card[data-art="win"]::before { content: "CHALLENGE CLEARED // +15 PTS"; color: var(--gta-gold); }
+#crid-card .card-title {
+  font: 700 20px/1.15 var(--font-gta-head);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #FFFFFF;
+  margin: 0 0 4px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+#crid-card .card-sub {
+  margin-top: 0;
+  font: 500 12px/1.4 var(--font-gta-mono);
+  color: var(--gta-muted);
+}
+
+#crid-recap {
+  top: clamp(18px, 3.2vh, 36px);
+  right: clamp(18px, 2.6vw, 40px);
+  left: auto;
+  bottom: auto;
+  width: min(370px, 88vw);
+  padding: 12px 16px;
+  background: var(--gta-bg-deep);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--gta-border);
+  border-left: 3px solid var(--gta-gold);
+  border-radius: 2px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.7);
+  transform: translate3d(20px, 0, 0);
+}
+#crid-recap.on { transform: translate3d(0, 0, 0); }
+#crid-recap .recap-head {
+  font: 700 16px/1.1 var(--font-gta-head);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--gta-gold);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+}
+#crid-recap .recap-list { display: flex; flex-direction: column; gap: 6px; }
+#crid-recap .recap-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  font: 500 11.5px/1.35 var(--font-gta-mono);
+  color: var(--gta-text);
+}
+#crid-recap .recap-list .ago { color: var(--gta-muted); font-size: 10px; white-space: nowrap; }
+
+#crid-chips {
+  top: clamp(18px, 3.2vh, 36px);
+  left: clamp(18px, 2.6vw, 40px);
+  right: auto;
+  bottom: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: min(340px, 80vw);
+}
+#crid-chips .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--gta-bg);
+  border-left: 3px solid var(--gta-mint);
+  border-radius: 1px;
+  font: 500 11px/1.3 var(--font-gta-mono);
+  color: var(--gta-text);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
+}
+#crid-chips .chip .kind {
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  color: var(--gta-mint);
+}
+
+#crid-bot .bot-bubble {
+  background: var(--gta-bg-deep) !important;
+  border: 1px solid rgba(255, 255, 255, 0.22) !important;
+  border-bottom: 3px solid var(--gta-indigo) !important;
+  border-radius: 2px !important;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.72) !important;
+  font: 600 clamp(12px, calc(var(--bot-w) * 0.072), 18px)/1.35 var(--font-gta-mono) !important;
+  letter-spacing: 0.01em;
+  z-index: 30;
+}
+#crid-bot .bot-bubble::after { border-top-color: var(--gta-indigo) !important; }
+
+.crid-micro {
+  top: 8%;
+  right: 8%;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 7px;
+  background: var(--gta-bg-deep);
+  border-left: 2px solid var(--gta-gold);
+  border-radius: 1px;
+  font: 700 11px/1 var(--font-gta-mono);
+  color: #FFFFFF;
+  z-index: 31;
+}
+.crid-micro .micro-mark { color: var(--gta-gold); }
+.crid-micro .micro-line { font-weight: 500; color: var(--gta-muted); }
+
+#crid-link {
+  bottom: 12px;
+  right: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: rgba(10, 12, 16, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+  font: 600 10px/1 var(--font-gta-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gta-muted);
+  z-index: 15;
+}
+#crid-link.on { border-color: var(--gta-red); color: var(--gta-red); }

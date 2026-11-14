@@ -20,6 +20,7 @@ import { createLettersGame } from "./letters.mjs";
 import { createCueChannel } from "./cue.mjs";
 import { cueFor } from "./cue-map.mjs";
 import { attachBrainBridge } from "./bridge.mjs";
+import { createLookupHandler } from "./lookup.mjs";
 
 const DEFAULT_PORT = 7311;
 
@@ -171,6 +172,18 @@ async function main() {
   // platforms). Attached AFTER onAction is set so the save-scheduling wrapper
   // wraps the real handler, not a placeholder. State restores before the first tick.
   const bridge = attachBrainBridge(engine, { log });
+
+  // Live question-answering sidecar: watches the same events handleEvent just
+  // saw, detects "@crid ...?" / "crid ...?", and answers off the hot path with
+  // a grounded web lookup (Brave if keyed, else DuckDuckGo/Wikipedia). Wrapped
+  // here so /event, /ingest and demo traffic all get it for free.
+  const lookup = createLookupHandler(engine, { log });
+  const handleEventCore = engine.handleEvent.bind(engine);
+  engine.handleEvent = (evt) => {
+    const res = handleEventCore(evt);
+    lookup.maybeAnswer(evt);
+    return res;
+  };
 
   // Letters rides on the chat the brain already reads. It needs one thing nothing else in here does —
   // a way to write desk state — so it stays off, and says why once, until that is configured.

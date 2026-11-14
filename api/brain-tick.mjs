@@ -21,7 +21,7 @@
 // Upstash KV_REST_API_URL / KV_REST_API_TOKEN via _store.mjs.
 
 import { getStore } from "./_store.mjs";
-import { readCueLedger, runAction } from "./_desk-core.mjs";
+import { advanceAscentIfDue, readCueLedger, readState, runAction } from "./_desk-core.mjs";
 import { openActivity, settleActivity, supersedeActivity } from "../brain/activity.mjs";
 import { CommandBus } from "../brain/commands.mjs";
 import { cueFor } from "../brain/cue-map.mjs";
@@ -136,6 +136,13 @@ export async function runBrainTick({ store = getStore(), now = Date.now, log = n
     lines.push(String(line));
     log?.(String(line));
   };
+
+  // The scheduler is the authoritative unattended clock for a living run. Overlay reads retain
+  // a recovery path, but an expired audience vote must never depend on somebody keeping a tab
+  // open. This advances at most one persisted transition per scheduled tick.
+  const state = await readState(store);
+  const ascended = await advanceAscentIfDue(store, state, now());
+  if (ascended) record(`Ascent advanced to ${ascended.ascent?.status ?? "idle"}.`);
 
   // The desk reports how a cue ended into its own ledger; this is where the brain picks that up.
   // Settling happens before the tick decides anything, so an activity that finished or ran out of

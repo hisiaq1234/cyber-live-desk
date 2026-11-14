@@ -991,9 +991,55 @@ html.swae #desk .letters{background:#0b0d12f5}
     return el;
   });
 
+  // ---------- The Ascent ----------
+  // A public rendering of an explicitly started server run — never startup decoration. It reads
+  // anonymous counts only; Twitch/webhook state remains authoritative on the server.
+  const ASCENT_CSS = `
+#desk .ascent{width:100%;box-sizing:border-box;padding:18px 20px;border:1px solid rgba(134,246,188,.3);border-left:4px solid #86f6bc;border-radius:0 12px 12px 0;background:linear-gradient(135deg,rgba(8,15,22,.94),rgba(31,23,54,.92));color:#f4f0ff;box-shadow:0 16px 46px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,255,255,.06);font-family:"Space Grotesk",var(--brand),sans-serif}
+#desk .ascent-kicker{display:flex;justify-content:space-between;gap:10px;color:#86f6bc;font:600 clamp(10px,.75vw,13px) "IBM Plex Mono",var(--mono);letter-spacing:.16em}#desk .ascent-title{margin:8px 0 4px;font-size:clamp(22px,2.5vw,43px);line-height:.95;letter-spacing:-.05em}#desk .ascent-goal{color:rgba(244,240,255,.66);font-size:clamp(12px,1vw,16px)}
+#desk .ascent-meter{height:7px;margin:15px 0 10px;background:rgba(244,240,255,.13);overflow:hidden;border-radius:999px}#desk .ascent-meter>i{display:block;height:100%;background:#86f6bc;box-shadow:0 0 18px rgba(134,246,188,.75);transition:width .35s ease}#desk .ascent-prompt{margin:10px 0 8px;font-size:clamp(14px,1.15vw,19px);font-weight:600}.ascent-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+#desk .ascent-option{min-width:0;padding:9px;border:1px solid rgba(244,240,255,.16);background:rgba(244,240,255,.05);font:600 clamp(10px,.78vw,14px) "IBM Plex Mono",var(--mono)}#desk .ascent-option b{display:block;color:#f4f0ff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#desk .ascent-option span{color:#86f6bc}.ascent-foot{display:flex;justify-content:space-between;gap:10px;margin-top:12px;color:rgba(244,240,255,.62);font-size:clamp(10px,.78vw,14px)}html.swae #desk .ascent{background:#0b0d12f5}
+`;
+
+  register("ascent", (c, opts) => {
+    const phase = h("span", "", "AWAITING ROUTE");
+    const title = h("div", "ascent-title", "THE ASCENT");
+    const goal = h("div", "ascent-goal", "Reach the upper light.");
+    const meter = h("i");
+    const prompt = h("div", "ascent-prompt", "");
+    const options = h("div", "ascent-options");
+    const strength = h("span", "", "STRENGTH 0");
+    const clock = h("span", "", "");
+    const el = h("section", { class: "ascent", "aria-label": "CRID ascent" },
+      h("div", "ascent-kicker", h("span", "", "CRID // LIVING RUN"), phase), title, goal,
+      h("div", "ascent-meter", meter), prompt, options, h("div", "ascent-foot", strength, clock));
+    let timer = null;
+    const drawClock = () => {
+      if (!el.isConnected) { clearInterval(timer); return; }
+      const run = el.__ascent;
+      if (!run?.vote?.endsAt) { clock.textContent = run?.status === "complete" ? "RESTING ABOVE" : ""; return; }
+      clock.textContent = `ROUTE ${Math.ceil(Math.max(0, run.vote.endsAt - serverNow()) / 1000)}s`;
+    };
+    timer = setInterval(drawClock, 250);
+    el.updateAscent = (run) => {
+      if (!run) return;
+      el.__ascent = run;
+      const vote = run.vote;
+      phase.textContent = run.status === "complete" ? "REACHED" : vote ? "ROUTE OPEN" : "MOVING";
+      title.textContent = run.title || "THE ASCENT";
+      goal.textContent = run.motion?.label || run.goal || "Reach the upper light.";
+      meter.style.width = `${Math.max(0, Math.min(100, Number(run.progress) || 0))}%`;
+      prompt.textContent = vote?.prompt || (run.status === "complete" ? "CRID reached the upper light. He is resting there." : "CRID is moving with the route you chose.");
+      options.replaceChildren(...(vote?.options ?? []).map((option) => h("div", "ascent-option", h("b", "", option.label), h("span", "", `${option.command} · ${option.count}`))));
+      strength.textContent = `STRENGTH ${run.strength?.total ?? 0} · TIER ${run.strength?.tier ?? 0}`;
+      drawClock();
+    };
+    return el;
+  });
+
   // ---------- mount ----------
   const style = document.createElement("style");
-  style.textContent = CSS + CYBER_CSS + LETTERS_CSS + SCENE_CSS;
+  style.textContent = CSS + CYBER_CSS + LETTERS_CSS + ASCENT_CSS + SCENE_CSS;
   document.head.append(style);
 
   const slot = h("div", "slot");
@@ -1362,6 +1408,7 @@ html.swae #desk .letters{background:#0b0d12f5}
     if (key === shownKey) {
       slot.lastElementChild?.updatePoll?.(opts.poll);
       slot.lastElementChild?.updateLetters?.(opts.letters);
+      slot.lastElementChild?.updateAscent?.(opts.ascent);
       return;
     }
     dropCard(true);
@@ -1374,6 +1421,7 @@ html.swae #desk .letters{background:#0b0d12f5}
         el.classList.add("in");
         el.updatePoll?.(opts.poll);
         el.updateLetters?.(opts.letters);
+        el.updateAscent?.(opts.ascent);
       })
     );
     shownKey = key;
@@ -1662,6 +1710,17 @@ html.swae #desk .letters{background:#0b0d12f5}
     if (xMode && !xStarted) {
       xStarted = true;
       fetchXfeed();
+    }
+    // The Ascent only appears after the operator creates a persisted run. A finished run rests at
+    // its earned ending; it never turns into default startup content or auto-mints a new quest.
+    const ascent = state.ascent?.status === "active" || state.ascent?.status === "complete"
+      ? state.ascent
+      : null;
+    if (ascent) {
+      showCard({ id: `ascent-${ascent.id}`, type: "ascent", category: "CRID" }, { ascent });
+      if (ascent.vote?.endsAt) expiryTimer = setTimeout(render, Math.max(50, ascent.vote.endsAt - serverNow() + 50));
+      else if (ascent.nextVoteAt) expiryTimer = setTimeout(render, Math.max(50, ascent.nextVoteAt - serverNow() + 50));
+      return;
     }
     // The game owns the card only during its active round. An expired or closed board is history,
     // not page-start content; the control surface retains it until the operator clears it.

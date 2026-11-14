@@ -47,6 +47,18 @@ export function twitchMayCommand(event, { broadcasterId = "", allowIds = [], ena
 
 const header = (req, name) => req.headers.get(name) ?? "";
 
+// Audience route input is intentionally narrower than the operator command grammar. A vote is
+// only a complete exact token while a persisted Ascent window is open; ordinary conversation and
+// all dashboard commands remain outside this unprivileged lane.
+export function parseAscentVote(text, ascent, now = Date.now()) {
+  if (ascent?.status !== "active" || !ascent.vote || ascent.vote.endsAt <= now) return null;
+  const token = String(text ?? "").trim().toLowerCase();
+  const option = Array.isArray(ascent.vote.options)
+    ? ascent.vote.options.find((item) => String(item?.command ?? "").toLowerCase() === token)
+    : null;
+  return option?.id ?? null;
+}
+
 export function verifyTwitchSignature({ messageId, timestamp, signature, rawBody, secret, now = Date.now(), toleranceMs = TWITCH_SIGNATURE_TOLERANCE_MS }) {
   if (!secret || secret.length < 10) return { ok: false, status: 503, error: "TWITCH_WEBHOOK_SECRET is not configured." };
   if (!messageId || !timestamp || !signature) return { ok: false, status: 403, error: "Missing Twitch signature headers." };
@@ -295,6 +307,34 @@ export async function handleTwitchWebhook(store, req, { env = process.env, now =
   }
 
   const state = await readState(store);
+
+  // A route vote is free viewer agency, not remote control of the desk. Claim it against both
+  // EventSub identifiers before it can increment a tally, but never apply the broadcaster/allowlist
+  // gate that protects `crid …` operator commands below.
+  const ascentChoice = parseAscentVote(event.message?.text, state.ascent, now);
+  if (ascentChoice) {
+    const claim = await claimTwitchEvent(store, { messageId: event.message_id, headerId: messageId }, now);
+    if (!claim.ok) return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
+    try {
+      await action(store, { action: "ascent-vote", choice: ascentChoice, viewerId: event.chatter_user_id }, now);
+      try {
+        await writeTwitchStatus(store, { lastEventAt: now, lastError: null }, now);
+      } catch (statusErr) {
+        console.error("twitch eventsub status write failed", statusErr);
+      }
+      return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
+    } catch (err) {
+      await releaseTwitchEvent(store, claim.keys);
+      await writeTwitchStatus(store, { lastEventAt: now, lastError: err?.message ?? "Ascent vote failed" }, now)
+        .catch((statusErr) => console.error("twitch eventsub status write failed", statusErr));
+      if (err instanceof HttpError) return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
+      console.error("twitch EventSub Ascent vote failed", err);
+      return textResponse("Webhook Ascent vote failed.", 500);
+    }
+  }
+
+  // This switch protects privileged `crid …` desk commands only. It must not turn the active
+  // audience game's exact free route tokens into silent no-ops.
   if (!state.twitchChatEnabled) {
     return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
   }

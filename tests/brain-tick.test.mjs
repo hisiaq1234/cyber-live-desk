@@ -9,7 +9,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { BOT_CUES } from "../api/_desk-core.mjs";
+import { BOT_CUES, readState, runAction } from "../api/_desk-core.mjs";
 import { BRAIN_KEY, cueFor, runBrainTick } from "../api/brain-tick.mjs";
 
 const NOW = Date.parse("2026-11-11T12:00:00Z");
@@ -83,6 +83,18 @@ test("a tick that emits nothing posts no cue", async () => {
   assert.equal(result.cue, null);
   assert.equal(store.read("state"), null, "a quiet tick must not touch the desk state");
   assert.ok(store.read(BRAIN_KEY), "even a quiet tick keeps the session");
+});
+
+test("the scheduled tick advances a due Ascent without any overlay reader", async () => {
+  const store = makeStore();
+  await runAction(store, { action: "ascent-start" }, NOW);
+
+  // This is the unattended case: no browser calls publicState after the vote expires.
+  await runBrainTick({ store, now: () => NOW + 30_001 });
+
+  const state = await readState(store);
+  assert.equal(state.ascent.vote, null, "the expired route vote is resolved by the server tick");
+  assert.equal(state.ascent.progress, 34, "the first authored climb becomes durable without an overlay");
 });
 
 test("every cue the engine can produce is a name the desk accepts", () => {

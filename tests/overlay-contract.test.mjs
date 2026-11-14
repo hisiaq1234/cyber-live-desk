@@ -52,3 +52,11 @@ test("the idle desk leaves headlines and completed game boards off screen", () =
   assert.match(overlay, /state\.letters\?\.status === "open"/);
   assert.match(overlay, /state\.letters\.endsAt > serverNow\(\)/);
 });
+
+test("The Ascent is an explicit live layer, not startup or fixture content", () => {
+  assert.ok(overlay.includes('register("ascent"'));
+  assert.match(overlay, /const ascent = state\.ascent\?\.status === "active" \|\| state\.ascent\?\.status === "complete"/);
+  assert.ok(overlay.includes('showCard({ id: `ascent-${ascent.id}`, type: "ascent", category: "CRID" }, { ascent })'));
+  assert.ok(overlay.includes('el.updateAscent?.(opts.ascent)'));
+  assert.ok(overlay.includes('ascent.vote?.endsAt'));
+});

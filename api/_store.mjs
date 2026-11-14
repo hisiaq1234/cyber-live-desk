@@ -13,6 +13,7 @@
 //   get(key, { type: "json" }) → parsed value or null
 //   setJSON(key, value)        → void
 //   setJSON(key, value, { onlyIfNew: true }) → { modified: boolean }
+//   compareAndSetJSON(key, expectedVersion, value) → { modified: boolean }
 //   delete(key)                → void
 
 import { Redis } from "@upstash/redis";
@@ -52,6 +53,22 @@ export function getStore() {
       }
       await redis.set(full, serialized);
       return { modified: true };
+    },
+
+    // A state version is the compare-and-set token. This protects concurrent EventSub delivery
+    // from last-write-wins tally loss without leaking Redis implementation into desk rules.
+    async compareAndSetJSON(key, expectedVersion, value) {
+      const full = `${NS}${key}`;
+      const script = `
+        local raw = redis.call('GET', KEYS[1])
+        if not raw then return 0 end
+        local current = cjson.decode(raw)
+        if tonumber(current.version) ~= tonumber(ARGV[1]) then return 0 end
+        redis.call('SET', KEYS[1], ARGV[2])
+        return 1
+      `;
+      const result = await redis.eval(script, [full], [String(expectedVersion), JSON.stringify(value)]);
+      return { modified: Number(result) === 1 };
     },
 
     async delete(key) {

@@ -487,7 +487,8 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // invisible image painting over the frame.
   parts.avatarBase.addEventListener("error",()=>{parts.avatarBase.setAttribute("display","none");parts.ph.removeAttribute("display")});
   parts.avatarBase.addEventListener("load",()=>{parts.ph.setAttribute("display","none");parts.avatarBase.removeAttribute("display")});
-  let mode="dead",tagText=null,talking=!1,grooving=!1,tickN=0,waitUntil=Date.now()+3000,idleQ=[],gestureQ=[],timer=null,frozen=!1,dying=!1;
+  let mode="dead",tagText=null,talking=!1,grooving=!1,tickN=0,waitUntil=Date.now()+3000,idleQ=[],gestureQ=[],timer=null,frozen=!1,dying=!1,
+    lastAscentBeat=null,lastAscentBeatAt=0,pendingAscentBeat=null;
   // online is null, not true: "nothing has told me otherwise yet" is a different state from "the
   // desk says he is on". Starting at true made the first observe({bot:{on:true}}) a no-op — it only
   // acts on a flip — so the boot never ran, mode stayed at its "dead" default and the idle loop's
@@ -1019,9 +1020,10 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     if(stageTick.lastState!==stage.state){stageTick.lastState=stage.state;if(stage.state==="hop")stageTick.hopStarted=false}
     if(mode!=="on"||dying){world.stopCharacter(cridBody);return}
     const bodySpec=build(),fw=stageHW.w||host.offsetWidth||180,fh=stageHW.h||host.offsetHeight||220;
-    const bodyWpx=fw*bodySpec.w/FRAME.w,bodyHpx=fh*bodySpec.h/FRAME.h,slow=Math.max(1,bodySpec.slow||1),heft=bodySpec.heft,load=bag.worn?BAG_MASS:0;
+    const bodyWpx=fw*bodySpec.w/FRAME.w,bodyHpx=fh*bodySpec.h/FRAME.h,slow=Math.max(1,bodySpec.slow||1),heft=bodySpec.heft,load=bag.worn?BAG_MASS:0,
+      effort=heft+Math.max(0,Number(cridBody.ascentStrength)||0);
     const walkSpeed=Math.max(.12,.76*bodyHpx/UPX())/slow,walkAccel=3.2/slow;
-    cridBody.mass=bodySpec.heft;cridBody.strength=bodySpec.heft;cridBody.load=bag.worn?BAG_MASS:0;
+    cridBody.mass=bodySpec.heft;cridBody.strength=effort;cridBody.load=bag.worn?BAG_MASS:0;
     cridBody.halfW=Math.max(12,bodyWpx*.52)/UPX();cridBody.halfH=Math.max(30,bodyHpx*.5)/UPX();
     cridBody.floor=0;cridBody.gravity=2400/UPX();
     if(stage.state==="floor"&&(walk||leanAt||pendingLean)){
@@ -1041,26 +1043,26 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       world.releaseGrip(cridBody);
     if(stage.walking&&["approach","floor","top"].includes(stage.state)){
       world.moveCharacter(cridBody,stage.targetX,{maxSpeed:walkSpeed,
-        acceleration:walkAccel,strength:heft,load});
+        acceleration:walkAccel,strength:effort,load});
     } else if(stage.state==="pull"&&cridBody.grip){
       world.climbCharacter(cridBody,{x:stage.lipX,feetY:-stage.topY},
-        {strength:heft,load,maxAcceleration:24,stiffness:18/slow,damping:8/slow});
+        {strength:effort,load,maxAcceleration:24,stiffness:18/slow,damping:8/slow});
     } else if(stage.state==="reach"&&!cridBody.grip){
       const box=stageBoxes[stage.layer],side=stage.side==="right"?-1:1;
       const anchored=box&&world.grabCharacter(cridBody,{id:stage.layer,x:side<0?box.right-8/UPX():box.left+8/UPX(),y:-box.top,normal:{x:0,y:-1,z:0}},
-        {side,strength:heft,load,reach:cridBody.halfH*1.9});
+        {side,strength:effort,load,reach:cridBody.halfH*1.9});
       if(!anchored)stage.gripFailed=true;
     } else if(stage.state==="drop"||stage.state==="hop-down"){
       world.releaseGrip(cridBody);
       world.moveCharacter(cridBody,stage.fromX,{maxSpeed:walkSpeed,
-        acceleration:walkAccel,strength:heft,load});
+        acceleration:walkAccel,strength:effort,load});
     } else if(["slip","crouch"].includes(stage.state)){
       world.releaseGrip(cridBody);world.stopCharacter(cridBody);
     } else if(stage.state==="hop"&&!stageTick.hopStarted){
       stageTick.hopStarted=true;
       world.jumpCharacter(cridBody,{height:Math.max(0,stage.topY/slow),horizontal:(stage.lipX-cridBody.x)*.6});
     } else if(stage.state==="hop"&&stageTick.hopStarted){
-      world.moveCharacter(cridBody,stage.lipX,{maxSpeed:Math.max(walkSpeed,.9*bodyHpx/UPX()/slow),acceleration:3.2/slow,strength:heft,load});
+      world.moveCharacter(cridBody,stage.lipX,{maxSpeed:Math.max(walkSpeed,.9*bodyHpx/UPX()/slow),acceleration:3.2/slow,strength:effort,load});
     } else if(!["top","approach","floor"].includes(stage.state)){
       world.stopCharacter(cridBody);
     }
@@ -1078,12 +1080,24 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // tick's: step() advances groundY/roll/pitch through climbs and lens, and at
   // 22Hz those stepped visibly under the 60fps rig. The intent is the one
   // beingTick last computed — it only ever changed at that cadence anyway.
-  let stageIntent=null,stageBusy=false,lastStageRAF=0,stageManual=false;
+  let stageIntent=null,stageBusy=false,lastStageRAF=0,stageManual=false,
+    // The Ascent is another intent to the existing physical stage, not a new loop or root writer.
+    ascentIntent=null,ascentStageStarted=false,ascentStartedAt=0,lastAscentMotion=null;
   const stageDrive=now=>{
     if(stage&&mode==="on"&&!dying&&!reduced){
       const dt=lastStageRAF?Math.min(.1,Math.max(0,(now-lastStageRAF)/1000)):.016; lastStageRAF=now;
       try{
-        stage.step(now,stageBusy?null:stageIntent,dt);
+        const intent=stageManual?stageIntent:(ascentIntent||(stageBusy?null:stageIntent));
+        stage.step(now,intent,dt);
+        if(ascentIntent){
+          if(stage.state!=="floor")ascentStageStarted=true;
+          // A shared-stage refusal is honest: play the existing climb beat rather than moving
+          // CRID by script or pretending an unreachable panel was climbed.
+          if((ascentStageStarted&&stage.state==="floor")||(!ascentStageStarted&&now-ascentStartedAt>700)){
+            if(!ascentStageStarted)play(SEQ.climb);
+            ascentIntent=null;ascentStageStarted=false;
+          }
+        }
         if(stageManual&&stageIntent?.phase==="end"&&stage.state==="floor"){
           stageManual=false;stageIntent=null;stageBusy=false;
         }
@@ -1131,6 +1145,10 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     if(bag.worn&&walk&&now>=paperThinkAt){paperThinkAt=now+rand(150000,360000);
       if(Math.random()<.3){const r=host.getBoundingClientRect();spawnPaper(r.left+r.width/2+rand(-16,16),r.top+r.height*.2,hisVx)}}
     if(walk&&(jobs.length||running))stopWalk(); advanceJob(); advanceWalk(); beingTick(now);
+    // Support can arrive in a burst. Accounting is already committed server-side; the visual
+    // acknowledgement is deliberately one queued authored beat per 45 seconds, never alert spam.
+    if(pendingAscentBeat&&now-lastAscentBeatAt>=45000&&!running&&!jobs.length&&!gestureQ.length){
+      const beat=pendingAscentBeat;pendingAscentBeat=null;lastAscentBeatAt=now;react(beat.kind==="gift"?"gift":"sub")}
     // A commanded lean or walk is the desk's ask outranking his own stage: the
     // machine is told to abandon gracefully rather than fight the new verb.
     if(stage&&stage.state!=="floor"&&(leanAt||pendingLean||walk))stage.interrupt("cue-takeover");
@@ -1260,7 +1278,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       // step() itself moved to the rAF loop (stageRAF) — it advances the climb,
       // the lean and the seat on the display's clock. What stays here is the
       // intent it consumes, refreshed at the behaviour tick's own cadence.
-      if(!stageManual){stageIntent=it||null;stageBusy=busy}}
+      if(!stageManual&&!ascentIntent){stageIntent=it||null;stageBusy=busy}}
     if(stageManual)return;
     if(key!==beingPrev){                              // the activity ended or turned over: let go of what it held
       if(beingPrev==="rest"&&mode==="doze")setMode("on");
@@ -1376,13 +1394,29 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       setFlight(j.node,null); gestureQ=[{eyes:"open",mouth:"smile"}]; running=null; return}
     const D=[[.35,.82,5],[.7,.46,-8],[.95,.16,6]]; if(j.i<D.length){const[p,s,r]=D[j.i]; gestureQ=[{eyes:"wide",mouth:"o",mL:"push",mR:"push",hy:-2}]; setFlight(j.node,pathAt(j.from,j.to,p,s,r,1,!0)); j.i++; return}
     gestureQ=[{eyes:"happy",mouth:"grin",bs:1.04},{eyes:"open",mouth:"smile"}]; setFlight(j.node,null); (_c=j.done)==null||_c.call(j); running=null}
-  const activityOf=s=>!!(s&&(s.visible&&s.card||s.poll&&s.poll.active!==!1||s.crid||s.court||s.music&&s.music.current||s.spaces&&s.spaces.length||s.riad&&s.riad.active));
+  const activityOf=s=>!!(s&&(s.visible&&s.card||s.poll&&s.poll.active!==!1||s.crid||s.court||s.music&&s.music.current||s.spaces&&s.spaces.length||s.riad&&s.riad.active||s.ascent&&s.ascent.status==="active"));
   // null online means "not told yet", and the desk's own default is on, so an unknown state boots
   // him rather than freezing him. Only an explicit bot.on:false kills him.
   const power=()=>setMode(online===!1?"dead":"on");
   const observe=s=>{var _a,_b,_c; if(!s)return; maybeSeedBeing(s); const on=s.bot?s.bot.on!==!1:!0; if(on!==online){online=on;power()} if(online===!1){prev=s; return}
     const reactN=(_c=(_b=(_a=s.bot)==null?void 0:_a.react)==null?void 0:_b.n)!=null?_c:0; if(lastReactN===null)lastReactN=reactN; else if(reactN!==lastReactN){lastReactN=reactN;react(s.bot.react.kind)}
     const sn=subCount(s); if(sn!=null){if(lastSubN===null){lastSubN=sn;applySubs(sn,!1)}else if(sn!==lastSubN){const up=sn>lastSubN;lastSubN=sn;applySubs(sn,up)}}
+    // Strength changes the real motor capability, never CRID's selected face/body frames. The
+    // stage still decides whether a grip is safe; this is a separate simulation stat, not art.
+    const run=s.ascent&&s.ascent.status==="active"?s.ascent:null;
+    const strength=Math.max(0,Number(run?.strength?.total)||0);
+    cridBody.ascentStrength=Math.min(1.2,strength*.04);
+    const beat=run?.beat;
+    if(beat&&beat.id!==lastAscentBeat){lastAscentBeat=beat.id;
+      if(Date.now()-lastAscentBeatAt>=45000){lastAscentBeatAt=Date.now();react(beat.kind==="gift"?"gift":"sub")}else pendingAscentBeat=beat}
+    const motion=run?.motion;
+    if(motion&&motion.id!==lastAscentMotion){lastAscentMotion=motion.id;
+      if(motion.kind==="climb"&&mode==="on"&&!dying&&!reduced&&!stageManual){
+        stageSeed();syncStageBoxes(true);getStage();
+        const targets=deskTargets().climb,target=targets.find(t=>t.layer==="card")||targets[0];
+        if(target){ascentIntent={key:"climb",phase:"start",layer:target.layer,x:.5};ascentStageStarted=false;ascentStartedAt=Date.now()}else play(SEQ.climb);
+      }else if(motion.kind==="arrive")react("cheer");
+    }
     if(talking&&mode==="on"&&tickN%9===0)play(SEQ.read);
     if(activityOf(s)){lastActive=Date.now(); if(mode==="doze"){mode="on";play([{eyes:"wide",mouth:"o",hy:-2},{eyes:"open",mouth:"flat",hy:0}],{urgent:!0})}}
     const verdict=s.crid?s.crid.verdict:null; tagText=s.crid?(verdict===1?"PAID":"DUE"):null;

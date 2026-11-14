@@ -224,6 +224,11 @@ export async function commitState(store, prev, patch, now = Date.now()) {
 export async function commitStateIfCurrent(store, expectedVersion, patch, now = Date.now()) {
   const current = await readState(store);
   if (current.version !== expectedVersion) return current;
+  const next = { ...current, ...patch, version: current.version + 1, updatedAt: now };
+  if (typeof store.compareAndSetJSON === "function") {
+    const committed = await store.compareAndSetJSON("state", expectedVersion, next);
+    return committed?.modified ? next : readState(store);
+  }
   return commitState(store, current, patch, now);
 }
 
@@ -765,6 +770,30 @@ export async function advanceAscentIfDue(store, state, now = Date.now()) {
   return fresh.version > state.version ? fresh : null;
 }
 
+// A viewer vote needs a real compare-and-set loop: EventSub can deliver different viewers at the
+// same moment, and delivery-id claims alone cannot serialize the shared tally. Production uses
+// the store's Redis Lua CAS; in-memory test stores retain the compatible single-process fallback.
+export async function recordAscentVote(store, b, now = Date.now()) {
+  for (let tries = 0; tries < 4; tries += 1) {
+    const state = await readState(store);
+    const ascent = state.ascent;
+    const vote = ascent?.vote;
+    if (!ascent || ascent.status !== "active" || !vote) throw new HttpError(409, "No Ascent route vote is open.");
+    if (vote.endsAt <= now) throw new HttpError(409, "That Ascent vote is over.");
+    const choice = String(b.choice ?? "").toLowerCase();
+    const option = vote.options?.find((item) => item.id === choice);
+    if (!option) throw new HttpError(422, "Choose one of the open Ascent routes.");
+    const viewerId = String(b.viewerId ?? "").trim();
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(viewerId)) throw new HttpError(422, "A stable viewer id is required for an Ascent vote.");
+    if (vote.voters?.[viewerId]) return { state, queueLength: 0, ascent: { accepted: false, reason: "already-voted", choice: vote.voters[viewerId] } };
+    const voters = { ...(vote.voters ?? {}), [viewerId]: option.id };
+    const options = vote.options.map((item) => item.id === option.id ? { ...item, count: Math.max(0, Math.trunc(item.count || 0)) + 1 } : item);
+    const committed = await commitStateIfCurrent(store, state.version, { ascent: { ...ascent, vote: { ...vote, voters, options } } }, now);
+    if (committed.version === state.version + 1) return { state: committed, queueLength: 0, ascent: { accepted: true, choice: option.id, remainingMs: vote.endsAt - now } };
+  }
+  throw new HttpError(409, "The Ascent vote changed. Try again.");
+}
+
 const ascentStrength = (run, kind, count, now) => {
   if (!run || run.status !== "active" || !["sub", "gift"].includes(kind)) return run;
   const gain = kind === "sub" ? 1 : Math.max(1, Math.min(1000, Math.trunc(count || 1)));
@@ -946,6 +975,7 @@ export function lettersLeaders(letters) {
 }
 
 export async function runAction(store, b, now = Date.now()) {
+  if (b?.action === "ascent-vote") return recordAscentVote(store, b, now);
   const state = await readState(store);
   const cards = await readCards(store);
   const all = queueOf(cards);
@@ -1173,27 +1203,6 @@ export async function runAction(store, b, now = Date.now()) {
     case "ascent-stop":
       patch = { ascent: null };
       break;
-    case "ascent-vote": {
-      const ascent = state.ascent;
-      const vote = ascent?.vote;
-      if (!ascent || ascent.status !== "active" || !vote) throw new HttpError(409, "No Ascent route vote is open.");
-      if (vote.endsAt <= now) throw new HttpError(409, "That Ascent vote is over.");
-      const choice = String(b.choice ?? "").toLowerCase();
-      const option = vote.options?.find((item) => item.id === choice);
-      if (!option) throw new HttpError(422, "Choose one of the open Ascent routes.");
-      const viewerId = String(b.viewerId ?? "").trim();
-      if (!/^[A-Za-z0-9_-]{1,64}$/.test(viewerId)) throw new HttpError(422, "A stable viewer id is required for an Ascent vote.");
-      if (vote.voters?.[viewerId]) {
-        ascentResult = { accepted: false, reason: "already-voted", choice: vote.voters[viewerId] };
-        quiet = true;
-        break;
-      }
-      const voters = { ...(vote.voters ?? {}), [viewerId]: option.id };
-      const options = vote.options.map((item) => item.id === option.id ? { ...item, count: Math.max(0, Math.trunc(item.count || 0)) + 1 } : item);
-      patch = { ascent: { ...ascent, vote: { ...vote, voters, options } } };
-      ascentResult = { accepted: true, choice: option.id, remainingMs: vote.endsAt - now };
-      break;
-    }
     case "clip-create": {
       const clip = await createTwitchClip(store, b, state, now);
       patch = { lastClip: clip.clip };
@@ -1424,9 +1433,14 @@ export async function runAction(store, b, now = Date.now()) {
       const delta = kind === "sub" ? 1 : kind === "gift" ? count : 0;
       const currentSubs = Number.isFinite(state.bot?.subs) ? Math.max(0, Math.trunc(state.bot.subs)) : 0;
       const label = kind === "sub" ? "+SUB" : kind === "gift" ? `GIFT ×${count}` : `${count.toLocaleString("en-US")} BITS`;
+      const activeAscent = state.ascent?.status === "active";
+      // While a living run is active, the public beat is the one Ascent channel that the existing
+      // renderer coalesces. Do not also emit the legacy generic reaction for every paid event.
+      const bot = { ...(state.bot ?? {}), on: state.bot?.on ?? true, ...(delta ? { subs: currentSubs + delta } : {}) };
+      if (!activeAscent) bot.react = { kind, label, n: (state.bot?.react?.n ?? 0) + 1 };
       patch = {
-        bot: { ...(state.bot ?? {}), on: state.bot?.on ?? true, ...(delta ? { subs: currentSubs + delta } : {}), react: { kind, label, n: (state.bot?.react?.n ?? 0) + 1 } },
-        ...(state.ascent ? { ascent: ascentStrength(state.ascent, kind, count, now) } : {}),
+        bot,
+        ...(activeAscent ? { ascent: ascentStrength(state.ascent, kind, count, now) } : {}),
       };
       break;
     }

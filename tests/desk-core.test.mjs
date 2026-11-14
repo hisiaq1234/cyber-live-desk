@@ -903,6 +903,7 @@ test("The Ascent separates support strength from the original body sizing ladder
   await runAction(store, { action: "ascent-start" }, NOW);
   let state = (await runAction(store, { action: "bot-engagement", kind: "sub", count: 1 }, NOW + 1)).state;
   assert.equal(state.bot.subs, 1, "existing subscription growth remains intact");
+  assert.equal(state.bot.react, undefined, "an active Ascent queues its authored beat instead of a generic alert");
   assert.equal(state.ascent.strength.total, 1);
   assert.equal(state.ascent.strength.tier, 0);
 
@@ -911,6 +912,7 @@ test("The Ascent separates support strength from the original body sizing ladder
   assert.equal(state.ascent.strength.total, 3, "run strength is a separate persisted value");
   assert.equal(state.ascent.strength.tier, 1);
   assert.equal(state.ascent.beat.kind, "gift");
+  assert.equal(state.bot.react, undefined, "a gift batch still makes one coalescible Ascent beat, not two alerts");
 });
 
 test("a state blob from before CRID reads with nothing on the card", async () => {

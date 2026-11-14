@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 
-import { DEFAULT_STATE, commitState, readState } from "../api/_desk-core.mjs";
+import { DEFAULT_STATE, commitState, readState, runAction } from "../api/_desk-core.mjs";
 import {
   TWITCH_EVENT_PATH,
   handleTwitchWebhook,
@@ -223,6 +223,39 @@ test("control off, or an event for another broadcaster, is ignored", async () =>
   const other = await send(on, { payload: message({ broadcaster_user_id: "999" }) });
   assert.equal(other.status, 403);
   assert.equal((await readState(on)).activeCardId, "a");
+});
+
+test("an open Ascent accepts one exact route vote per viewer without opening desk control", async () => {
+  const store = await readyStore();
+  await runAction(store, { action: "ascent-start" }, NOW);
+
+  const left = message({
+    chatter_user_id: "222", chatter_user_name: "Viewer", message_id: "ascent-left-1",
+    message: { text: "!left" },
+  });
+  assert.equal((await send(store, { payload: left, messageId: "ascent-header-left-1" })).status, 204);
+  let state = await readState(store);
+  assert.equal(state.ascent.vote.options.find((option) => option.id === "left").count, 1);
+  assert.equal(state.ascent.vote.voters["222"], "left");
+
+  const repeat = message({
+    chatter_user_id: "222", chatter_user_name: "Viewer", message_id: "ascent-right-repeat",
+    message: { text: "!right" },
+  });
+  const version = state.version;
+  assert.equal((await send(store, { payload: repeat, messageId: "ascent-header-right-repeat" })).status, 204);
+  state = await readState(store);
+  assert.equal(state.version, version, "a second route choice from the same viewer is quiet, not a rewrite");
+  assert.equal(state.ascent.vote.options.find((option) => option.id === "right").count, 0);
+
+  const right = message({
+    chatter_user_id: "333", chatter_user_name: "Another Viewer", message_id: "ascent-right-1",
+    message: { text: "!right" },
+  });
+  assert.equal((await send(store, { payload: right, messageId: "ascent-header-right-1" })).status, 204);
+  state = await readState(store);
+  assert.equal(state.ascent.vote.options.find((option) => option.id === "right").count, 1);
+  assert.equal(state.activeCardId, "a", "unprivileged route votes cannot execute a desk command");
 });
 
 test("verified sub, gift-sub and Bits events reach CRID once, update growth, and show useful labels", async () => {

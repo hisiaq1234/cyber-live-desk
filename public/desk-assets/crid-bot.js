@@ -1276,7 +1276,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // also why there is no being.interrupt("cue") here: pausing the decision is cleaner than
   // abandoning the activity and paying the cooldown for a cue that was never a threat. When the
   // activity ends or turns over, whatever it was holding is let go first.
-  let beingPrev=null,beingLean=null,beingFired=!1;
+  let beingPrev=null,beingLean=null,beingFired=!1,beingMid=!1;
   // Phase C: the activity carries its feeling on the face only — faceOnly skips
   // the gesture sequence so it never fights the verb's own SEQ beat (climb,
   // hop). rest gets none: doze already holds the lids and suppresses emotion.
@@ -1294,10 +1294,15 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       if(!stageManual&&!ascentIntent){stageIntent=it||null;stageBusy=busy}}
     if(stageManual)return;
     if(key!==beingPrev){                              // the activity ended or turned over: let go of what it held
-      if(beingPrev==="rest"&&mode==="doze")setMode("on");
+      if((beingPrev==="rest"||beingPrev==="doze")&&mode==="doze")setMode("on");
       if(beingLean&&leanAt&&leanAt.layer===beingLean){ponder(!1);unlean()}
-      beingLean=null;beingPrev=key;beingFired=!1}
+      beingLean=null;beingPrev=key;beingFired=!1;beingMid=!1}
     if(stageActive())return;                          // approach/reach/climb/lean/seat owns him until floor
+    // The workout's second set: one push-up sequence at the start beat, another when the middle
+    // phase arrives — a 25–40 s activity is not one rep. It waits for the same quiet the start
+    // verbs wait for, but it is not gated on beingFired (that flag is the start's, once only).
+    if(key==="workout"&&it.phase==="middle"&&!beingMid&&mode==="on"&&!dying&&!reduced
+      &&!(walk||running||jobs.length||pendingReact.length||pickupWalk||gestureQ.length||idleQ.length)){beingMid=!0;play(SEQ.pushup)}
     if(!key||mode!=="on"||dying||beingFired)return;
     if(walk||running||jobs.length||pendingReact.length||pickupWalk||gestureQ.length||idleQ.length)return;
     if(key==="wander"){
@@ -1305,13 +1310,14 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       // targetX and stageTick carries him there. This branch only pays the feeling.
       if(reduced){beingFired=!0;being.interrupt("reduced-motion");return}
       beingFired=!0;feel("curious",{faceOnly:!0})}
-    else if(key==="lean-watch"||key==="sit-on"){
-      // sit-on is a real seat now — the stage climbs to the lip and sits. The
-      // begin() inside stage.step already validated the panel is in targets().
+    else if(key==="lean-watch"||key==="sit-on"||key==="read-card"||key==="check-map"){
+      // sit-on is a real seat now — the stage climbs to the lip and sits. read-card and
+      // check-map are stage leans on their one named panel (stage.mjs maps them to "lean").
+      // The begin() inside stage.step already validated the panel is in targets().
       if(reduced){beingFired=!0;being.interrupt("reduced-motion");return}
       beingFired=!0;
       if(!it.layer)being.interrupt("no-panel");
-      else{beingLean=it.layer;if(key==="lean-watch")feel("curious",{faceOnly:!0})}}
+      else{beingLean=it.layer;if(key!=="sit-on")feel("curious",{faceOnly:!0})}}
     else if(key==="climb"){
       // Real climb: approach → reach → pull → top → descend, with the slip
       // chance physics.md §2 gives a bag-carrying lean body.
@@ -1319,8 +1325,13 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       beingFired=!0;
       if(!it.layer)being.interrupt("no-panel");
       else feel("flustered",{faceOnly:!0})}
+    else if(key==="workout"){
+      // Push-up sets on the open floor — SEQ.pushup is the beat he already has; the second
+      // set fires when the activity reaches its middle phase.
+      if(reduced){beingFired=!0;being.interrupt("reduced-motion");return}
+      beingFired=!0;play(SEQ.pushup);feel("flustered",{faceOnly:!0})}
     else if(key==="stretch"){beingFired=!0;play(SEQ.hop);feel("delighted",{faceOnly:!0})}   // the nearest "up and shake it out" beat he has
-    else if(key==="rest"){beingFired=!0;setMode("doze")}     // tired is doze: the mode he already has for it
+    else if(key==="rest"||key==="doze"){beingFired=!0;setMode("doze")}     // tired is doze: the mode he already has for it
     // plan.fidgetEvery is deliberately unused: nextWait() is the idle-gesture gap, not a fidget
     // timer, and there is no burst channel on this page to scale — skipped rather than faked.
   };
@@ -1344,6 +1355,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     if(!d)return;
     being=createBeing({now:Date.now(),targets:deskTargets,...beingOpts,
       drives:beingOffline({energy:+d.energy,boredom:+d.boredom,attention:+d.attention},dtMs),
+      ...(snap.arc&&snap.arc.startedAt!=null?{arc:snap.arc}:{}),
       ...(Number.isFinite(snap.floorX)?{lastX:snap.floorX}:{})});
     // floorX is where he was standing when the page was last alive: 0..1 across the same
     // clock-to-strip band getBeing() measures. The brain's copy was seeded above; here his
@@ -1417,7 +1429,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     audioOn=!!s.crid?.audioPlaying; musicOn=!!s.music?.playing;
     talking=audioOn||Date.now()<sayUntil; grooving=musicOn;
     const on=s.bot?s.bot.on!==!1:!0; if(on!==online){online=on;power()} if(online===!1){prev=s; return}
-    const reactN=(_c=(_b=(_a=s.bot)==null?void 0:_a.react)==null?void 0:_b.n)!=null?_c:0; if(lastReactN===null)lastReactN=reactN; else if(reactN!==lastReactN){lastReactN=reactN;react(s.bot.react.kind)}
+    const reactN=(_c=(_b=(_a=s.bot)==null?void 0:_a.react)==null?void 0:_b.n)!=null?_c:0; if(lastReactN===null)lastReactN=reactN; else if(reactN!==lastReactN){lastReactN=reactN;try{being.noteSignal(Date.now())}catch{}react(s.bot.react.kind)}
     const sn=subCount(s); if(sn!=null){if(lastSubN===null){lastSubN=sn;applySubs(sn,!1)}else if(sn!==lastSubN){const up=sn>lastSubN;lastSubN=sn;applySubs(sn,up)}}
     // Strength changes the real motor capability, never CRID's selected face/body frames. The
     // stage still decides whether a grip is safe; this is a separate simulation stat, not art.
@@ -1436,7 +1448,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       }else if(motion.kind==="arrive")react("cheer");
     }
     if(talking&&mode==="on"&&tickN%9===0)play(SEQ.read);
-    if(activityOf(s)){lastActive=Date.now(); if(mode==="doze"){mode="on";play([{eyes:"wide",mouth:"o",hy:-2},{eyes:"open",mouth:"flat",hy:0}],{urgent:!0})}}
+    if(activityOf(s)){lastActive=Date.now(); try{being.noteSignal(Date.now())}catch{} if(mode==="doze"){mode="on";play([{eyes:"wide",mouth:"o",hy:-2},{eyes:"open",mouth:"flat",hy:0}],{urgent:!0})}}
     const verdict=s.crid?s.crid.verdict:null; tagText=s.crid?(verdict===1?"PAID":"DUE"):null;
     if(prev){const pv=prev.crid?prev.crid.verdict:null; if(verdict===1&&pv!==1)react("paid"); else if(verdict===0&&pv!==0)react("due"); const pollNow=s.poll&&s.poll.active!==!1,pollBefore=prev.poll&&prev.poll.active!==!1; if(pollNow&&!pollBefore)react("think"); else if(!pollNow&&pollBefore&&s.poll&&s.poll.options)react("cheer"); if(s.card&&s.card.confidence==="disputed"&&!(prev.card&&prev.card.id===s.card.id))react("wince"); const jNow=!!(s.letters&&s.letters.status==="open"),jBefore=!!(prev.letters&&prev.letters.status==="open"); if(jNow&&!jBefore)react("cheer"); else if(!jNow&&jBefore)react("nod")} prev=s};
   const watch=()=>{talking=audioOn||Date.now()<sayUntil;grooving=musicOn};
@@ -1479,7 +1491,9 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // public state document, so it stays a handful of numbers (docs/specs/behaviour-drives.md §10).
     getBeing(){const r=host.getBoundingClientRect(),cx=(r.left+r.width/2)/innerWidth*100,
       lo=minCenterX(),hi=Math.min(92,maxCenterX());
+      const arcAt=being.peek().routine&&being.peek().routine.arcAt;
       return{v:1,savedAt:Date.now(),drives:being.peek().drives,
+        ...(arcAt?{arc:arcAt}:{}),
         floorX:hi>lo?clamp((cx-lo)/(hi-lo),0,1):.5,
         bag:{worn:bag.worn,...(bag.worn?{}:{x:clamp((bag.body?bag.body.x:r.left+r.width/2)/innerWidth,0,1),
           y:clamp((bag.body?bag.body.y:r.top+r.height*.22)/innerHeight,0,1)})}}},freeze(pose={}){frozen=!0;clearTimeout(timer); if(pose.mode)mode=pose.mode; if(pose.tag!==void 0)tagText=pose.tag; if(pose.subs!=null)applySubs(pose.subs,!1); lastDrawn=""; render({...REST[mode],tag:tagText,fx:pose.fx||1,sx:growth.sx,sy:growth.sy,...pose})},destroy(){disposed3d=true;clearTimeout(timer); clearTimeout(feelTimer); mo==null||mo.disconnect(); stripWatch==null||stripWatch.disconnect(); if(typeof removeEventListener=="function")removeEventListener("resize",replace); cancelJobs(); goHome(); crid3d&&crid3d.dispose(); host.remove()}}

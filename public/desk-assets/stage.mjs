@@ -116,7 +116,8 @@ export function createStage({
   // The brain says which panel; the body decides how he gets on it and where he stands.
   function begin(intent) {
     if (!intent || !intent.layer) return false;
-    const want = intent.key === "climb" ? "climb" : intent.key === "sit-on" ? "sit" : intent.key === "lean-watch" ? "lean" : null;
+    const want = intent.key === "climb" ? "climb" : intent.key === "sit-on" ? "sit"
+      : (intent.key === "lean-watch" || intent.key === "read-card" || intent.key === "check-map") ? "lean" : null;
     if (!want) return false;
     if (!((targets()[want] || []).includes(intent.layer))) return false;   // not reachable any more
     const s = standFor(intent.layer); if (!s) return false;

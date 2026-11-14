@@ -309,8 +309,11 @@ test("a bored being eventually moves him: roam walk or a held lean on a fake lay
       : n === "panel" ? panel : null,
   };
   const { seeded } = await import("../public/desk-assets/being.mjs");
+  // routine:false keeps the pick clock-independent (the Lagos slot would otherwise decide
+  // between runs); energy 30 keeps workout off the table (minEnergy 35) so the floor activities
+  // — wander and the panel lean — are what his boredom buys, as before the routine slice.
   const bot = createCridBot({ root, step: 12, position: "bc", layers,
-    beingOpts: { rng: seeded(7), settleMs: 0, cooldownMs: 200, drives: { boredom: 99 } } });
+    beingOpts: { rng: seeded(7), settleMs: 0, cooldownMs: 200, routine: false, drives: { boredom: 70, energy: 30 } } });
   bot.observe({ bot: { on: true } });
   let moved = false;
   for (let i = 0; i < 80 && !moved; i++) {
@@ -327,7 +330,7 @@ test("being yields to the cue channel: no roam while cues own the frame", async 
   const root = installDom();
   const { seeded } = await import("../public/desk-assets/being.mjs");
   const bot = createCridBot({ root, step: 12, position: "bc", layers: { layer: () => null },
-    beingOpts: { rng: seeded(3), settleMs: 0, cooldownMs: 0, drives: { boredom: 99 } } });
+    beingOpts: { rng: seeded(3), settleMs: 0, cooldownMs: 0, routine: false, drives: { boredom: 70, energy: 30 } } });
   bot.observe({ bot: { on: true } });
   // Five cues stack into gestureQ before the first tick: the channel stays busy for ~a second.
   for (let i = 0; i < 5; i++) bot.cue("wave");
@@ -475,6 +478,7 @@ test("dropbag spills paper that falls under the same gravity and comes to rest (
 
 test("the autonomous sit-on behaviour keeps the approved neutral face", async () => {
   const bot = await readFile(new URL("../public/desk-assets/crid-bot.js", import.meta.url), "utf8");
-  assert.ok(bot.includes('beingLean=it.layer;if(key==="lean-watch")feel("curious",{faceOnly:!0})'));
+  // sit-on stays neutral: every other panel lean earns the curious face-only beat.
+  assert.ok(bot.includes('beingLean=it.layer;if(key!=="sit-on")feel("curious",{faceOnly:!0})'));
   assert.ok(!bot.includes('feel(key==="sit-on"?"smug":"curious"'));
 });

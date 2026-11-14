@@ -10,6 +10,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, extname, join, normalize, resolve } from "node:path";
 import { WsServer } from "./ws.mjs";
+import { auditReaConnections } from "./rea-audit.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
@@ -31,7 +32,7 @@ const MIME = {
 };
 
 export function createBrainServer({ engine, memory, bus, personality, getStatus, log = console.log, host = "127.0.0.1", port = 7311, demo = false,
-  ingest = null, onBeing = null, getBeing = null } = {}) {
+  ingest = null, onBeing = null, getBeing = null, getActivities = null } = {}) {
   const ws = new WsServer();
   const server = createServer(async (req, res) => {
     try {
@@ -90,6 +91,18 @@ export function createBrainServer({ engine, memory, bus, personality, getStatus,
       return res.end();
     }
     if (path === "/health") return json(res, { ok: true, ...(getStatus ? getStatus() : {}), memory: memory.summary() });
+    /* The REA audit: one command proves every agent, event and resource is wired. Always 200 —
+     * `ok` inside the body is the verdict, so a monitor can read violations without a 5xx. */
+    if (path === "/health/rea") {
+      const report = await auditReaConnections({
+        engine,
+        wsClients: ws.clients.size,
+        activities: getActivities ? getActivities() : null,
+        botSnapshot: getBeing ? getBeing() : null,
+        status: getStatus ? getStatus() : {},
+      });
+      return json(res, report);
+    }
     if (path === "/state") return json(res, { status: getStatus ? getStatus() : {}, memory: memory.snapshot(), personality: personality.describe(), being: getBeing ? getBeing() : null });
 
     /* The live desk's half of the bus: POST /being carries crid-bot's save-file

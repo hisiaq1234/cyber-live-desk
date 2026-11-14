@@ -5,7 +5,9 @@ import { SessionMemory } from "../memory.mjs";
 import { CommandBus, isValidCommand, PRIORITY } from "../commands.mjs";
 import { loadPersonality } from "../personality.mjs";
 
-function harness({ timings = {}, start = 1_000_000 } = {}) {
+// Lagos-afternoon base time: keeps world-check (late-night/holiday/weather) out of
+// tests that are really about the loud rules. 1_000_000 lands in Lagos ~01:16.
+function harness({ timings = {}, start = Date.UTC(2024, 5, 15, 13) } = {}) {
   let t = start;
   const logs = [];
   const memory = new SessionMemory({ now: () => t });

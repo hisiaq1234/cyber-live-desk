@@ -239,11 +239,13 @@ export class MicroEmotionDriver {
       if (mood) add(mood, `keyword "${kw.keyword}" in chat (mood ${kw.mood})`);
     }
 
-    // 2. the first line after a real gap: a flinch, not a greeting.
-    if (fresh.length) {
+    // 2. the first line after a real gap: a flinch, not a greeting. Skip when the
+    // gap was sleep-length (signal 5's "sleepy" owns that beat) or an action just
+    // fired — a reaction already answered, a startle on top reads as noise.
+    if (fresh.length && now - memory.lastActionTs > 4000) {
       const before = memory.chat[memory.chat.length - fresh.length - 1];
       const gap = before ? fresh[0].ts - before.ts : 0;
-      if (gap >= s.startleGapMs) add("startled", `${fresh[0].user} broke ${Math.round(gap / 1000)}s of silence`);
+      if (gap >= s.startleGapMs && gap < s.sleepAfterMs) add("startled", `${fresh[0].user} broke ${Math.round(gap / 1000)}s of silence`);
     }
 
     // 3. message rate rising (chat speeding up around him) or falling (it settled).

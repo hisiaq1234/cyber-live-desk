@@ -254,6 +254,34 @@
       "{user} brings {viewers}. that's a crowd, not a raid.",
       "{viewers} of you, straight from {user}. behave.",
       "raid from {user}. {viewers} people. the room just got bigger."
+    ],
+    "ownerVoice": [
+      "I heard that. for the record, I agree.",
+      "bold claim on a live mic.",
+      "the owner speaks. chat, take notes.",
+      "say it louder so chat can argue about it."
+    ],
+    "rankClimb": [
+      "{user} just took {rank}. yesterday was {prev}. receipts updated.",
+      "new standings: {user} at {rank}. everyone else is behind.",
+      "{user} climbed to {rank}. I keep the real scoreboard."
+    ],
+    "weather": [
+      "{weather} outside in Lagos. the desk stays undefeated.",
+      "checked outside — {weather}. nobody's going anywhere."
+    ],
+    "coldWeather": [
+      "{weather} outside and I am still shirtless. principle.",
+      "it's {temp} in Lagos. cold is a mindset. mostly.",
+      "{weather}. if I shiver, chat didn't see it."
+    ],
+    "holiday": [
+      "{holiday} on the desk. rent is still due tomorrow.",
+      "happy {holiday}. I didn't wrap anything."
+    ],
+    "lateNight": [
+      "it's late in Lagos. go to sleep, or stay and lose.",
+      "after-hours shift on the desk. I don't clock out."
     ]
   }
 }

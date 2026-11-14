@@ -62,6 +62,8 @@ export class InitiativeEngine {
     // The quiet layer. It reads the same session memory the loud rules do, but it is not
     // a rule: it gets the floor only when the loud loop decided nothing (see tick()).
     this.micro = new MicroEmotionDriver({ personality: () => this.personality, now: this.now, random: this.random });
+    this.lastThoughtAt = 0;
+    this.thoughtGapMs = 25_000;
   }
 
   /* ---------- public ---------- */
@@ -91,6 +93,7 @@ export class InitiativeEngine {
     // every tick, so the eight feelings could never play. It still cannot displace anything —
     // it is not an action, spends no budget and interrupts nothing.
     this.microEmotion();
+    if (!winner) this.think();
     return winner;
   }
 
@@ -116,6 +119,23 @@ export class InitiativeEngine {
   record(evt) {
     const ts = evt.ts ?? this.now();
     const e = { ...evt, ts };
+    // Owner voice (Gist transcripts) enters the same brain as chat: topics and a
+    // moment, but never a viewer counter. Rules see it as e.type === "voice".
+    if (e.type === "voice") {
+      const text = String(e.text || "").trim();
+      if (!text) return;
+      this.memory._touchTopics(text, this.personality.owner || "owner", ts);
+      this.memory.addMoment({ ts, kind: "voice", label: `${this.personality.owner || "owner"} said: "${truncate(text, 48)}"`, user: this.personality.owner || "owner" });
+      return;
+    }
+    // World telemetry (weather, holiday) — real feed only, stored not reacted to here.
+    if (e.type === "environment") {
+      const w = this.memory.setWorld({ weather: e.weather, tempC: e.tempC, holiday: e.holiday }, ts);
+      if (w.weather) {
+        this.memory.addThought({ ts, kind: "world", text: `Lagos outside: ${w.weather}${w.tempC != null ? ` (${w.tempC}°C)` : ""}` });
+      }
+      return;
+    }
     if (e.type === "chat") {
       // snapshot who they were before this message, so gap rules can measure the gap
       const prior = this.memory.user(e.user);
@@ -258,6 +278,42 @@ export class InitiativeEngine {
     this.log(`${" ".repeat(9)}└ ${envelopes.map(describeCommand).join(" · ")}`);
     this.onAction?.(action, envelopes, null);
     return cand;
+  }
+
+  /** Quiet inner monologue: on a tick that fired nothing loud, Crid may still
+   *  have a thought. Thoughts are memory, not actions — no budget spent. */
+  think() {
+    const now = this.now();
+    if (now - this.lastThoughtAt < this.thoughtGapMs) return null;
+    const clk = this.memory.lagosClock(now);
+    const w = this.memory.world;
+    const topic = this.memory.repeatedTopic({ ts: now });
+    let text = "";
+    let kind = "observation";
+
+    if (w.weather && now - w.updatedAt < 3600_000 && this.random() < 0.35) {
+      kind = "weather";
+      text = w.weather.includes("rain") || w.weather.includes("storm")
+        ? "raining in Lagos. good day to stay on the desk."
+        : `${w.weather} outside${w.tempC != null ? `, ${w.tempC}°C` : ""}. desk stays dry.`;
+    } else if (topic && this.random() < 0.4) {
+      kind = "topic";
+      text = `chat is stuck on "${topic.word}" again.`;
+    } else if (clk.isChristmas || w.holiday) {
+      kind = "season";
+      text = `${w.holiday || "Christmas"} on the calendar. still on shift.`;
+    } else if (clk.period === "late-night") {
+      kind = "clock";
+      text = "past midnight in Lagos. chat should be asleep.";
+    } else {
+      text = this.personality.musing({ avoid: this.memory.recentThoughts(8).map((x) => x.text), random: this.random });
+    }
+
+    if (!text) return null;
+    this.lastThoughtAt = now;
+    const thought = this.memory.addThought({ ts: now, kind, text });
+    if (thought) this.trace(`· thought (${kind}): "${thought.text}"`);
+    return thought;
   }
 
   logDecision(c, envelopes, now, source) {
@@ -631,6 +687,62 @@ export const REACTIVE_RULES = [
       };
     },
   },
+  {
+    id: "owner-voice",
+    priority: 68,
+    cooldownMs: 35_000,
+    test(ctx, rule) {
+      const e = ctx.evt;
+      if (!e || e.type !== "voice" || !e.text) return null;
+      const hit = ctx.personality.keywordFor(e.text);
+      if (hit) {
+        const text = ctx.personality.keywordLine(hit, { avoid: ctx.memory.recentSayings(), random: ctx.random });
+        if (!text) return null;
+        return {
+          rule: rule.id,
+          priority: rule.priority,
+          why: `owner said "${truncate(e.text, 40)}" → keyword "${hit.keyword}"`,
+          commands: [look("streamer"), express(hit.mood, { intensity: 0.8 }), say(text, { style: "dry", duration: 4800 })],
+        };
+      }
+      const words = String(e.text).trim().split(/\s+/);
+      if (words.length < 6 || ctx.memory.quietMs(ctx.now) < 20_000) return null;
+      const line = say1(ctx, "ownerVoice", { user: ctx.personality.owner || "owner", quote: truncate(e.text, 36) }, { style: "dry", duration: 4800 });
+      if (!line) return null;
+      return {
+        rule: rule.id,
+        priority: rule.priority,
+        why: `heard owner on mic ("${truncate(e.text, 40)}") during a quiet beat`,
+        commands: [look("streamer"), gesture("nod"), line],
+      };
+    },
+  },
+  {
+    id: "rank-climb",
+    priority: 58,
+    cooldownMs: 45_000,
+    test(ctx, rule) {
+      const e = ctx.evt;
+      if (!e || !e.user || !["chat", "sub", "gift", "bits"].includes(e.type)) return null;
+      if (ctx.memory.counters.messages < 6) return null;
+      const u = ctx.memory.user(e.user);
+      const r = ctx.memory.rankOf(e.user);
+      if (!u || !r || r.rank > 3) return null;
+      const climbed = r.prevRank && r.rank < r.prevRank && u.announcedRank !== r.rank;
+      const newTop = !r.prevRank && r.rank === 1 && u.count >= 4 && u.announcedRank !== 1;
+      if (!climbed && !newTop) return null;
+      u.announcedRank = r.rank;
+      const line = say1(ctx, "rankClimb", { user: e.user, rank: `#${r.rank}`, prev: r.prevRank ? `#${r.prevRank}` : "unranked" }, { style: "callout", duration: 5200 });
+      if (!line) return null;
+      return {
+        rule: rule.id,
+        priority: rule.priority,
+        moment: { kind: "rank", label: `${e.user} climbed to #${r.rank} on the desk board` },
+        why: `${e.user} moved to #${r.rank}${r.prevRank ? ` (was #${r.prevRank})` : " (new #1 today)"}`,
+        commands: [look("chat"), express("pleased", { intensity: 0.8 }), gesture("point"), line],
+      };
+    },
+  },
 ];
 
 /* ---------- quiet rules: nothing happened, act anyway ---------- */
@@ -739,6 +851,45 @@ export const QUIET_RULES = [
         priority: rule.priority,
         why: `${fmtSecs(ctx.memory.quietMs(ctx.now))} of nothing happening — volunteering a thought from the personality file`,
         commands: [look("offscreen"), express("thinking", { intensity: 0.5 }), say(text, { style: "quip", duration: 4800 })],
+      };
+    },
+  },
+  {
+    id: "world-check",
+    priority: 28,
+    cooldownMs: 300_000, // at most once every 5 minutes
+    test(ctx, rule) {
+      const now = ctx.now;
+      if (ctx.memory.quietMs(now) < ctx.timings.musingMs) return null;
+      const clk = ctx.memory.lagosClock(now);
+      const w = ctx.memory.world;
+      const hasFreshWeather = !!(w.weather && now - w.updatedAt < 3600_000);
+      const isCold = hasFreshWeather && (w.tempC != null && w.tempC <= 23 || /rain|storm|harmattan|cold|chill/.test(w.weather));
+      const isHoliday = !!(clk.isChristmas || w.holiday);
+      const isLate = clk.period === "late-night";
+      if (!hasFreshWeather && !isHoliday && !isLate) return null;
+
+      // Holiday and late-night are once-a-day remarks, not cooldown spam: after
+      // the day's one line, only fresh weather can still get a word in.
+      const dayKey = `${clk.month}-${clk.day}`;
+      let bucket = isHoliday ? "holiday" : isCold ? "coldWeather" : hasFreshWeather ? "weather" : "lateNight";
+      if ((bucket === "holiday" || bucket === "lateNight") && w.lastWorldDay === dayKey) {
+        bucket = hasFreshWeather ? (isCold ? "coldWeather" : "weather") : null;
+        if (!bucket) return null;
+      }
+      const line = say1(ctx, bucket, {
+        weather: w.weather || "",
+        temp: w.tempC != null ? `${w.tempC}°C` : "",
+        holiday: w.holiday || (clk.isChristmas ? "Christmas" : ""),
+      }, { style: "quip", duration: 5000 });
+      if (!line) return null;
+      if (bucket === "holiday" || bucket === "lateNight") w.lastWorldDay = dayKey;
+
+      return {
+        rule: rule.id,
+        priority: rule.priority,
+        why: `Lagos world check (${bucket}${w.weather ? `: ${w.weather}` : ""})`,
+        commands: [look("offscreen"), express(isCold ? "annoyed" : "thinking", { intensity: 0.6 }), line],
       };
     },
   },

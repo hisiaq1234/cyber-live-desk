@@ -42,7 +42,7 @@ export function createBrainServer({ engine, memory, bus, personality, getStatus,
   });
 
   /** Normalised event types the brain accepts from outside (the desk, the operator). */
-  const EVENT_TYPES = new Set(["chat", "sub", "gift", "bits", "raid", "layer"]);
+  const EVENT_TYPES = new Set(["chat", "sub", "gift", "bits", "raid", "layer", "voice", "environment"]);
   let eventSeq = 0;
 
   async function readJson(req, limit = 16 * 1024) {
@@ -114,6 +114,10 @@ export function createBrainServer({ engine, memory, bus, personality, getStatus,
         layer: body.layer ? String(body.layer) : undefined,
         side: body.side ? String(body.side) : undefined,
         source: String(body.source || "desk"),
+        platform: body.platform ? String(body.platform) : undefined,
+        weather: body.weather ?? undefined,
+        tempC: body.tempC ?? body.temp ?? undefined,
+        holiday: body.holiday ?? undefined,
       };
       const fired = engine.handleEvent(evt);
       log(`[event] ${type}${evt.layer ? `:${evt.layer}` : ""} from ${evt.source}${fired ? ` → ${fired.rule}` : " → no reaction"}`);

@@ -43,6 +43,18 @@ export class SessionMemory {
     this.lastChatTs = 0;
     this.lastActionTs = 0;
     this.momentSeq = 0;
+    this.priorRanks = new Map(); // userKey -> rank from the previous session (1-based)
+    this.thoughts = [];
+    this.maxThoughts = 40;
+    this.thoughtSeq = 0;
+    this.world = {
+      tz: "Africa/Lagos",
+      weather: null,   // genuine feed only — never fabricated
+      tempC: null,
+      holiday: null,
+      updatedAt: 0,
+      lastWorldDay: null, // Lagos "M-D" of the last holiday/late-night remark — once a day, not every cooldown
+    };
   }
 
   /* ---------- writes ---------- */
@@ -66,7 +78,14 @@ export class SessionMemory {
     if (evt.type === "gift") this.counters.gifts += evt.amount || 1;
     if (evt.type === "bits") this.counters.bits += evt.amount || 0;
     if (evt.type === "raid") this.counters.raids += 1;
-    this._touchUser(evt.user, evt.ts);
+    // Real support outweighs chat presence: a sub is worth a month of talking,
+    // bits scale with size. "layer" is the desk reporting on itself, not a viewer.
+    const pts = evt.type === "sub" ? 25 * (evt.months || 1)
+      : evt.type === "gift" ? 25 * (evt.amount || 1)
+      : evt.type === "bits" ? Math.max(2, Math.round((evt.amount || 0) / 50))
+      : evt.type === "raid" ? 20
+      : evt.type === "layer" ? 0 : 1;
+    this._touchUser(evt.user, evt.ts, pts);
     return this.addMoment({
       ts: evt.ts,
       kind: evt.type,
@@ -95,15 +114,16 @@ export class SessionMemory {
     return action;
   }
 
-  _touchUser(user, ts) {
+  _touchUser(user, ts, pts = 1) {
     if (!user) return;
     const key = String(user).toLowerCase();
     const prev = this.seen.get(key);
     if (prev) {
       prev.last = ts;
       prev.count += 1;
+      prev.score = (prev.score || 0) + pts;
     } else {
-      this.seen.set(key, { name: user, first: ts, last: ts, count: 1 });
+      this.seen.set(key, { name: user, first: ts, last: ts, count: 1, score: pts, announcedRank: null });
     }
   }
 
@@ -240,6 +260,112 @@ export class SessionMemory {
     return `${mins} min ago`;
   }
 
+  /* ---------- community board & world state ---------- */
+
+  /** Live leaderboard sorted by score (tie-broken by earliest arrival). */
+  leaderboard(limit = 10) {
+    return [...this.seen.values()]
+      .filter((u) => (u.score || 0) > 0)
+      .sort((a, b) => (b.score || 0) - (a.score || 0) || a.first - b.first)
+      .slice(0, limit)
+      .map((u, idx) => {
+        const rank = idx + 1;
+        const key = u.name.toLowerCase();
+        const prevRank = this.priorRanks.get(key) ?? null;
+        return { name: u.name, rank, prevRank, delta: prevRank ? prevRank - rank : null, score: u.score, count: u.count };
+      });
+  }
+
+  /** Rank info for one user, or null if unranked. */
+  rankOf(user) {
+    if (!user) return null;
+    const key = String(user).toLowerCase();
+    return this.leaderboard(100).find((r) => r.name.toLowerCase() === key) || null;
+  }
+
+  /** Real Lagos local hour (0..23) and time-of-day bucket from a wall-clock ts. */
+  lagosClock(ts = this.now()) {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Africa/Lagos",
+      hour: "numeric",
+      minute: "numeric",
+      month: "numeric",
+      day: "numeric",
+      hour12: false,
+    }).formatToParts(new Date(ts));
+    const get = (t) => Number(parts.find((p) => p.type === t)?.value ?? 0);
+    const hour = get("hour") % 24;
+    const month = get("month");
+    const day = get("day");
+    const period = hour < 5 ? "late-night" : hour < 12 ? "morning" : hour < 17 ? "afternoon" : hour < 21 ? "evening" : "night";
+    const isChristmas = month === 12 && (day === 24 || day === 25);
+    return { hour, month, day, period, isChristmas };
+  }
+
+  /** Update genuine world telemetry (never invented). */
+  setWorld({ weather, tempC, holiday } = {}, ts = this.now()) {
+    if (weather !== undefined) this.world.weather = weather ? String(weather).toLowerCase().trim() : null;
+    if (tempC !== undefined) this.world.tempC = Number.isFinite(Number(tempC)) ? Number(tempC) : null;
+    if (holiday !== undefined) this.world.holiday = holiday ? String(holiday).trim() : null;
+    this.world.updatedAt = ts;
+    return { ...this.world, ...this.lagosClock(ts) };
+  }
+
+  /** Record one internal thought — the quiet inner monologue stream. */
+  addThought({ ts = this.now(), text, kind = "observation", mood = null } = {}) {
+    const clean = String(text || "").trim();
+    if (!clean) return null;
+    const entry = { id: `th${++this.thoughtSeq}`, ts, kind, mood, text: clean };
+    this.thoughts.push(entry);
+    if (this.thoughts.length > this.maxThoughts) this.thoughts.shift();
+    return entry;
+  }
+
+  recentThoughts(n = 5) {
+    return this.thoughts.slice(-n);
+  }
+
+  /** Durable community state for disk/KV persistence between streams. */
+  exportState(ts = this.now()) {
+    const board = this.leaderboard(50);
+    return {
+      v: 1,
+      savedAt: ts,
+      counters: { ...this.counters },
+      users: [...this.seen.values()].map((u) => ({
+        name: u.name,
+        first: u.first,
+        last: u.last,
+        count: u.count,
+        score: u.score || u.count,
+        rank: board.find((b) => b.name.toLowerCase() === u.name.toLowerCase())?.rank ?? null,
+      })),
+      moments: this.moments.slice(-25),
+    };
+  }
+
+  /** Restore prior-session standings without wiping live counters. */
+  importState(snap) {
+    if (!snap || snap.v !== 1 || !Array.isArray(snap.users)) return false;
+    this.priorRanks.clear();
+    for (const u of snap.users) {
+      if (!u?.name) continue;
+      const key = String(u.name).toLowerCase();
+      if (Number.isFinite(u.rank)) this.priorRanks.set(key, u.rank);
+      if (!this.seen.has(key)) {
+        this.seen.set(key, {
+          name: u.name,
+          first: Number(u.first) || this.startedAt,
+          last: Number(u.last) || 0,
+          count: Math.max(0, Number(u.count) || 0),
+          score: Math.max(0, Number(u.score) || 0),
+          announcedRank: Number.isFinite(u.rank) ? u.rank : null,
+        });
+      }
+    }
+    return true;
+  }
+
   summary(ts = this.now()) {
     return {
       uptimeMs: ts - this.startedAt,
@@ -262,6 +388,9 @@ export class SessionMemory {
       lastActions: this.actions.slice(-4).map((a) => ({ ts: a.ts, rule: a.rule, say: a.say, ago: this.ago(a.ts, ts) })),
       topic: this.repeatedTopic({ ts })?.word || null,
       viewersSeen: this.seen.size,
+      world: { ...this.world, ...this.lagosClock(ts) },
+      thoughts: this.thoughts.slice(-4).map((th) => ({ id: th.id, kind: th.kind, text: th.text, ago: this.ago(th.ts, ts) })),
+      leaderboard: this.leaderboard(5),
     };
   }
 }

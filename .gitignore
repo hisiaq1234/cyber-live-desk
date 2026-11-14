@@ -17,3 +17,7 @@ shots/
 
 # Generated captures from scripts/probe-*.mjs
 outputs/
+
+# Crid brain world-state persistence (runtime, per-machine)
+brain/.crid-world-state.json
+brain/.crid-world-state.json.tmp

@@ -50,7 +50,9 @@ const EMOTION = {
 const GESTURE = {
   "lean-in": "peek",
   recoil: "wince",
-  point: "salute",
+  point: "point",
+  facepalm: "facepalm",
+  mindblown: "mindblown",
   shrug: "shrug",
   nod: "nod",
   "double-take": "surprise",
@@ -119,10 +121,9 @@ function setPresence(mode) {
   if (mode === currentPresence) return;
   currentPresence = mode;
   host.dataset.presence = mode;
-  if (mode === "hidden") {
-    bot.setMode("dead");
-    return;
-  }
+  // "hidden" is a CSS concern ([data-presence="hidden"] is display:none) — killing
+  // the mode to "dead" here used to leave him lying down for good after un-hide.
+  if (mode === "hidden") return;
   if (bot.mode === "dead" || bot.mode === "doze") bot.setMode("on");
 }
 
@@ -348,7 +349,7 @@ function playMicro(name, line = "", duration = 1600) {
   microEl.classList.remove("on");
   void microEl.offsetWidth; // restart the animation
   microEl.classList.add("on");
-  bot.feel(name);
+  bot.feel(name, { hold: ms });
   clearTimeout(microTimer);
   microTimer = setTimeout(() => microEl?.classList.remove("on"), ms + 260);
 }
@@ -449,6 +450,11 @@ function applySnapshot(snap) {
   if (Array.isArray(mem.moments) && mem.moments.length) {
     const recent = mem.moments.slice(-4).map((m) => ({ label: m.label, ago: m.ago }));
     if (recent.length >= 2 && (mem.silenceMs || 0) > 60000) showRecap(`${recent.length} moments while you were gone`, recent, 12000);
+  }
+  // And the recovered inner monologue: his latest thought, as a quiet chip.
+  if (Array.isArray(mem.thoughts) && mem.thoughts.length) {
+    const latest = mem.thoughts[mem.thoughts.length - 1];
+    if (latest?.text) showChip("thought", latest.text);
   }
   setLink(snap.status);
 }

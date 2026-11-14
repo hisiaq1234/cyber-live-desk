@@ -134,7 +134,7 @@ export class Personality {
 
   keywordLine(entry, { avoid = [], random = Math.random } = {}) {
     if (!entry) return "";
-    return this._pick(entry.lines.map((t) => this.fill(t, { ...this.ambient(), keyword: entry.keyword })), avoid, random);
+    return this._pick(entry.lines.map((t) => this.fill(t, { ...this.ambient(random), keyword: entry.keyword })), avoid, random);
   }
 
   /** A catchphrase / opinion / joke for a quiet moment. */
@@ -191,4 +191,10 @@ const FALLBACK = {
   gift: ["{user} gifted {count}."],
   bits: ["{bits} bits from {user}."],
   raid: ["{user} brings {viewers}."],
+  ownerVoice: ["I heard that."],
+  rankClimb: ["{user} moved up to {rank}."],
+  weather: ["{weather} outside."],
+  coldWeather: ["cold outside. still shirtless."],
+  holiday: ["{holiday} on the desk."],
+  lateNight: ["late shift in Lagos."],
 };

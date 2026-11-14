@@ -42,7 +42,8 @@ function driverHarness({ personality = shipped, random = () => 0 } = {}) {
   };
 }
 
-function harness({ timings = {}, personality = shipped, start = 1_000_000 } = {}) {
+// Lagos-afternoon base time — see engine.test.mjs: keeps world-check out of these tests.
+function harness({ timings = {}, personality = shipped, start = Date.UTC(2024, 5, 15, 13) } = {}) {
   let t = start;
   const logs = [];
   const memory = new SessionMemory({ now: () => t });

@@ -19,6 +19,7 @@ import { createBrainServer } from "./server.mjs";
 import { createLettersGame } from "./letters.mjs";
 import { createCueChannel } from "./cue.mjs";
 import { cueFor } from "./cue-map.mjs";
+import { attachBrainBridge } from "./bridge.mjs";
 
 const DEFAULT_PORT = 7311;
 
@@ -161,6 +162,11 @@ async function main() {
     if (cue) deskCues.cue(cue.name, { text: cue.text });
   };
 
+  // World persistence + multi-platform ingest (Gist voice, weather feeds, other
+  // platforms). Attached AFTER onAction is set so the save-scheduling wrapper
+  // wraps the real handler, not a placeholder. State restores before the first tick.
+  const bridge = attachBrainBridge(engine, { log });
+
   // Letters rides on the chat the brain already reads. It needs one thing nothing else in here does —
   // a way to write desk state — so it stays off, and says why once, until that is configured.
   const letters = createLettersGame({ bus, log });
@@ -242,6 +248,7 @@ async function main() {
     engine.stop();
     letters.stop();
     source?.stop?.();
+    bridge?.flush?.();
     watchFile(PERSONALITY_PATH, { interval: 1500 }, () => {});
     try {
       await server.close();

@@ -14,3 +14,6 @@ __pycache__/
 
 # Generated captures from scripts/record-crid.mjs
 shots/
+
+# Generated captures from scripts/probe-*.mjs
+outputs/

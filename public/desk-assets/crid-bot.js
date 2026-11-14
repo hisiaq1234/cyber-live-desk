@@ -219,7 +219,7 @@ html.low-power #crid-bot svg,html.swae #crid-bot svg{filter:none}
 // The ladder is exported so a test can hold it to the measurement in ladder.json; nothing in the
 // overlay has to import it to use it.
 export{BODY_LADDER};
-export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="bc",x=null,y=null,step=null,scale=1,layers=null,visitIn=null,init3d=initCrid3D,beingOpts={}}={}){
+export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="bc",x=null,y=null,step=null,scale=1,layers=null,visitIn=null,init3d=initCrid3D,beingOpts={},speechLevel=null,stepHook=null}={}){
   if(!document.getElementById("crid-bot-css")){const st=document.createElement("style");st.id="crid-bot-css",st.textContent=CSS,document.head.append(st)}
   const STEP=step!=null?step:swae?220:lowPower?260:140,
   // Movement is sampled finer than the sequencing tick, so an eased beat is drawn as a movement
@@ -278,7 +278,12 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       return{x:dir*.4,y:-.2}}
     if(walk&&walk.to)return{x:(walk.tx-walk.x<0?-1:1)*.6,y:0};
     return null};
-  init3d(host,()=>({p:lastPose,mode,dying,
+  // ONE init3d call, ONE renderer: the second call site this used to have ran a
+  // second initCrid3D on every normal-power desk — two canvases, two RAF loops,
+  // and whichever promise resolved last owned `crid3d` while both kept drawing.
+  // This is the rich snapshot the stage/attention/face contract was built for.
+  if(typeof init3d==="function")try{
+    Promise.resolve(init3d(host,()=>({p:lastPose,mode,dying,
     walking:!!(walk&&walk.to)||(stage?stage.walking&&Math.abs(stage.targetX-stage.walkX)>.015:!1),
     walkDir:walk&&walk.to?(walk.tx-walk.x<0?-1:1):(stage&&stage.targetX<cridBody.x?-1:1),fx,
     motorState:{x:cridBody.x,y:cridBody.y,vx:cridBody.vx,vy:cridBody.vy,
@@ -295,8 +300,13 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // pondering. null hands gaze back to the saccade/drift scheduler.
     attend:leanAt?{x:leanAt.dir*.8,y:.15}:pondering?{x:0,y:.4}:null,
     lookBias:lookBiasNow(),
-    talking:host.classList.contains("is-active"),grooving:host.classList.contains("music-playing"),mood,bag:bag.worn}),hideFigure)
-    .then(h=>{crid3d=h;crid3dFailed=!h}).catch(err=>{crid3dFailed=true;try{console.warn("[crid-3d] not started:",err&&err.message||err)}catch{}});
+    // talking/grooving come from desk state, not host classes — is-active and
+    // music-playing were sound-orb hooks nothing ever set on this element.
+    talking:audioOn||Date.now()<sayUntil,grooving:musicOn,mood,bag:bag.worn,
+    speech:speechLevel?clamp(Number(speechLevel())||0,0,1):0}),hideFigure,()=>{crid3dFailed=true},stepHook||undefined))
+      .then(h=>{if(disposed3d){h&&h.dispose&&h.dispose();return} crid3d=h;crid3dFailed=!h})
+      .catch(err=>{crid3dFailed=true;try{console.warn("[crid-3d] not started:",err&&err.message||err)}catch{}});
+  }catch{crid3dFailed=true}
   // ---- the backpack: a prop with mass (docs/specs/backpack.md + physics.md) ---------------
   // One world, one gravity, one floor — the same rules the spec gives every body. Worn, the bag
   // rides his back as an SVG in his own palette (no bitmap, no image budget); dropped, it is a
@@ -506,6 +516,9 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const applySubs=(n,beat)=>{subs=Math.max(0,n|0); const st=stageFor(subs); setBody(st.i); growth={sx:st.sx,sy:st.sy}; lastDrawn="";
     if(beat&&mode!=="dead"&&!dying){if(mode==="doze"){mode="on";lastActive=Date.now()} play(SEQ.sub,{urgent:!0}); lastActive=Date.now()}};
   let mood="idle";
+  // Real talk/music state from the desk document: is-active/music-playing were
+  // sound-orb classes nothing sets on this host, so `talking` was dead code.
+  let audioOn=false,musicOn=false,sayUntil=0;
   let bubbleTimer=null;
   let mischiefTimer=null;
   const WHIMSY_LINES={
@@ -518,7 +531,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     cheeky:["wasn't me","oops","just a nudge","you saw nothing"]
   };
   const setMood=(m)=>{if(!WHIMSY_LINES[m])return; mood=m; host.dataset.mood=m; const desk=document.getElementById("desk"); if(desk) desk.dataset.botMood=m;};
-  const say=(text,ms=1800)=>{if(!text)return; let b=host.querySelector(".bot-bubble"); if(!b){b=document.createElement("div"); b.className="bot-bubble"; host.append(b);} b.style.transition=reduced?"none":""; b.textContent=text; b.style.opacity="1"; clearTimeout(bubbleTimer); bubbleTimer=setTimeout(()=>{b.style.opacity="0";},ms);};
+  const say=(text,ms=1800)=>{if(!text)return; sayUntil=Date.now()+ms+300; let b=host.querySelector(".bot-bubble"); if(!b){b=document.createElement("div"); b.className="bot-bubble"; host.append(b);} b.style.transition=reduced?"none":""; b.textContent=text; b.style.opacity="1"; clearTimeout(bubbleTimer); bubbleTimer=setTimeout(()=>{b.style.opacity="0";},ms);};
   const nudge=(node)=>{if(!node||reduced||document.documentElement.classList.contains("swae"))return; node.classList.add("chaos-nudged"); clearTimeout(mischiefTimer); mischiefTimer=setTimeout(()=>node.classList.remove("chaos-nudged"),700);};
   const randomLine=(m=mood)=>{const list=WHIMSY_LINES[m]||WHIMSY_LINES.idle; return list[Math.floor(Math.random()*list.length)];};
   const pct=r=>({x:(r.left+r.width/2)/innerWidth*100,y:r.top/innerHeight*100,h:r.height/innerHeight*100});
@@ -1398,7 +1411,12 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // null online means "not told yet", and the desk's own default is on, so an unknown state boots
   // him rather than freezing him. Only an explicit bot.on:false kills him.
   const power=()=>setMode(online===!1?"dead":"on");
-  const observe=s=>{var _a,_b,_c; if(!s)return; maybeSeedBeing(s); const on=s.bot?s.bot.on!==!1:!0; if(on!==online){online=on;power()} if(online===!1){prev=s; return}
+  const observe=s=>{var _a,_b,_c; if(!s)return; maybeSeedBeing(s);
+    // Desk-owned talk/music state — replaces the dead is-active/music-playing
+    // class reads (those were sound-orb hooks; nothing ever set them here).
+    audioOn=!!s.crid?.audioPlaying; musicOn=!!s.music?.playing;
+    talking=audioOn||Date.now()<sayUntil; grooving=musicOn;
+    const on=s.bot?s.bot.on!==!1:!0; if(on!==online){online=on;power()} if(online===!1){prev=s; return}
     const reactN=(_c=(_b=(_a=s.bot)==null?void 0:_a.react)==null?void 0:_b.n)!=null?_c:0; if(lastReactN===null)lastReactN=reactN; else if(reactN!==lastReactN){lastReactN=reactN;react(s.bot.react.kind)}
     const sn=subCount(s); if(sn!=null){if(lastSubN===null){lastSubN=sn;applySubs(sn,!1)}else if(sn!==lastSubN){const up=sn>lastSubN;lastSubN=sn;applySubs(sn,up)}}
     // Strength changes the real motor capability, never CRID's selected face/body frames. The
@@ -1421,36 +1439,10 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     if(activityOf(s)){lastActive=Date.now(); if(mode==="doze"){mode="on";play([{eyes:"wide",mouth:"o",hy:-2},{eyes:"open",mouth:"flat",hy:0}],{urgent:!0})}}
     const verdict=s.crid?s.crid.verdict:null; tagText=s.crid?(verdict===1?"PAID":"DUE"):null;
     if(prev){const pv=prev.crid?prev.crid.verdict:null; if(verdict===1&&pv!==1)react("paid"); else if(verdict===0&&pv!==0)react("due"); const pollNow=s.poll&&s.poll.active!==!1,pollBefore=prev.poll&&prev.poll.active!==!1; if(pollNow&&!pollBefore)react("think"); else if(!pollNow&&pollBefore&&s.poll&&s.poll.options)react("cheer"); if(s.card&&s.card.confidence==="disputed"&&!(prev.card&&prev.card.id===s.card.id))react("wince"); const jNow=!!(s.letters&&s.letters.status==="open"),jBefore=!!(prev.letters&&prev.letters.status==="open"); if(jNow&&!jBefore)react("cheer"); else if(!jNow&&jBefore)react("nod")} prev=s};
-  const watch=()=>{talking=host.classList.contains("is-active");grooving=host.classList.contains("music-playing")};
+  const watch=()=>{talking=audioOn||Date.now()<sayUntil;grooving=musicOn};
   const mo=typeof MutationObserver=="function"?new MutationObserver(watch):null; mo==null||mo.observe(host,{attributes:!0,attributeFilter:["class"]});
   // Boot him on the way in (the desk default), place him clear of the lower third, and keep the
   // placement honest across resizes and strip content changes.
-  
-  const get3DState=()=>{
-    const p=advancePose(Date.now());
-    const walking=!!(walk&&walk.to)||!!(stage&&stage.walking&&["approach","floor","top"].includes(stage.state));
-    const b=build();
-    return {p,mode,dying,walking,reduced,grooving,fx:p.fx,walkDir:walk?.dir||1,
-      lean:leanAt||stageLean(),stage:b.key,
-      stagePose:stage?{ref:stage,pitch:stage.pitch||0,roll:stage.roll||0,squash:stage.squashEnv||0}:null,
-      grip:!!cridBody.grip,bag:{...bag},
-      motorState:{active:walking,distanceTravelled:cridBody.distanceTravelled||0,
-        strideLength:Math.max(.08,cridBody.halfW*2.25),velocity:cridBody.vx,
-        grounded:!!cridBody.grounded,supportId:cridBody.supportId,
-        grip:cridBody.grip?{...cridBody.grip}:null}};
-  };
-  if(typeof init3d==="function"&&!lowPower){
-    try{
-      Promise.resolve(init3d(host,get3DState,()=>{},()=>{crid3dFailed=true}))
-        .then(instance=>{
-          if(!instance)return;
-          if(disposed3d){instance.dispose();return}
-          crid3d=instance;
-          if(instance.active)hideFigure();
-        })
-        .catch(()=>{crid3dFailed=true;crid3d=null});
-    }catch{crid3dFailed=true}
-  }
 
   applySubs(0,!1); power(); place(); placeBag(); render(advancePose(Date.now())); timer=setTimeout(tick,STEP);
   let placeFrame=0,stripWatch=null;

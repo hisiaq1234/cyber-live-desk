@@ -77,7 +77,7 @@ export function createFacial({rand=Math.random}={}){
   // gaze: macro-saccades on a 1.4–3.2 s clock (a real re-fixation), micro-saccades
   // every ~0.3–0.5 s (fixational jitter, suppressed inside a hold), slow drift.
   let sacAt=rand(.8,2),sacFrom={x:0,y:0},sacTo={x:0,y:0},sacT=1,sacDur=.16,fixUntil=0;
-  let microAt=rand(.2,.5);
+  let microAt=rand(.2,.5),speechSeen=-9;
   const micro={x:0,y:0},microTgt={x:0,y:0};
   const drift={x:0,y:0};
   const attend={x:0,y:0};   // fixation target, smoothed — see gaze block
@@ -218,9 +218,15 @@ export function createFacial({rand=Math.random}={}){
     else if(lx>.05){put("irisOutL",gxw);put("irisInR",gxw)}
     if(ly<-.05){put("irisUpL",gyw);put("irisUpR",gyw)}
     else if(ly>.05){put("irisDownL",gyw);put("irisDownR",gyw)}
-    // talking jaw — same rhythm the renderer used, now inside the face
+    // talking jaw — real speech envelope when the audio tap has one (mouth
+    // leads ~30 ms, opens fast/closes slow, speech band only), procedural
+    // rhythm for audio-less lines (say cues, tap failure, CORS-zeroed feed).
     const talking=!!input.talking&&alive;
-    const talkJaw=talking?(input.reduced?.12:.28)+.22*Math.abs(Math.sin(t*11))+.08*Math.sin(t*23):0;
+    const sp=clamp(Number(input.speech)||0,0,1);
+    if(sp>.03)speechSeen=t;
+    const hasSpeech=t-speechSeen<.6;
+    const talkJaw=talking?(hasSpeech?.06+.92*sp
+      :(input.reduced?.12:.28)+.22*Math.abs(Math.sin(t*11))+.08*Math.sin(t*23)):0;
     put("jaw",Math.max(talkJaw,emo*(e.w.jaw||0)));
     // doze/dead soften the mouth
     if(mode==="doze")put("mouthDn",.25*shutBase);

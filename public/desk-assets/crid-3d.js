@@ -18,6 +18,7 @@ import{TwoBoneIK}from"./ik.mjs";
 import{BODY_LADDER}from"./crid/ladder.mjs";
 import{stageChannels}from"./stage.mjs";
 import{createDistanceGait}from"./gait.mjs";
+import{createCridIdle}from"./crid-idle.mjs";
 const GLB="/desk-assets/crid3d/crid.glb";
 const M={jaw:"ai_jawOpen",eyeShutL:"ai_eyeUpperClose_L",eyeShutR:"ai_eyeUpperClose_R",
   eyeShutLL:"ai_eyeLowerClose_L",eyeShutLR:"ai_eyeLowerClose_R",
@@ -59,7 +60,7 @@ const M={jaw:"ai_jawOpen",eyeShutL:"ai_eyeUpperClose_L",eyeShutR:"ai_eyeUpperClo
 const clamp=(n,a,b)=>Math.min(b,Math.max(a,n)),TAU=Math.PI*2;
 const swingOf=t=>{if(t<.5)return 0;const x=(t-.5)*2;return .5-.5*Math.cos(2*Math.PI*x)};
 
-export async function initCrid3D(host,getState,onReady,onFail){
+export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
   try{
     const q=typeof location=="object"?new URLSearchParams(location.search):null;
     if(q&&(q.get("crid3d")==="off"||q.get("bot3d")==="off"))return null;
@@ -107,11 +108,15 @@ export async function initCrid3D(host,getState,onReady,onFail){
     const turn=new THREE.Group(),model=new THREE.Group();turn.add(model);scene.add(turn);
     model.rotation.y=Math.PI;
 
-    const bones={},morphs=[];
+    const bones={},morphs=[],secNodes=[];
     const gltf=await new Promise((res,rej)=>new GLTFLoader().load(GLB,res,undefined,rej));
     const root=gltf.scene;
     root.traverse(o=>{
       if(o.isBone&&!bones[o.name]){bones[o.name]=o;o.userData.q0=o.quaternion.clone()}
+      // Secondary-motion hosts: hair, facial hair and the earrings are rigid
+      // groups over skinned meshes — the whole mass can lag the head on springs
+      // even though the GLB ships no hair bone chains.
+      if(/^(universal_head_hair|universal_head_facial_hair|earring[RL])_GRP$/.test(o.name||""))secNodes.push(o)
       if(o.isMesh&&o.morphTargetDictionary){
         for(const[k,i]of Object.entries(o.morphTargetDictionary))morphs.push({m:o,i,k})}
     });
@@ -297,6 +302,30 @@ export async function initCrid3D(host,getState,onReady,onFail){
       footBind[sd]={x:fp.x-bindPelvis.x,z:fp.z-bindPelvis.z,ankleH:fp.y-shadowY()}}
     function shadowY(){shadow.updateWorldMatrix(!0,!1);return shadow.getWorldPosition(new THREE.Vector3()).y}
 
+    // ---- secondary motion: hair, facial hair, earrings on damped springs ------
+    // The GLB has no hair bone chains — those meshes are rigid groups over skin.
+    // Rotating the group would orbit the whole mass around the model origin, so
+    // each part gets a pivot-at-head compensation: world' = T(h)·R·T(-h)·world,
+    // folded back into the parent's frame as local' = P⁻¹·M·P·rest each frame.
+    // Springs trail the head's measured angular velocity plus a landing kick —
+    // the same follow-through rule the bones already obey, one level looser.
+    // rest is composed from TRS, not node.matrix — the loader sets TRS but the
+    // matrix is only filled by the first updateMatrixWorld, which runs after
+    // this init. Capturing matrix here would freeze an identity and strand the
+    // hair at its parent's origin.
+    const secParts=secNodes.map(node=>({node,parent:node.parent,
+      rest:new THREE.Matrix4().compose(node.position,node.quaternion,node.scale),
+      gain:/hair/.test(node.name)?1:/facial/.test(node.name)?.8:.55,
+      stiff:/earring/.test(node.name)?70:44,damp:/earring/.test(node.name)?15:12.5,
+      s:{rx:mkSpr(),ry:mkSpr(),rz:mkSpr()}}));
+    const secIn={wx:0,wy:0,wz:0};
+    const prevHeadQ=new THREE.Quaternion();let hasPrevHead=false,secKicked=false,secImpulse=0;
+    const _hq=new THREE.Quaternion(),_hdq=new THREE.Quaternion(),_he=new THREE.Euler(),
+      _hp=new THREE.Vector3(),_pm=new THREE.Matrix4(),_m1=new THREE.Matrix4(),
+      _m2=new THREE.Matrix4(),_m3=new THREE.Matrix4(),_m4=new THREE.Matrix4(),
+      _qp=new THREE.Quaternion();
+    function mkSpr(){return{v:0,vel:0}}
+
     // ---- stage channels: the rig page's own convention, ported verbatim ---------
     // crid3d.html applyChannels/applyAcc: semantic channels accumulate as WORLD-AXIS
     // euler triples per bone, then each bone gets _D = P^-1·R·P premultiplied onto its
@@ -426,6 +455,10 @@ export async function initCrid3D(host,getState,onReady,onFail){
     try{window.__cridGait=()=>gaitState?{phase:gaitState.phase,duty:gaitState.dutyFactor,
       left:gaitState.left,right:gaitState.right,events:gaitState.events,steps:gaitState.steps}:null}catch{}
     const face=createFacial();let lastFaceKey=null;
+    // The alive base (crid-idle.mjs): value-noise wander through damped springs,
+    // an uneven breath machine and a small keyframed move library — the same
+    // structure LivLiv's idle core proves reads as a person, not a rig.
+    const idle=createCridIdle();let exert=0;
     // Read-only handle for visual QA: the shot harness polls channels() to catch
     // a blink at its peak, and morph() proves the weight actually reached the GLB.
     try{window.__cridFace={channels:()=>face.channels(),
@@ -480,6 +513,10 @@ export async function initCrid3D(host,getState,onReady,onFail){
       gaitState=motor&&Number.isFinite(motor.distanceTravelled)
         ?distanceGait.update(motor.distanceTravelled,motor.strideLength||.3,!!(walking&&motor.active))
         :null;
+      // Contact events -> injectable audio hook. gait.mjs only emits while the
+      // measured root actually travels, so a standing Crid is silent by
+      // construction; the sink decides whether a step makes a sound.
+      if(gaitState&&hooks.onStep)for(const ev of gaitState.events){try{hooks.onStep(ev)}catch{}}
       if(walking){
         if(gaitState?.active)phase=gaitState.phase;
         else if(!motor)phase=(phase+dt*(reduced?3.4:5.2))%1;
@@ -524,19 +561,26 @@ export async function initCrid3D(host,getState,onReady,onFail){
       const sqPose=sqT>=0?(sqT<.08?.07:.07*Math.exp(-6*(sqT-.08))*Math.cos((sqT-.08)*14)):0;
       const squash=clamp(Math.max(sqStage,Math.min(.08,sqPose)),-.02,.09);
       const sqY=1-squash,sqX=1+squash*.5;   // volume preserved: wider as he compresses
-      model.position.y=-feetY-by*.9*s+(walking?Math.abs(Math.sin(TAU*u))*.035*s:Math.sin(t*1.55)*.012*s);
+      // Exertion is measured from the motor, not scripted: breath quickens after
+      // real work and recovers over ~10 s (INSIDE: breathing reacts to effort).
+      const mvx=clamp(Math.abs(st.motorState?.vx??st.motorState?.velocity??0)/260,0,1);
+      exert+=((walking?.55:Math.max(mvx*.7,(sp?.25:0)))-exert)*Math.min(1,dt*.45);
+      const idleOut=idle.update(dt,{t,mode,dying,walking,reduced,exertion:exert});
+      const br=idleOut.breath,w1=idleOut.noise2,calm=reduced?.4:1;
+      const mv=idleOut.move;
+      model.position.y=-feetY-by*.9*s+(walking?Math.abs(Math.sin(TAU*u))*.035*s:br*.010*s);
       model.scale.set(s*(1+.05*(1-bs))*sqX,s*bs*sqY,s*(1+.05*(1-bs))*sqX);
 
-      const br=Math.sin(t*1.55),w1=Math.sin(t*.62),calm=reduced?.4:1;
       const life=(mode==="on"&&!dying?1:.22)*calm;
       const still=(walking?0:1)*life,droop=mode==="doze"?.42:mode==="dead"?.6:dying?.35:0;
       const swing=walkW;
 
       // Standing idle is a person, not a statue: breath in the chest, weight moving
-      // from foot to foot, the head looking off the same clock. Amplitudes are large
-      // enough to read at desk size. The GLB has no clips; this is the motion.
-      const shift=Math.sin(t*.5);                         // hip to hip, about 12s
-      const look=Math.sin(t*.33),look2=Math.sin(t*.19+1.4);
+      // from foot to foot, the head looking off the same clock — now noise-driven
+      // through springs instead of five sines on fixed periods. Amplitudes match
+      // the channels they replaced so the pose tuning downstream is unchanged.
+      const shift=idleOut.sway+mv.sway*.6;               // hip to hip, noise-wandered
+      const look=idleOut.driftYaw,look2=idleOut.driftPitch;
 
       // Legs: each step is a planted foot and a swinging foot. kL/kR are the
       // per-leg swing curves — zero through stance, a bump while that foot is
@@ -595,9 +639,9 @@ export async function initCrid3D(host,getState,onReady,onFail){
 
       // Head follows the shift late, and looks off-axis so he is not staring through the lens.
       const gx=(p.gx||0)/60,gy=(p.gy||0)/60;
-      if(has("neck1"))pose("neck1",-droop*.5-gy*.3+look2*.06*life,clamp(gx,-.5,.5)*.5+look*.08*life,shift*.03*life);
-      if(has("neck2"))pose("neck2",-droop*.4+br*.02*life,look*.05*life,0);
-      if(has("head"))pose("head",-droop*.55-gy*.3+br*.025*life,clamp(gx,-.6,.6)*.6+look*.16*life,shift*.04*life);
+      if(has("neck1"))pose("neck1",-droop*.5-gy*.3+look2*.06*life+mv.pitch*.4*life,clamp(gx,-.5,.5)*.5+look*.08*life+mv.yaw*.45*life,(shift*.03+mv.roll*.4)*life);
+      if(has("neck2"))pose("neck2",-droop*.4+br*.02*life+mv.pitch*.3*life,look*.05*life+mv.yaw*.3*life,mv.roll*.3*life);
+      if(has("head"))pose("head",-droop*.55-gy*.3+br*.025*life+mv.pitch*.7*life,clamp(gx,-.6,.6)*.6+look*.16*life+mv.yaw*.8*life,(shift*.04+idleOut.roll*.05+mv.roll*.6)*life);
 
       // Face: the performance layer — gaze saccades, the blink engine, doze/dead
       // lid hold, talking jaw, and the emotion envelope crid-bot cues in.
@@ -609,8 +653,8 @@ export async function initCrid3D(host,getState,onReady,onFail){
       const headPitch=(lagPose.get("head")?.[0]||0)+(lagPose.get("neck2")?.[0]||0)+(lagPose.get("neck1")?.[0]||0);
       headTurnS+= (clamp(Math.hypot(headYaw-prevHeadYaw,headPitch-prevHeadPitch)/Math.max(dt,1e-3)*.05,0,1)-headTurnS)*Math.min(1,dt*9);
       prevHeadYaw=headYaw;prevHeadPitch=headPitch;
-      face.update(dt,{t,dt,talking:!!st.talking,mode,dying,reduced,gx:p.gx,gy:p.gy,attend:st.attend,
-        lookBias:st.lookBias,headTurn:headTurnS});
+      face.update(dt,{t,dt,talking:!!st.talking,mode,dying,reduced,gx:p.gx,gy:p.gy,
+        attend:st.attend||idleOut.attend,lookBias:st.lookBias,headTurn:headTurnS,speech:st.speech});
       const fc=face.channels();
       for(const k in fc)setMorph(k,fc[k]);
       // Weight shows in the face too: the heavier builds carry a touch of cheek
@@ -745,7 +789,45 @@ export async function initCrid3D(host,getState,onReady,onFail){
         const b=B(J[mk]),tw=B(J[tk]);if(!b||!tw)continue;
         Q2.copy(b.userData.q0).invert().multiply(b.quaternion);   // commanded delta in rest frame
         E.set(Math.atan2(Q2.x,Q2.w),0,0,"XYZ");Q.setFromEuler(E); // half the X-twist (atan2 gives θ/2)
-        tw.quaternion.copy(tw.userData.q0).multiply(Q)}};
+        tw.quaternion.copy(tw.userData.q0).multiply(Q)}
+
+      // Secondary motion: hair, facial hair and earrings trail the head on
+      // damped springs — the GLB has no hair bone chains, so the rigid groups
+      // over the skinned meshes get a pivot-at-head rotation instead. Rates are
+      // the head's measured world angular velocity (last rendered frame — one
+      // frame of lag is invisible at these amplitudes); a landing squash adds
+      // one small kick so the hair reacts to impacts, not just turns.
+      const headB=B(J.head);
+      if(headB&&secParts.length){
+        // matrixWorld is one rendered frame stale by design; refresh the head
+        // chain so frame one (pre-first-render) doesn't read identities.
+        headB.updateWorldMatrix(true,false);
+        headB.getWorldQuaternion(_hq);
+        if(hasPrevHead){_hdq.copy(_hq).multiply(_qp.copy(prevHeadQ).invert());
+          _he.setFromQuaternion(_hdq,"XYZ");
+          const inv=Math.max(dt,1e-3),secLife=alive?1:.15;
+          secIn.wx=-_he.x/inv*secLife;secIn.wy=-_he.y/inv*secLife;secIn.wz=-_he.z/inv*secLife}
+        else{secIn.wx=secIn.wy=secIn.wz=0}
+        prevHeadQ.copy(_hq);hasPrevHead=true;
+        if(squash>.04&&!secKicked){secKicked=true;secImpulse=.9}
+        else if(squash<.01)secKicked=false;
+        secImpulse*=Math.exp(-dt*5);
+        headB.getWorldPosition(_hp);
+        for(const pt of secParts){
+          stepSpring(pt.s.rx,clamp(-secIn.wy*pt.gain*.045,-.1,.1)+secImpulse*.045*pt.gain,pt.stiff,pt.damp,dt);
+          stepSpring(pt.s.ry,clamp(secIn.wx*pt.gain*.045,-.1,.1),pt.stiff,pt.damp,dt);
+          stepSpring(pt.s.rz,clamp(secIn.wz*pt.gain*.045,-.1,.1),pt.stiff,pt.damp,dt);
+          // world delta M = T(pivot)·R·T(-pivot); local' = P⁻¹·M·P·rest
+          _qp.setFromEuler(_he.set(pt.s.rx.v,pt.s.ry.v,pt.s.rz.v,"XYZ"));
+          _m1.makeTranslation(_hp.x,_hp.y,_hp.z);
+          _m2.makeRotationFromQuaternion(_qp);
+          _m3.makeTranslation(-_hp.x,-_hp.y,-_hp.z);
+          _m4.multiplyMatrices(_m1,_m2).multiply(_m3);
+          pt.parent.updateWorldMatrix(true,false);
+          _pm.copy(pt.parent.matrixWorld).invert();
+          _m1.multiplyMatrices(_pm,_m4);
+          _m2.multiplyMatrices(pt.parent.matrixWorld,pt.rest);
+          _m1.multiply(_m2).decompose(pt.node.position,pt.node.quaternion,pt.node.scale)}}};
 
     let now=performance.now()/1000;
     const frame=()=>{

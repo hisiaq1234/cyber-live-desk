@@ -1,4 +1,5 @@
 import { createCridAudioSync } from "./crid-audio.js";
+import { createSpeechTap } from "./speech-tap.mjs";
 
 /* CYBER LIVE DESK — public landscape overlay with a compact Swae-safe identity strip.
    Transparent, no dependencies, no build step. Loaded by the /desk page.
@@ -1086,6 +1087,46 @@ html.swae #desk .letters{background:#0b0d12f5}
   const syncCridAudio = createCridAudioSync(cridAudio, (error) => {
     console.warn("CRID audio could not start. Browser autoplay policy or the audio URL may have blocked playback.", error);
   });
+  // Speech tap: a second, analysis-only element plays the same URL so CRID's jaw
+  // can follow real audio. It is never routed to the speakers and never touches
+  // cridAudio — a CORS-refused feed just reads zeros and the face keeps its
+  // procedural rhythm (speech-tap.mjs).
+  const speechTap = createSpeechTap();
+  // Footstep audio: gait.mjs emits touchdown/liftoff only while the measured
+  // root travels, so this sink is silent at rest by construction. Each step is
+  // a short filtered noise burst (~90 ms, well under voice level) — procedural,
+  // no asset, and like all page audio it plays on the rendering device only.
+  const stepAudio = (() => {
+    let ctx = null, buf = null;
+    const ensure = () => {
+      if (ctx) return ctx;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      ctx = new AC();
+      const len = Math.max(1, (ctx.sampleRate * .09) | 0);
+      buf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.4);
+      return ctx;
+    };
+    return {
+      step(ev) {
+        if (!ev || ev.type !== "touchdown") return;
+        const c = ensure(); if (!c) return;
+        if (c.state === "suspended") c.resume().catch(() => {});
+        const t0 = c.currentTime;
+        const src = c.createBufferSource(); src.buffer = buf;
+        const f = c.createBiquadFilter();
+        f.type = "lowpass"; f.frequency.value = ev.side === "left" ? 400 : 340; f.Q.value = .9;
+        const g = c.createGain();
+        g.gain.setValueAtTime(.0001, t0);
+        g.gain.exponentialRampToValueAtTime(.11, t0 + .008);
+        g.gain.exponentialRampToValueAtTime(.0001, t0 + .09);
+        src.connect(f); f.connect(g); g.connect(c.destination);
+        src.start(t0); src.stop(t0 + .1);
+      },
+    };
+  })();
   // CRID, the mascot, replaces the sound orb: it grooms itself when idle, reacts to the desk and
   // pushes docked modules out of its own chest. ?bot=0 restores the orb, ?bot=bl|bc|br picks the
   // spot (default bottom-centre: the centre column is his, and the lockup above him is the one band
@@ -1122,6 +1163,8 @@ html.swae #desk .letters{background:#0b0d12f5}
       if (Number.isFinite(cool)) o.cooldownMs = Math.min(60000, Math.max(500, cool));
       return o;
     })(),
+    speechLevel: () => speechTap.level(),
+    stepHook: { onStep: (ev) => stepAudio.step(ev) },
   });
   // The room behind the desk. The page ships with a transparent body so the same /desk file can be
   // loaded straight into OBS and keyed out, which in a browser left the cards on the browser's own
@@ -1704,6 +1747,7 @@ html.swae #desk .letters{background:#0b0d12f5}
     if (!state) return;
     renderCrid(state.crid);
     syncCridAudio(state.crid);
+    speechTap.sync(state.crid);
     renderModule(state);
     renderLogo(state.logo);
     renderScene(state.scene);

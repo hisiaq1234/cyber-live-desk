@@ -20,6 +20,39 @@ import { Redis } from "@upstash/redis";
 
 const NS = "cld:";
 
+// DESK_STORE=memory swaps Redis for a process-local Map — for `scripts/serve-desk.mjs`
+// and tests that need the real handler without Upstash credentials. State does not
+// survive a restart and is not shared across instances; production never sets it.
+const memory = process.env.DESK_STORE === "memory" ? new Map() : null;
+
+function memoryStore() {
+  const full = (k) => `${NS}${k}`;
+  const read = (k) => {
+    const raw = memory.get(full(k));
+    return raw === undefined ? null : JSON.parse(raw);
+  };
+  return {
+    async get(key) {
+      const val = read(key);
+      return val === null ? null : val;
+    },
+    async setJSON(key, value, opts) {
+      const k = full(key);
+      if (opts?.onlyIfNew && memory.has(k)) return { modified: false };
+      memory.set(k, JSON.stringify(value));
+      return { modified: true };
+    },
+    async compareAndSetJSON(key, expectedVersion, value) {
+      const k = full(key);
+      const cur = read(key);
+      if (cur === null || Number(cur.version) !== Number(expectedVersion)) return { modified: false };
+      memory.set(k, JSON.stringify(value));
+      return { modified: true };
+    },
+    async delete(key) { memory.delete(full(key)); },
+  };
+}
+
 // Redis client is constructed once per module load (one cold start = one client).
 // @upstash/redis reads KV_REST_API_URL and KV_REST_API_TOKEN from process.env by default.
 const redis = new Redis({
@@ -28,6 +61,7 @@ const redis = new Redis({
 });
 
 export function getStore() {
+  if (memory) return memoryStore();
   return {
     async get(key, opts) {
       const val = await redis.get(`${NS}${key}`);

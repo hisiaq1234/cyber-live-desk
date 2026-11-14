@@ -40,9 +40,23 @@ export function createCridVoice({ onHeard, onError } = {}) {
   rec.lang = "en-US";
   let running = false;
 
+  // One brain: every transcript also goes to the local InitiativeEngine as a
+  // voice event, so what the operator says feeds the same mind as chat. The
+  // desk-command path below stays for explicit actions only. ?brain=<url>
+  // overrides the loopback default; a brain that isn't running costs nothing.
+  const brainBase = (new URLSearchParams(location.search).get("brain") || "http://127.0.0.1:7311").replace(/\/+$/, "");
+  const tellBrain = (raw) => {
+    fetch(`${brainBase}/event`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "voice", text: raw, source: "operator-voice" }),
+    }).catch(() => {});
+  };
+
   rec.onresult = async (e) => {
     const raw = e.results[e.results.length - 1][0].transcript.trim();
     onHeard?.(raw);
+    tellBrain(raw);
     const line = raw.toLowerCase().startsWith("crid") ? raw : "crid " + raw;
     const cmd = parseDeskCommand(line);
     if (!cmd) return;

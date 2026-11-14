@@ -77,6 +77,9 @@ export function createBrainServer({ engine, memory, bus, personality, getStatus,
     res.setHeader("access-control-allow-origin", "*");
     res.setHeader("access-control-allow-methods", "GET,POST,OPTIONS");
     res.setHeader("access-control-allow-headers", "content-type,authorization");
+    // Chrome's Private Network Access: a public https page (the Vercel desk) may
+    // only reach this loopback brain if the preflight grants it explicitly.
+    res.setHeader("access-control-allow-private-network", "true");
     if (req.method === "OPTIONS") {
       res.writeHead(204);
       return res.end();
@@ -109,7 +112,7 @@ export function createBrainServer({ engine, memory, bus, personality, getStatus,
      * snapshot (drives, floor position, bag) so the brain's copy of him is the
      * one the stream actually ran; POST /ingest is the normalised multi-platform
      * door (voice notes, environment reports) the bridge already understands. */
-    if (path === "/being" && req.method === "POST") {
+    if ((path === "/being" || path === "/api/desk/being") && req.method === "POST") {
       try {
         const body = await readJson(req);
         if (onBeing) onBeing(body);

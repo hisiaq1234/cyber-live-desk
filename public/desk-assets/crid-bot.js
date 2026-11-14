@@ -268,7 +268,10 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
           normal:{x:g.normal?.x||0,y:-(g.normal?.y??-1),z:g.normal?.z||0}}};
     }
     const b=stageBoxes[stage.layer];if(!b)return null;
-    const pxX=dir>0?b.edge.right-8:b.edge.left+8,pxY=b.edge.top;
+    // stageBoxes are world units (x centred on screen middle, y up from the
+    // floor line) — convert back to px for the contact point the IK plants on.
+    const edgeX=dir>0?b.right:b.left;
+    const pxX=innerWidth/2+edgeX*UPX()+(dir>0?-8:8),pxY=deskFeet()-b.top*UPX();
     return {dir,angle,contact:{x:pxX,y:pxY},
       worldAnchor:{id:stage.layer,position:{x:stagePX(pxX),y:(deskFeet()-pxY)/UPX(),z:0},
         normal:{x:dir,y:0,z:0}}};

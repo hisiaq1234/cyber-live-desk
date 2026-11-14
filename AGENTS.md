@@ -22,6 +22,9 @@ for this project; this file is only the short version of the rules that are not 
    file before calling anything shipped.
 8. **Don't rewrite what works, don't stray, don't burn usage.** Small focused PRs on feature
    branches, `main` clean at the end.
+9. **Research before building.** Any non-trivial task starts with the `deep-research` skill
+   (`.devin/skills/deep-research/SKILL.md`): three grades of research, adversarial pass,
+   proposal + owner sign-off — then code. No building on un-researched assumptions.
 
 If a change would make Crid look like a different person, stop and ask the owner instead of shipping
 it. That is the one mistake this project does not recover from.

@@ -454,6 +454,8 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
     try{window.__cridIk={w:()=>ikW,last:()=>ikLast,dbg:()=>ikDbg}}catch{}
     try{window.__cridGait=()=>gaitState?{phase:gaitState.phase,duty:gaitState.dutyFactor,
       left:gaitState.left,right:gaitState.right,events:gaitState.events,steps:gaitState.steps}:null}catch{}
+    try{window.__cridBag=()=>({pivot:!!bagPivot,visible:!!(bagPivot&&bagPivot.visible),
+      lag:!!bagLag,shown:bagShown})}catch{}
     const face=createFacial();let lastFaceKey=null;
     // The alive base (crid-idle.mjs): value-noise wander through damped springs,
     // an uneven breath machine and a small keyframed move library — the same

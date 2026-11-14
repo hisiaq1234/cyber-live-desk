@@ -16,11 +16,11 @@ import { createSpeechTap } from "./speech-tap.mjs";
      x.mode=trends|following   x.userId=      x.jpoll=10–3600
      swae=0 | 1                (force the snapshot-safe style off / on)
      theme=cyber|creative|torn-paper   (default cyber; the theme CSS is ./cyber-theme.js)
-     scene=pip                 pip.w=10–60 pip.h=10–60 (% of viewport)
-     bg=0                      (removes the room behind the desk — navy sky, grid, horizon glow
-                                and floor line — and leaves the transparent page OBS keys out)
+     scene=split|pip            split is the 50/50 two-feed HUD; pip reserves a corner for an inset
+     bg=1                      (optional cyber room backdrop; default stays transparent over the camera feeds)
      bot=0 | bl|bc|br          bot.x=0–100 bot.y=0–100  (CRID mascot; 0 restores the sound orb; default bc, the centre column)
      bot.scale=0.4–2.5         (mascot size multiplier on top of the theme's broadcast size; default 1)
+     headlines=1               (optional automatic RSS identity ticker; off by default)
      clock=0 | 1               (bottom-left clock plate; on by default)
      headlines=1                (opt in to the current Nigeria headline ticker; off by default)
      chat=0 | 1                chatPrefix=   (Swae chat strip; on by default inside Swae)
@@ -30,7 +30,7 @@ import { createSpeechTap } from "./speech-tap.mjs";
      logo.x= logo.y=0–100      (percent placement, with logo=custom)
      lat= lon= alt= place=     (where the creator is: the readout top-right, the clock's topline and
                                 the centre of the map plate; falls back to the desk state, then to
-                                the browser's geolocation)
+                                the operator's delayed location feed)
      Add a card type: DeskOverlay.register("my-type", (card, opts) => HTMLElement)  */
 import { createSoundOrbSync } from "./sound-orb.js";
 import { requestXFeed } from "./x-feed-client.js";
@@ -79,17 +79,18 @@ import { createScene, SCENE_CSS } from "./scene.js";
   // ?game=0 removes the Letters card and its renderer with it: a frame that never wants the game
   // never draws one, and the desk state it ignores costs it nothing.
   const LETTERS_ON = P.get("game") !== "0";
-  // Headlines are useful programming when the operator asks for them, not default page chrome.
-  // A quiet desk starts quiet; `?headlines=1` opts this browser source into the live ticker.
+  // The public frame is a place, not a news dashboard. RSS is available on demand, but it must
+  // not occupy the scene or compete with Crid before the operator chooses to show it.
   const HEADLINES_ON = P.get("headlines") === "1";
   const theme = pick("theme", ["creative", "torn-paper", "cyber"], "cyber");
   document.documentElement.dataset.theme = theme;
   document.documentElement.dataset.crop = P.get("crop") === "0" ? "false" : "true";
   if (P.get("power") === "low") document.documentElement.classList.add("low-power");
-  // ?scene=pip reserves the bottom-right corner for the renderer's dual-camera inset and lifts
-  // the right column above it. The inset itself is drawn by the renderer, so the page only has
-  // to know how much room to leave; the CSS carries a default for when no size is given.
-  const scene = pick("scene", ["pip"], "");
+  // The owner streams two cameras side by side. Split is the default HUD composition: the left
+  // half owns the timestamp and map, the right half owns the location readout, and the lockup
+  // moves off the centre seam. It does not create camera feeds; Swae/OBS supplies those. PiP
+  // remains available when a second feed is an inset instead.
+  const scene = pick("scene", ["split", "pip"], "split");
   if (scene) {
     document.documentElement.dataset.scene = scene;
     document.documentElement.style.setProperty("--pip-w", num("pip.w", 34, 10, 60) + "vw");
@@ -105,7 +106,15 @@ import { createScene, SCENE_CSS } from "./scene.js";
       html.dataset.scene = "pip";
       html.style.setProperty("--pip-w", `${s.w ?? 34}vw`);
       html.style.setProperty("--pip-h", `${s.h ?? 34}vh`);
-    } else delete html.dataset.scene;
+    } else if (s.mode === "split") {
+      html.dataset.scene = "split";
+      html.style.removeProperty("--pip-w");
+      html.style.removeProperty("--pip-h");
+    } else {
+      delete html.dataset.scene;
+      html.style.removeProperty("--pip-w");
+      html.style.removeProperty("--pip-h");
+    }
   };
   const xMode = P.get("x.mode") || "";
   const xJPos = "top";
@@ -121,7 +130,6 @@ import { createScene, SCENE_CSS } from "./scene.js";
   //   1. ?lat=&lon=&alt=&place= on this page. The URL travels with the frame, so it works in a
   //      Swae widget box and in a browser-source URL, where nobody can tap "allow".
   //   2. the point the operator stored in desk state.
-  //   3. navigator.geolocation, when this browser has been granted permission.
   //   4. nothing at all: no readout, no label change, no error, no waiting. A refused prompt is
   //      the normal case here, not a failure — this page is drawn by three different renderers.
   const LOCATION_RANK = { geo: 1, control: 2, url: 3 };
@@ -404,6 +412,7 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
 
 /* X feed (docks at top of #dock-right) */
 #x-feed {
+  position:relative;
   max-height: 20dvh; overflow: hidden;
   background:#111214f0;backdrop-filter:blur(16px) saturate(180%);
   -webkit-backdrop-filter:blur(16px) saturate(180%);
@@ -434,6 +443,13 @@ html,body{margin:0;background:transparent!important;overflow:hidden}
    through /api/x-timeline/feed. Transparent body, so only its cards show. */
 #x-feed.x-overlay-panel{max-height:none;padding:.4em}
 #x-feed.x-overlay-panel iframe{display:block;width:100%;height:64dvh;border:0;background:transparent;pointer-events:none}
+/* Desk-level dismiss: the iframe is click-through, so the card carries its own ×. */
+.x-close{position:absolute;top:.35em;right:.45em;z-index:2;width:1.7em;height:1.7em;
+  display:flex;align-items:center;justify-content:center;border-radius:50%;
+  background:rgba(255,255,255,.08);border:.09em solid rgba(255,255,255,.25);
+  color:#f3f2f0;font-size:1em;line-height:1;cursor:pointer;pointer-events:auto;
+  font-family:inherit;padding:0}
+.x-close:hover{background:rgba(255,255,255,.18)}
 
 /* Module Component Styles — individual caps keep the dock total bounded */
 .court-wrap,.music-wrap,.space-wrap,.ledger-wrap,.riad-wrap {
@@ -711,7 +727,7 @@ html.swae .scale-wrap{display:none}
 /* The music panel took the radar plate's old slot: bottom-right, sitting on the news ticker,
    measured against it rather than guessed at. It keeps the module look — the wrap's own glass
    border and fill — inside a plain fixed slot so the ticker can never be covered or covered. */
-#music-plate{position:fixed;right:var(--m);bottom:calc(var(--m) + 5.4em + env(safe-area-inset-bottom,0px));
+#music-plate{position:fixed;right:var(--m);bottom:calc(var(--m) + env(safe-area-inset-bottom,0px));
   z-index:24;width:min(342px,calc(100vw - 2*var(--m)));pointer-events:none}
 #music-plate:empty{display:none}
 #music-plate .music-wrap{width:100%;max-height:36dvh;overflow:hidden;padding:.65em .85em}
@@ -730,6 +746,21 @@ html.gta #desk #loc-map .loc-marker::after{background:#0a130c;border-color:#4dff
 html.gta #desk #loc-map .cr-map{filter:hue-rotate(80deg) saturate(1.9) brightness(.82) contrast(1.1)}
 html.gta #desk #auto-headlines{border-color:rgba(77,255,106,.45);border-left-color:#4dff6a}
 html.gta #desk #auto-headlines .headline-feed-kicker{color:#4dff6a}
+
+/* Final split overrides come after the base and phone rules so no legacy full-frame width
+   can push a plate across the centre seam. */
+html[data-scene="split"] #desk.layout-alive .slot{width:min(460px,calc(50vw - 2*var(--m)))}
+html[data-scene="split"] #desk.layout-alive #dock-right{width:min(360px,calc(50vw - 2*var(--m)));max-height:calc(100svh - 2*var(--m))}
+html[data-scene="split"] #desk #time-dock {min-width:0;width:min(390px,calc(50vw - 2*var(--m)));max-width:calc(50vw - 2*var(--m))}
+html[data-scene="split"] #desk #loc-map{max-width:calc(50vw - 2*var(--m))}
+html[data-scene="split"] #desk #music-plate{width:min(342px,calc(50vw - 2*var(--m)))}
+html[data-scene="split"] #desk #auto-headlines{width:min(36vw,calc(50vw - 2*var(--m)))}
+@media(max-width:520px){
+  html[data-scene="split"] #desk #time-dock{padding:10px 10px 10px 12px}
+  html[data-scene="split"] #desk #time-dock .clock-time {font-size:clamp(12px,3.2vw,22px)}
+  html[data-scene="split"] #desk #time-dock .clock-top,
+  html[data-scene="split"] #desk #time-dock .clock-detail{font-size:clamp(8px,1.8vw,10px)}
+}
 `;
 
 // ---------- upgraded DOM helper ----------
@@ -940,6 +971,30 @@ html.gta #desk #auto-headlines .headline-feed-kicker{color:#4dff6a}
   display:flex;justify-content:space-between;gap:12px}
 #desk .letters-foot b{color:#f7f3ea;font-family:"IBM Plex Mono","Courier New",var(--mono);font-weight:500}
 html.swae #desk .letters{background:#0b0d12f5}
+
+/* The word game is a full-screen stream card too. Keep its scoreboard, tiles and timer inside
+   the same HUD grammar instead of letting its older paper palette reappear when a round opens. */
+html[data-theme="cyber"] #desk .letters{
+  border:1px solid var(--gta-line-soft);border-left:3px solid var(--gta-amber);
+  border-radius:2px;background:var(--gta-panel);color:var(--ink-1);
+  box-shadow:0 5px 18px rgba(0,0,0,.34)
+}
+html[data-theme="cyber"] #desk .letters-top{
+  border-bottom:1px solid var(--gta-line-soft);padding-bottom:9px;
+  font:600 .6em/1.2 var(--mono);letter-spacing:.12em;color:#aab2b4
+}
+html[data-theme="cyber"] #desk .letters-brand{color:var(--gta-amber)}
+html[data-theme="cyber"] #desk .letters-clock{font-family:var(--mono);font-weight:600;color:#f0f1ed}
+html[data-theme="cyber"] #desk .letters[data-state="over"] .letters-clock{color:var(--gta-red)}
+html[data-theme="cyber"] #desk .letters-tile{
+  border:1px solid var(--gta-line);border-radius:2px;background:rgba(255,255,255,.035);color:#f0f1ed
+}
+html[data-theme="cyber"] #desk .letters-tile.vowel{color:var(--gta-green);border-color:var(--gta-green)}
+html[data-theme="cyber"] #desk .letters-row{border-bottom:1px solid var(--gta-line-soft)}
+html[data-theme="cyber"] #desk .letters-rank{color:var(--gta-amber)}
+html[data-theme="cyber"] #desk :is(.letters-who,.letters-pts,.letters-empty){color:#c1c6c7}
+html[data-theme="cyber"] #desk .letters-foot{border-top:1px solid var(--gta-line-soft);color:#929b9e}
+html[data-theme="cyber"] #desk .letters-foot b{color:var(--gta-green);font-family:var(--mono)}
 `;
 
   register("letters", (c, opts) => {
@@ -1046,8 +1101,8 @@ html.swae #desk .letters{background:#0b0d12f5}
   const slot = h("div", "slot");
   const root = h("div", { id: "desk", class: `layout-${CFG.layout} pos-${CFG.pos} anim-${CFG.anim} crid-pos-${CFG.cridPos} x-pos-${xJPos}${CFG.debug ? " debug" : ""}` }, slot);
   document.body.append(root);
-  const headlineShelf = h("div", { id: "auto-headlines", hidden: !HEADLINES_ON, "aria-live": "off", "data-status": HEADLINES_ON ? "loading" : "off" });
-  root.append(headlineShelf);
+  const headlineShelf = HEADLINES_ON ? h("div", { id: "auto-headlines", "aria-live": "off", "data-status": "loading" }) : null;
+  if (headlineShelf) root.append(headlineShelf);
 
   // ---------- Swae chat bridge ----------
   // Swae already reads the chat for the broadcast. With "Swae access" on it can hand those
@@ -1166,13 +1221,10 @@ html.swae #desk .letters{background:#0b0d12f5}
     speechLevel: () => speechTap.level(),
     stepHook: { onStep: (ev) => stepAudio.step(ev) },
   });
-  // The room behind the desk. The page ships with a transparent body so the same /desk file can be
-  // loaded straight into OBS and keyed out, which in a browser left the cards on the browser's own
-  // white canvas. This draws the room inside the page instead, and prepends it so it paints before
-  // every panel. ?bg=0 drops it and gives back the transparent page an OBS source needs.
-  // It is the cyber theme's room only: the other two themes are paper, not a dark set.
-  const SCENE_OFF = ["0", "off", "false"].includes(String(P.get("bg") || "").toLowerCase());
-  if (theme === "cyber" && !SCENE_OFF) document.body.prepend(createScene({ bot }));
+  // The camera feeds are the world behind this HUD. Keep /desk transparent by default so OBS/Swae
+  // shows the real cameras; the optional synthetic cyber room is only enabled by ?bg=1.
+  const SCENE_ON = P.get("bg") === "1";
+  if (theme === "cyber" && SCENE_ON) document.body.prepend(createScene({ bot }));
 
   // The cue channel: one gesture, feeling or line the desk has been told to perform. It is read
   // off the same poll as everything else and drained once per stamp (see cue.mjs), then handed to
@@ -1208,8 +1260,8 @@ html.swae #desk .letters{background:#0b0d12f5}
   const LOGO_ARG = P.get("logo");
   const lockup = LOGO_ARG === "0" ? null : createLogo({
     root,
-    position: LOGO_POSITIONS.includes(LOGO_ARG) ? LOGO_ARG : "tc",
-    width: num("logo.w", 24, 6, 46),
+    position: LOGO_POSITIONS.includes(LOGO_ARG) ? LOGO_ARG : (scene === "split" ? "tl" : "tc"),
+    width: num("logo.w", scene === "split" ? 18 : 24, 6, 46),
     x: P.get("logo.x") != null ? num("logo.x", 50, 0, 100) : null,
     y: P.get("logo.y") != null ? num("logo.y", 6, 0, 100) : null,
     // The goat is the operator's own artwork and it is what his animation was made for, so it is
@@ -1286,26 +1338,6 @@ html.swae #desk .letters{background:#0b0d12f5}
     if (currentLocation.alt != null) {
       locationFix.append(h("i", { class: "loc-sep", "aria-hidden": "true" }),
         h("span", "loc-alt", `↕ ${currentLocation.alt}m`));
-    }
-  };
-
-  // The browser's own fix, asked for once and never awaited: the page draws whether or not it
-  // answers. A denied prompt, a missing API, or a browser that throws here is not an error state —
-  // the frame keeps the location it already had, or none at all, and looks exactly as it did
-  // before it knew where it was.
-  const requestGeo = () => {
-    if (locationRank >= LOCATION_RANK.control) return; // the URL or the operator already decided
-    const geo = navigator.geolocation;
-    if (!geo || typeof geo.getCurrentPosition !== "function") return;
-    try {
-      geo.getCurrentPosition(
-        (pos) => useLocation(readLocation({
-          lat: pos.coords.latitude, lon: pos.coords.longitude, alt: pos.coords.altitude,
-        }, "geo")),
-        () => {},
-        { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 });
-    } catch (err) {
-      if (CFG.debug) console.debug("[desk] geolocation request failed:", err);
     }
   };
 
@@ -1492,7 +1524,7 @@ html.swae #desk .letters{background:#0b0d12f5}
   };
 
   const drawHeadlines = (note = "Checking for fresh headlines…") => {
-    if (!HEADLINES_ON) return;
+    if (!headlineShelf) return;
     const track = state?.music?.playing ? state.music.current : null;
     const rows = [];
     if (track?.title) rows.push(h("div", "identity-row identity-music",
@@ -1518,6 +1550,7 @@ html.swae #desk .letters{background:#0b0d12f5}
   };
 
   const refreshHeadlines = async () => {
+    if (!HEADLINES_ON || !headlineShelf) return;
     try {
       const response = await fetch("/api/desk-headlines", { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
@@ -1537,8 +1570,8 @@ html.swae #desk .letters{background:#0b0d12f5}
     headlineRotateTimer = setInterval(() => {
       if (headlineItems.length > 1) { headlineIndex = (headlineIndex + 1) % headlineItems.length; drawHeadlines(); }
     }, 12 * 1000);
+    window.addEventListener("pagehide", () => { clearTimeout(headlinePollTimer); clearInterval(headlineRotateTimer); }, { once: true });
   }
-  window.addEventListener("pagehide", () => { clearTimeout(headlinePollTimer); clearInterval(headlineRotateTimer); }, { once: true });
 
   const schedulePoll = (ms) => {
     clearTimeout(pollTimer);
@@ -1610,6 +1643,14 @@ html.swae #desk .letters{background:#0b0d12f5}
   let xKey = null;
   let xTimer = null;
   let xStarted = false;
+  let xOff = false;
+  const xCloseBtn = () => h("button", {
+    class: "x-close", type: "button", "aria-label": "Close X panel",
+    onclick: (e) => {
+      e.stopPropagation(); xOff = true; clearTimeout(xTimer);
+      xEl?.remove(); xEl = null;
+    },
+  }, "×");
 
   // The feed is down: say so on the card instead of leaving the corner blank. No stand-in
   // tweets — an empty panel that admits it is broken is honest, invented posts are not.
@@ -1621,9 +1662,9 @@ html.swae #desk .letters{background:#0b0d12f5}
       h("div", "x-item x-problem", h("span", "x-text", message)));
     const foot = h("div", "", h("span", "x-count", `Retrying every ${Math.round(xJPollMs / 1000)}s`));
     if (xEl) {
-      xEl.replaceChildren(head, list, foot);
+      xEl.replaceChildren(head, list, foot, xCloseBtn());
     } else {
-      xEl = h("div", { id: "x-feed" }, head, list, foot);
+      xEl = h("div", { id: "x-feed" }, head, list, foot, xCloseBtn());
       dockRight.prepend(xEl);
       bot?.summon(xEl);
       requestAnimationFrame(() => requestAnimationFrame(() => xEl?.classList.add("in")));
@@ -1690,9 +1731,9 @@ html.swae #desk .letters{background:#0b0d12f5}
     }
     const foot = h("div", "", h("span", "x-count", new Date(feed.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })));
     if (xEl) {
-      xEl.replaceChildren(head, list, foot);
+      xEl.replaceChildren(head, list, foot, xCloseBtn());
     } else {
-      xEl = h("div", { id: "x-feed" }, head, list, foot);
+      xEl = h("div", { id: "x-feed" }, head, list, foot, xCloseBtn());
       dockRight.prepend(xEl);
       bot?.summon(xEl);
       requestAnimationFrame(() => requestAnimationFrame(() => xEl?.classList.add("in")));
@@ -1713,7 +1754,7 @@ html.swae #desk .letters{background:#0b0d12f5}
       src: "/x-overlay/index.html?theme=dark&position=bottom-left&scale=.72&margin=8&count=5&refresh=30&interval=18&stack=1",
       title: "X Following timeline", loading: "lazy",
     });
-    const card = h("div", { id: "x-feed", class: "x-overlay-panel" }, frame);
+    const card = h("div", { id: "x-feed", class: "x-overlay-panel" }, frame, xCloseBtn());
     if (xEl) { xEl.replaceWith(card); xEl = card; }
     else {
       xEl = card;
@@ -1725,7 +1766,7 @@ html.swae #desk .letters{background:#0b0d12f5}
   };
 
   const fetchXfeed = async () => {
-    if (!xMode) return;
+    if (!xMode || xOff) return;
     clearTimeout(xTimer);
     if (xMode !== "trends" && !xUiClassic) { renderXoverlay(); return; }
     const result = await requestXFeed(globalThis.fetch, { mode: xMode, userId: xUserId });
@@ -1973,10 +2014,9 @@ html.swae #desk .letters{background:#0b0d12f5}
     // The Cyber Radar app's own demo centre (UNILAG) and zoom: what an opened view centres on
     // when the desk does not know where he is.
     const FALLBACK_CENTER = [3.398, 6.517]; // lon, lat
-    const FALLBACK_PLACE = "UNILAG";
+    const FALLBACK_PLACE = "AREA UNRESOLVED";
     const MAP_ZOOM = 15.5;
     const SOURCE_LINE = "SOURCE: OSM VIA GEOFABRIK · SNAPSHOT";
-    const LOCPEEK_MS = num("locpeek", 300, 30, 3600) * 1000;
     const centreOf = (loc) => (loc ? [loc.lon, loc.lat] : FALLBACK_CENTER);
     const marginPx = () => Math.min(32, Math.max(12, 0.04 * Math.min(innerWidth, innerHeight)));
     const placeName = h("span", "map-place", currentLocation?.place || FALLBACK_PLACE);
@@ -1986,7 +2026,7 @@ html.swae #desk .letters{background:#0b0d12f5}
     const canvas = h("div", "map-canvas", h("div", "cr-map"), marker);
     const locMap = h("section", { id: "loc-map", hidden: true, "aria-live": "off" },
       h("div", "map-top",
-        h("span", "map-name", "CRID // LOC"),
+        h("span", "map-name", "CYBER RADAR"),
         placeName),
       canvas,
       readout,
@@ -1995,13 +2035,10 @@ html.swae #desk .letters{background:#0b0d12f5}
 
     let map = null;
     let mapFailed = false;
-    let locMode = "compact"; // compact | peek | full
+    let locMode = "mini"; // mini | full
     let wantFull = P.get("locview") === "full";
     let animToken = 0;
-    let peekTimer = null;
-    let peekHideTimer = null;
     let fullTimer = null;
-    let nextPeekAt = 0;
     // The point the dock draws: the delayed feed fix first, then whatever the ranked location
     // sources already resolved (URL, operator point, browser fix). hidden never reaches here —
     // apply() nulls liveLoc and raises locHidden the moment the panic flag lands.
@@ -2012,13 +2049,10 @@ html.swae #desk .letters{background:#0b0d12f5}
       if (!map || !marker.isConnected) return;
       const p = dockPoint();
       if (!p || locMap.hidden) { marker.style.display = "none"; return; }
-      try {
-        // MapLibre's own project() — the marker rides the map's projection, so it stays glued
-        // through resizes and jumps. North-up only: desk state carries no heading to rotate by.
-        const pt = map.project([p.lon, p.lat]);
-        marker.style.display = "";
-        marker.style.transform = `translate(${Math.round(pt.x)}px,${Math.round(pt.y)}px)`;
-      } catch { marker.style.display = "none"; }
+      // GTA-style minimap behaviour: the player marker stays centred; the map recentres beneath it.
+      const r = canvas.getBoundingClientRect();
+      marker.style.display = "";
+      marker.style.transform = `translate(${Math.round(r.width / 2)}px,${Math.round(r.height / 2)}px)`;
     };
 
     const rectNow = () => {
@@ -2063,98 +2097,80 @@ html.swae #desk .letters{background:#0b0d12f5}
       requestAnimationFrame(step);
     };
 
-    const peekRect = () => {
+    const miniRect = () => {
       const m = marginPx();
-      const w = Math.min(430, innerWidth - 2 * m - 8);
-      const hgt = Math.min(230, Math.max(150, innerHeight * 0.2));
+      const split = document.documentElement.dataset.scene === "split";
+      const available = split ? innerWidth / 2 : innerWidth;
+      const w = Math.min(330, available - 2 * m - 8);
+      const hgt = Math.min(205, Math.max(126, w * .54));
       const dockTop = locDock.getBoundingClientRect().top;
       return { left: m, top: Math.max(m + 8, dockTop - hgt - 10), width: w, height: hgt };
     };
     // Near-fullscreen but not quite: the stream stays visible around the edges, and the plate's
     // own .9 alpha lets it show through the map area too.
-    const fullRect = () => ({
-      left: innerWidth * 0.03, top: innerHeight * 0.07,
-      width: innerWidth * 0.94, height: innerHeight * 0.86,
-    });
+    const fullRect = () => {
+      const split = document.documentElement.dataset.scene === "split";
+      return { left: innerWidth * 0.03, top: innerHeight * 0.07,
+        width: innerWidth * (split ? 0.44 : 0.94), height: innerHeight * 0.86 };
+    };
 
-    const openLoc = (mode) => {
+    const openLoc = (mode = "full") => {
       if (!locEligible()) return false;
-      const wasOpen = locMode !== "compact";
-      locMode = mode;
+      const wasVisible = !locMap.hidden;
+      locMode = mode === "full" ? "full" : "mini";
       locMap.hidden = false;
       locMap.classList.add("loc-open");
       locDock.classList.add("loc-live");
       clearTimeout(fullTimer);
-      // Full view is a timed look, not a mode: 60 seconds and the dock goes back to the clock.
-      if (mode === "full") fullTimer = setTimeout(() => { if (locMode === "full") closeLoc(); }, 60000);
-      renderLocDock();
-      const to = mode === "full" ? fullRect() : peekRect();
-      if (wasOpen) animateRect(to, 460);
+      if (locMode === "full") fullTimer = setTimeout(() => { if (locMode === "full") closeLoc(); }, 60000);
+      const to = locMode === "full" ? fullRect() : miniRect();
+      if (wasVisible) animateRect(to, 420);
       else {
-        // Grow out of the clock: start as a zero-height sliver on the panel's bottom edge and
-        // let the tween carry it up into place.
         setRect({ ...to, top: to.top + to.height, height: 0 }, 0);
-        requestAnimationFrame(() => animateRect(to, mode === "full" ? 560 : 480));
+        requestAnimationFrame(() => animateRect(to, 360));
       }
       return true;
     };
     const closeLoc = () => {
-      if (locMode === "compact") return;
-      const r = rectNow();
-      const o = parseFloat(getComputedStyle(locMap).opacity) || 1;
-      // Retract the way it opened: collapse onto the bottom edge, which is the side touching
-      // the clock, then hide. A full-view close sweeps the same direction, just longer.
-      animateRect({ left: r.left, top: r.top + r.height, width: r.width, height: 0 },
-        locMode === "full" ? 540 : 400, () => {
+      if (locMode !== "full") return;
+      clearTimeout(fullTimer);
+      locMode = "mini";
+      const to = miniRect();
+      animateRect(to, 420, () => {
+        if (!locEligible()) {
           locMap.hidden = true;
           locMap.classList.remove("loc-open");
           locMap.style.opacity = "";
-          locMode = "compact";
-          clearTimeout(fullTimer);
-          armPeek();
-        }, r, o);
+        }
+      });
     };
-
-    // The peek schedule: one shot per eligibility window, jittered so two peeks never land on
-    // the same second of the hour twice. armPeek is the only place a peek timer is created.
-    const armPeek = () => {
-      clearTimeout(peekTimer);
-      peekTimer = null;
-      nextPeekAt = 0;
-      if (locMode !== "compact" || !locEligible()) return;
-      const wait = LOCPEEK_MS * (0.6 + Math.random() * 0.8);
-      nextPeekAt = Date.now() + wait;
-      peekTimer = setTimeout(firePeek, wait);
-    };
-    const firePeek = () => {
-      peekTimer = null;
-      nextPeekAt = 0;
-      if (locMode !== "compact" || !locEligible()) { armPeek(); return; }
-      openLoc("peek");
-      // CRID leans in: "peek" is his glance-up sequence, the lightest react that reads as
-      // "something just moved". Non-blocking — react() queues behind whatever he is doing.
-      try { bot?.react?.("peek"); } catch { /* a busy or dead bot simply does not react */ }
-      clearTimeout(peekHideTimer);
-      peekHideTimer = setTimeout(() => {
-        if (locMode === "peek") { closeLoc(); armPeek(); }
-      }, 20000 + Math.random() * 20000);
-    };
-    // Called on every poll via renderLocDock: keeps eligibility, the pending peek and any open
-    // mode honest against the freshest state. Cheap — it only arms timers on transitions.
-    const syncPeek = () => {
-      if (wantFull) {
-        wantFull = false;
-        if (locMode === "compact" && locEligible()) openLoc("full");
-      }
+    const syncMinimap = () => {
       if (!locEligible()) {
-        clearTimeout(peekTimer); clearTimeout(peekHideTimer);
-        peekTimer = null; nextPeekAt = 0;
-        if (locMode !== "compact") closeLoc();
+        clearTimeout(fullTimer);
+        locMode = "mini";
+        locMap.hidden = true;
+        locMap.classList.remove("loc-open");
+        locDock.classList.remove("loc-live");
+        locMap.style.opacity = "";
         return;
       }
-      if (locMode !== "compact") return; // peek and full own their own timers
-      if (!peekTimer && nextPeekAt === 0) armPeek();
+      locDock.classList.add("loc-live");
+      if (locMap.hidden) {
+        locMap.hidden = false;
+        locMap.classList.add("loc-open");
+        const to = miniRect();
+        setRect({ ...to, top: to.top + to.height, height: 0 }, 0);
+        requestAnimationFrame(() => animateRect(to, 360));
+      } else if (locMode === "mini") {
+        setRect(miniRect(), 1);
+      }
+      if (wantFull && locMode === "mini") {
+        wantFull = false;
+        openLoc("full");
+      }
     };
+
+    // The minimap is persistent and only appears while a privacy-safe coordinate exists.
 
     renderLocDock = () => {
       const p = dockPoint();
@@ -2174,15 +2190,17 @@ html.swae #desk .letters{background:#0b0d12f5}
       if (map && p) {
         const [lng, lat] = centreOf(p);
         const c = map.getCenter();
-        if (Math.abs(c.lng - lng) > 0.002 || Math.abs(c.lat - lat) > 0.002) map.jumpTo({ center: [lng, lat] });
-      } else if (map && !p) {
-        // No fix at all: an opened view shows the campus snapshot it always showed.
-        const c = map.getCenter();
-        if (Math.abs(c.lng - FALLBACK_CENTER[0]) > 0.002 || Math.abs(c.lat - FALLBACK_CENTER[1]) > 0.002)
-          map.jumpTo({ center: FALLBACK_CENTER });
+        // Location is the privacy-coarsened public fix. Recenter only when its cell changes, avoiding
+        // needless camera motion while keeping the player pinned to the centre of the minimap.
+        if (Math.abs(c.lng - lng) > 0.0001 || Math.abs(c.lat - lat) > 0.0001) {
+          const still = document.documentElement.classList.contains("swae") ||
+            (typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches);
+          if (still) map.jumpTo({ center: [lng, lat] });
+          else map.easeTo({ center: [lng, lat], duration: 520 });
+        }
       }
       updateMarker();
-      syncPeek();
+      syncMinimap();
     };
     // renderLocation() is the one place a resolved location lands; the dock listens through
     // this hook rather than growing a second render path (same contract the plate had).
@@ -2190,6 +2208,10 @@ html.swae #desk .letters{background:#0b0d12f5}
 
     // The dock itself is the click target: compact → full, full → compact, peek → full. It only
     // ever has pointer events while a fix exists — loc-live is the class that grants them.
+    window.addEventListener("resize", () => {
+      if (locMode === "mini" && !locMap.hidden && locEligible()) setRect(miniRect(), 1);
+      else if (locMode === "full" && !locMap.hidden) setRect(fullRect(), 1);
+    });
     locDock.addEventListener("click", () => {
       if (!locEligible()) return;
       if (locMode === "full") closeLoc(); else openLoc("full");
@@ -2248,7 +2270,7 @@ html.swae #desk .letters{background:#0b0d12f5}
       }, 12000);
     })().catch(() => {
       mapFailed = true;
-      syncPeek();
+      syncMinimap();
       canvas.remove();
       locMap.dataset.state = "unavailable";
       readout.textContent = `MAP VIEW —— · ${SOURCE_LINE} · UNAVAILABLE`;
@@ -2262,7 +2284,6 @@ html.swae #desk .letters{background:#0b0d12f5}
   // One location, both consumers: the readout and the clock's topline are drawn once here, after
   // both plates exist, and again only when the location itself changes.
   renderLocation();
-  requestGeo();
   if (HEADLINES_ON) refreshHeadlines();
   // He was placed before the clock existed, so the floor he measured was the frame's own. Now that
   // every plate is in the document, measure again: this is what puts him on top of the bottom band

@@ -3,6 +3,11 @@
   "framework": null,
   "buildCommand": "echo 'no build step'",
   "outputDirectory": "public",
+  "git": {
+    "deploymentEnabled": {
+      "fix/crid-physical-mobility": false
+    }
+  },
   "rewrites": [
     { "source": "/desk", "destination": "/api/desk" },
     { "source": "/control", "destination": "/api/control" },

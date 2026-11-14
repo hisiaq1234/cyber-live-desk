@@ -27,13 +27,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.ref_name }}
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
       - name: Install image tooling
@@ -50,7 +50,7 @@ jobs:
           npm ci
           npm test
       - name: Install Chrome for CRID visual probes
-        uses: browser-actions/setup-chrome@v1
+        uses: browser-actions/setup-chrome@v2
         id: chrome
         with:
           chrome-version: stable
@@ -62,7 +62,7 @@ jobs:
           PROBE_SIZE=1920x1080 PROBE_NAME=desktop PROBE_CLIMB=1 node scripts/probe-crid.mjs
       - name: Upload CRID visual probes
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: crid-visual-probes
           path: outputs/crid-lab-*.png
@@ -70,7 +70,7 @@ jobs:
       - name: Create comparison sheet
         run: python scripts/build-body-ladder.py --sheet out/crid-body-ladder.png
       - name: Upload generated visual evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: crid-body-ladder
           path: |
@@ -87,6 +87,11 @@ jobs:
           git add views/body-*-r0.png views/body-000-r7.webp public/desk-assets/crid/body-*-r0.webp public/desk-assets/crid/ladder.json public/desk-assets/crid/ladder.mjs public/desk-assets/crid/rigs public/desk-assets/crid/rig.mjs
           if ! git diff --cached --quiet; then
             git commit -m "Build consistent CRID body ladder and rigs"
+            # The job runs ~10 minutes; the branch can move under it. Rebase onto
+            # whatever landed, then push — a bare push is what failed run
+            # 43600421665 at this step.
+            git fetch origin "${GITHUB_REF_NAME}"
+            git rebase "origin/${GITHUB_REF_NAME}"
             git push origin "HEAD:${GITHUB_REF_NAME}"
           else
             echo "Generated ladder is already current."

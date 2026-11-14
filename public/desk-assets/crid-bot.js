@@ -72,7 +72,7 @@ surprise:[{eyes:"wide",mouth:"o",hy:-4,tr:14,by:-8},{eyes:"wide",mouth:"o",hy:-2
 paid:[{eyes:"half",hy:-6,hr:-6,mR:"up"},{eyes:"happy",hy:8,mR:"slam",tag:"PAID",tr:16},{hy:6,mR:"slam",tag:"PAID"},{hy:0,mR:"down",mouth:"grin",tag:"PAID"},{mouth:"smile",tr:0}],
 due:[{eyes:"mad",hy:-4,mR:"up"},{eyes:"mad",hy:8,mR:"slam",tag:"DUE",tr:-16},{hy:6,mR:"slam",tag:"DUE"},{hy:0,mR:"down",tag:"DUE"},{eyes:"open",tr:0}],
 nod:[{hy:5,hr:2},{hy:0,hr:0}],
-wave:[{eyes:"happy",mouth:"smile",mR:"up",hy:-2,hr:3},{mR:"wave",hr:4},{mR:"up",hr:-3},{mR:"wave",hr:4},{mR:"up",hr:-3},{eyes:"happy",mouth:"grin",mR:"up",hr:0},{mR:"down",eyes:"open",mouth:"smile",hy:0,hr:0}],
+wave:[{eyes:"happy",mouth:"smile",mR:"wave",hy:-2,hr:3},{mR:"wave",hr:4},{mR:"wave",hr:-3},{mR:"wave",hr:4},{eyes:"happy",mouth:"grin",mR:"wave",hr:0},{mR:"down",eyes:"open",mouth:"smile",hy:0,hr:0}],
 hop:[{by:5,bs:.9,hy:3},{by:-3,bs:.95,hy:2},{by:-14,bs:1.05,hy:-4},{by:2,bs:.93,hy:3},{by:0,bs:1,hy:0}],
 jump:[{by:5,bs:.88,hy:4},{by:-30,bs:1.08,hy:-6,mL:"up",mR:"up"},{by:-26,bs:1.06,hy:-4},{by:4,bs:.9,hy:3},{by:0,bs:1,hy:0,mL:"down",mR:"down"}],
 sit:[{by:12,hy:6,bs:.9,hr:2},{by:12,hy:6,bs:.9,hr:2},{by:12,hy:6,bs:.9,hr:0}],
@@ -90,11 +90,20 @@ sideeye:[{hr:6},{hr:-4},{hr:0}],
 // up in two hands and set down, bits are a quick coin-flick shiver.
 gift:[{eyes:"happy",mouth:"grin",mL:"up",mR:"up",by:-4,hy:-2,hr:0},{by:-10,hy:-4,mL:"up",mR:"up",tr:6},{by:2,bs:.95,hy:2,mL:"up",mR:"up",tr:-6},{by:0,bs:1,hy:0,mL:"down",mR:"down",mouth:"smile",tr:0}],
 bits:[{hr:-4,hy:-2,tr:8,bs:1.03},{hr:5,hy:1,tr:-8,bs:.97},{hr:-2,hy:-1,tr:4},{hr:0,hy:0,tr:0,bs:1}],
-salute:[{hy:-4,mR:"up"},{hy:-2},{hy:0,mR:"down"}],
+salute:[{hy:-4,mR:"up"},{hy:-2,mR:"up"},{hy:0,mR:"down"}],
+// Arm-first cues that exist to show the gesture layer (gesture.mjs): point aims
+// and holds, facepalm is the exasperated double-hand raise, mindblown is the
+// both-arms-up V with a happy wiggle. All three are pure mL/mR + face frames.
+point:[{eyes:"open",mouth:"smile",mR:"up",hy:-4,hr:3},{mR:"push",hy:-6,hr:4,eyes:"happy"},{mR:"push",hy:-6,hr:4},{mR:"down",hy:0,hr:0,eyes:"open",mouth:"flat"}],
+facepalm:[{eyes:"wince",mouth:"wavy",hy:3,mL:"up",mR:"up"},{eyes:"wince",mouth:"wavy",hy:5,mL:"up",mR:"up",tr:4},{eyes:"open",mouth:"flat",hy:0,mL:"down",mR:"down",tr:0}],
+mindblown:[{eyes:"wide",mouth:"o",mL:"up",mR:"up",hy:-4},{eyes:"happy",mouth:"grin",mL:"up",mR:"up",tr:8,hy:-5},{eyes:"happy",mouth:"grin",mL:"up",mR:"up",tr:-8},{eyes:"open",mouth:"smile",mL:"down",mR:"down",tr:0,hy:0}],
 // The bag beats (docs/specs/backpack.md). The __bag marker is picked up by the tick loop the
 // same way __cueEnd is: the frame plays as a pose and the marker does the prop's physics.
 dropbag:[{by:6,bs:.92,hy:2,mR:"down"},{mR:"up",hy:-3,hr:-4,eyes:"open"},{mR:"down",hy:1,hr:3,tr:8,by:2},{__bag:"drop",eyes:"open",hy:0,hr:0,tr:0}],
-pickup:[{by:10,hy:4,bs:.92,eyes:"open"},{by:12,mR:"down",hr:2},{__bag:"wear",by:0,bs:1,hy:0,hr:0,tr:0}]};
+pickup:[{by:10,hy:4,bs:.92,eyes:"open"},{by:12,mR:"down",hr:2},{__bag:"wear",by:0,bs:1,hy:0,hr:0,tr:0}],
+// San Andreas bulk arc: a heavy build works out to slim back down — rolls onto
+// his back, push-ups, pushes back up. Idle-only, heft-gated in pickIdle.
+workout:[{by:6,bs:.92,hy:2},{pr:-84,by:4,mL:"limp",mR:"limp"},{pr:-62,mL:"push",mR:"push"},{pr:-83,by:3,mL:"push",mR:"push"},{pr:-68,by:-1,mL:"push",mR:"push"},{pr:-83,by:3,mL:"push",mR:"push"},{pr:-68,by:-1,mL:"push",mR:"push"},{pr:-55,mL:"push",mR:"push"},{pr:0,by:0,bs:1.03,hy:-3,mL:"down",mR:"down"}]};
 SEQ.sub=[...SEQ.cheer.slice(0,-1).map(f=>({...f,tag:"+SUB"})),...SEQ.pushup];
 // Everything he can be told to do in one word: every sequence, every micro-emotion, and "say" for
 // a line of text. The desk overlay and the server both hold this list (api/_desk-core.mjs BOT_CUES);
@@ -291,7 +300,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       screenX:cridBody.x*UPX(),active:!!(walk&&walk.to)||!!(stage&&stage.walking&&["approach","floor","top"].includes(stage.state)),source:walk&&walk.to?"cue-layout":"stage-physics",kinematic:!!(walk&&walk.to),
       strideLength:Math.max(.08,cridBody.halfW*2.25),
       grip:cridBody.grip?{...cridBody.grip}:null},
-    lean:leanAt||stageLean(),reduced,stage:BODIES[bodyI],face:faceNow,
+    lean:leanAt||stageLean(),reduced,stage:BODIES[bodyI],heft:build().heft,face:faceNow,
     stagePose:stage?{ref:stage,roll:stage.roll,pitch:stage.pitch,liftPx:stage.groundY*UPX(),
       state:stage.state,key:stage.key,trace:stage.trace,squash:stage.squashEnv||0,
       grip:STAGE_GRIP[stage.state]||0}:null,
@@ -1010,6 +1019,8 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // nearly invisible on a painted face, so they are the rare exception now, not the filler.
   const pickIdle=()=>{const r=Math.random(); if(mode==="doze") return r<.5?SEQ.sit:SEQ.weighted;
     // A painted face cannot blink, so the idle set is only moves the body can show.
+    // Heavy builds earn their keep: at heft>=1.3 a quiet stretch can become a workout.
+    if(build().heft>=1.3&&r<.14)return SEQ.workout;
     if(r<.22)return SEQ.sway; if(r<.38)return SEQ.weighted; if(r<.50)return SEQ.read;
     if(r<.62)return rand(0,1)<.5?SEQ.glanceL:SEQ.glanceR; if(r<.72)return SEQ.peek;
     if(r<.82)return SEQ.shrug; if(r<.90)return SEQ.sit.concat(SEQ.stand);

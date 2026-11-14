@@ -38,7 +38,7 @@ export const BOT_CUES = [
   "blink", "doubleBlink", "glanceL", "glanceR", "lookUp", "sway", "ledBlink", "shrug", "wake",
   "die", "cheer", "wince", "think", "surprise", "paid", "due", "nod", "wave", "hop", "jump", "sit",
   "stand", "read", "crawl", "pushup", "climb", "kick", "weighted", "peek", "sideeye", "gift",
-  "bits", "salute", "sub", "dropbag", "pickup",
+  "bits", "salute", "sub", "dropbag", "pickup", "point", "facepalm", "mindblown", "workout",
   "curious", "delighted", "smug", "flustered", "sleepy", "startled", "proud", "sulky",
   "say",
 ];

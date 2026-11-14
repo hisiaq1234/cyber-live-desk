@@ -17,6 +17,7 @@ import{createFacial}from"./facial.mjs";
 import{TwoBoneIK}from"./ik.mjs";
 import{BODY_LADDER}from"./crid/ladder.mjs";
 import{stageChannels}from"./stage.mjs";
+import{createGestureLayer}from"./gesture.mjs";
 import{createDistanceGait}from"./gait.mjs";
 import{createCridIdle}from"./crid-idle.mjs";
 const GLB="/desk-assets/crid3d/crid.glb";
@@ -340,7 +341,7 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
     // posed quaternion (P = the parent's rest world orientation). Rotating about world
     // axes is why the climb reads as a body and not a pile of local-axis bends — the
     // guessed-axis rotAdd version is gone.
-    const CH_ACC=new Map(),CH_LAG=new Map(),_CH_Q=new THREE.Quaternion(),_CH_E=new THREE.Euler(),_CH_D=new THREE.Quaternion();
+    const CH_ACC=new Map(),CH_LAG=new Map(),GEST_SPRING=new Map(),_CH_Q=new THREE.Quaternion(),_CH_E=new THREE.Euler(),_CH_D=new THREE.Quaternion();
     const restPQ=new Map();let chanFrozen=false;
     const chanAdd=(n,x,y,z)=>{if(!x&&!y&&!z)return;const a=CH_ACC.get(n);if(a){a[0]+=x;a[1]+=y;a[2]+=z}else CH_ACC.set(n,[x,y,z])};
     const freezeChan=()=>{if(chanFrozen||!model)return;chanFrozen=true;
@@ -492,6 +493,13 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
     const distanceGait=createDistanceGait({dutyFactor:.62});let gaitState=null;
     // Landing squash clock (pose-path landings) + head-turn rate for the blink scheduler.
     let sqAt=-9,prevBy=0,prevHeadYaw=0,prevHeadPitch=0,headTurnS=0;
+    const gestLayer=createGestureLayer();
+    // The six bones the additive gesture delta owns: both arm chains plus the
+    // wrists (the wave flick lives on the hand bones — no channel names them).
+    const GEST_BONES=["L_armUpper0001_bind_JNT","L_armLower0001_bind_JNT","L_hand0001_bind_JNT",
+      "R_armUpper0001_bind_JNT","R_armLower0001_bind_JNT","R_hand0001_bind_JNT"],_G_ZERO=[0,0,0];
+    try{window.__cridGesture=()=>gestLayer.debug()}catch{}
+    try{window.__gestDbg=()=>({tgt:window.__gestTgt||null,R:GEST_SPRING.get("R_armUpper0001_bind_JNT"),F:GEST_SPRING.get("R_armLower0001_bind_JNT"),H:GEST_SPRING.get("R_hand0001_bind_JNT")})}catch{}
     const ikSolver=new TwoBoneIK();let ikLast=null,ikDbg="";
     const _iv=new THREE.Vector3(),_id=new THREE.Vector3(),_it=new THREE.Vector3(),
       _ic=new THREE.Vector3(),_ip=new THREE.Vector3(),_io=new THREE.Vector3(),
@@ -592,8 +600,23 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
       // this frame — a climbing step is the stage's alone, never a walk pose
       // with a channel premultiplied on top. flush happens after the pose
       // section, before IK, same slot it always had.
+      // Arm gestures: the mL/mR vocabulary finally reaches the skeleton
+      // (gesture.mjs, docs/specs/arm-gestures.md). The arm chain does NOT join
+      // the stage channel map — those channels become additive euler deltas
+      // premultiplied onto whatever pose()/stage/IK wrote, applied below after
+      // the stage flush (UE layered-blend-per-bone: the gesture rides on top
+      // of gait instead of replacing it, so a wave over a walk keeps swinging).
+      // Only body-answer keys (shrug, headPitch, leanFwd) merge into stageC —
+      // those bones have no gait to preserve and already own a channel flush.
+      const gest=gestLayer.update(dt,t,{L:p.mL,R:p.mR,heft:st.heft});
+      const GARM=/^(armLift|armFwd|elbow)[LR]$/;
+      let gestBody=null;
+      if(gest.any)for(const k in gest.map)if(!GARM.test(k))(gestBody=gestBody||{})[k]=gest.map[k];
       let stageC=null;
-      if(sp&&sp.ref){freezeChan();stageC=stageChannels(sp.ref,t);accStageChannels(stageC);
+      if(sp&&sp.ref){freezeChan();stageC=stageChannels(sp.ref,t)}
+      if(gestBody){freezeChan();stageC=stageC||{};
+        for(const k in gestBody)stageC[k]=(stageC[k]||0)+gestBody[k]}
+      if(stageC){accStageChannels(stageC);
         stageOwned=new Set(CH_ACC.keys())}
       else stageOwned=null;
       turn.rotation.x=sp?sp.pitch:0;
@@ -678,7 +701,8 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
       const plantSide=st.lean?(st.lean.dir>0?"R":"L"):null;
       for(const f of FINGERS){
         markW(f.b);
-        const a=.14+.78*(f.b[0]===plantSide?grip:grip*.35),b=B(f.b);if(!b)continue;
+        const sideCurl=f.b[0]==="L"?gest.curl.L:gest.curl.R,
+          a=.14+.78*Math.max(f.b[0]===plantSide?grip:grip*.35,sideCurl),b=B(f.b);if(!b)continue;
         _aq.setFromAxisAngle(f.axis,a*f.w*.9);
         b.quaternion.copy(b.userData.q0).multiply(_aq);
         // Spread: the relaxed hand is not a closed fan — fingers sit a few
@@ -775,9 +799,58 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
       // beats, applied with the rig page's own world-axis convention
       // (applyChannels/applyAcc above). Runs before IK so the solver still owns
       // the arm chain while a lean is planted.
-      if(sp&&sp.ref){flushStageChannels(dt);C_leanF=stageC.leanFwd||0;
+      if(stageC){flushStageChannels(dt);C_leanF=stageC.leanFwd||0;
         if(stageC.rootY)model.position.y+=stageC.rootY*s}
       else{C_leanF*=Math.max(0,1-dt*4);releaseStageChannels(dt)}
+
+      // Gesture deltas — the additive, inertialized half of the arm layer.
+      // gesture.mjs emits semantic arm channels; here they become world-axis
+      // euler deltas (the same P^-1·R·P convention accStageChannels uses)
+      // premultiplied onto whatever pose(), the stage machine and IK just
+      // wrote. Each bone tracks its delta with a pos+vel spring that starts
+      // at ZERO: engaging, tracking the wave wag and releasing are all just
+      // the spring chasing a moving target — Gears-of-War inertialization /
+      // UE layered-blend-per-bone (docs/specs/arm-gestures.md). Because the
+      // delta is additive, the gesturing arm keeps its gait swing underneath
+      // and a reaching stage pose keeps its solve; neither can pop, because
+      // nothing ever teleports — the spring carries position AND velocity.
+      // Runs every frame (not just while gest.any) so a released gesture
+      // decays back to zero instead of freezing mid-pose.
+      {
+        const gA=gest.map,gTgt={};
+        const put=(n,x,y,z)=>{if(!x&&!y&&!z)return;const a=gTgt[n]||(gTgt[n]=[0,0,0]);a[0]+=x;a[1]+=y;a[2]+=z};
+        // Axis map MEASURED on this rig (probe: world-axis euler deltas through
+        // the same P^-1·R·P path, hand world-pos deltas per unit rotation):
+        //   +z raises BOTH arms (abduction is symmetric in world axes — the
+        //   stage channel's mirrored signs encode a different semantic),
+        //   +y swings BOTH arms forward (he faces -z), +x on the forearm is
+        //   elbow flexion for both sides. x on the upper arm is near-twist.
+        // The stage channel names stay the vocabulary; only the bone axes
+        // differ from accStageChannels' guess.
+        put("L_armUpper0001_bind_JNT",0,(gA.armFwdL||0),(gA.armLiftL||0));
+        put("R_armUpper0001_bind_JNT",0,(gA.armFwdR||0),(gA.armLiftR||0));
+        put("L_armLower0001_bind_JNT",(gA.elbowL||0),0,0);
+        put("R_armLower0001_bind_JNT",(gA.elbowR||0),0,0);
+        for(const e of gest.extra)put(e[0],e[1],e[2],e[3]);   // wrist flicks, hand bone eulers
+        freezeChan();
+        const GT_TAU=n=>/hand/.test(n)?.075:/armLower/.test(n)?.10:.13;
+        const GT_ZETA=n=>/hand/.test(n)?.8:/armLower/.test(n)?.7:.6;
+        for(const n of GEST_BONES){
+          const b=bones[n],P=restPQ.get(n);if(!b||!P)continue;
+          const A=gTgt[n]||_G_ZERO;
+          let s=GEST_SPRING.get(n);
+          const om=1/Math.max(GT_TAU(n),.03),z=GT_ZETA(n),
+            h=Math.min(dt,.008),steps=Math.max(1,Math.ceil(dt/h));
+          if(!s){s={p:[0,0,0],v:[0,0,0]};GEST_SPRING.set(n,s)}
+          for(let i=0;i<3;i++)for(let k=0;k<steps;k++){
+            const acc=(A[i]-s.p[i])*om*om-2*z*om*s.v[i];
+            s.v[i]+=acc*h;s.p[i]+=s.v[i]*h}
+          if(Math.abs(s.p[0])<1e-4&&Math.abs(s.p[1])<1e-4&&Math.abs(s.p[2])<1e-4&&
+             Math.abs(A[0])<1e-4&&Math.abs(A[1])<1e-4&&Math.abs(A[2])<1e-4)continue;
+          _CH_E.set(s.p[0],s.p[1],s.p[2],"XYZ");_CH_Q.setFromEuler(_CH_E);
+          _CH_D.copy(P).invert().multiply(_CH_Q).multiply(P);
+          b.quaternion.premultiply(_CH_D)}
+        window.__gestTgt=gTgt}
 
       // Hand plant (Phase C groundwork): while he leans on a panel, the touching
       // arm solves onto the contact point crid-bot measured in screen px. The
@@ -790,6 +863,9 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
       ikDbg=`w=${ikW.toFixed(2)} foot=${footW.toFixed(2)}${footDbg?" !reach":""} lean=${!!st.lean} alive=${alive} uni=${uniform} bs=${bs} c=${!!(st.lean&&st.lean.contact)}`;
       if(ikW>.02&&leanOn&&uniform){
         const sd=st.lean.dir>0?"R":"L";
+        // A gesture on the planted arm wins: the plant eases off as the gesture
+        // weight rises, so wave-over-lean doesn't fight the hand solve.
+        const effIkW=ikW*(1-(gest.w[sd]||0));
         const sh=B(J["arm"+sd]),fo=B(J["fore"+sd]),ha=B(J["hand"+sd]),c=st.lean.contact;
         if(sh&&fo&&ha&&c){
           model.updateMatrixWorld(!0);cam.updateMatrixWorld(!0);
@@ -801,7 +877,7 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
           // on the panel as ikW→1 (solver clamps if the panel is truly out of reach).
           ha.getWorldPosition(_ih);_io.copy(_ih).project(cam);   // _io = hand NDC
           const hx0=r.left+(_io.x+1)/2*r.width,hy0=r.top+(1-_io.y)/2*r.height;
-          const px=hx0+(c.x-hx0)*ikW,py=hy0+(c.y-hy0)*ikW;
+          const px=hx0+(c.x-hx0)*effIkW,py=hy0+(c.y-hy0)*effIkW;
           const ndx=((px-r.left)/r.width)*2-1,ndy=-(((py-r.top)/r.height)*2-1);
           _iv.set(ndx,ndy,0).unproject(cam);_id.copy(_iv).sub(cam.position).normalize();
           _ic.copy(_ih).applyMatrix4(cam.matrixWorldInverse);   // hand view pos (z<0)
@@ -809,7 +885,7 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
           const tt=_ic.z/_idv.z;
           if(tt>0){
             _it.copy(cam.position).addScaledVector(_id,tt);
-            _ic.copy(_ih).lerp(_it,ikW);
+            _ic.copy(_ih).lerp(_it,effIkW);
             sh.getWorldPosition(_ip);_ip.add(_io.set(st.lean.dir*.12,-.5,.3));
             markW(J.armL);markW(J.foreL);markW(J.handL);markW(J.armR);markW(J.foreR);markW(J.handR);
             ikLast=ikSolver.solve({rootBone:sh,middleBone:fo,endBone:ha,target:_ic,poleTarget:_ip,preserveEndRotation:!0});

@@ -1,0 +1,8 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;background:#14101f}</style></head><body>
+<script type="module">
+import { createCridBot } from "./desk-assets/crid-bot.js";
+const q=new URLSearchParams(location.search);
+const bot=createCridBot({root:document.body,position:"bc",scale:1.6,layers:{names:[],layer:()=>null},beingOpts:{rng:()=>.5}});
+bot.setMode("on");
+setTimeout(()=>bot.cue(q.get("cue")||"wave"),700);
+</script></body></html>

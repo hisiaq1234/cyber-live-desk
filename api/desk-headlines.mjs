@@ -1,3 +1,6 @@
+// CYBER LIVE DESK — GET /api/desk/headlines.
+// Serves the parsed feed to the overlay's ticker strip. Cache headers match the
+// feed's own freshness window — the desk polls this, viewers should not wait on it.
 import { fetchHeadlineFeed } from "./_headlines.mjs";
 
 export const config = { runtime: "nodejs" };

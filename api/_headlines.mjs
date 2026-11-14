@@ -1,3 +1,6 @@
+// CYBER LIVE DESK — the on-air headline wire.
+// One Google News RSS feed (Nigeria edition), parsed down to fresh items only.
+// The desk card and the private brief both read from here so they can never disagree.
 import { freshItems } from "./_brief.mjs";
 
 export const HEADLINE_FEED_URL = "https://news.google.com/rss?hl=en-NG&gl=NG&ceid=NG:en";

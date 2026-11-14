@@ -21,3 +21,7 @@ outputs/
 # Crid brain world-state persistence (runtime, per-machine)
 brain/.crid-world-state.json
 brain/.crid-world-state.json.tmp
+
+# OS/editor litter and any stray temp file
+.DS_Store
+*.tmp

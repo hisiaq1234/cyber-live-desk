@@ -1,3 +1,5 @@
+/* The operator's voice lane: typed desk commands from the control page and
+   Twitch chat, posted to /api/desk/action with the operator token. */
 import { parseDeskCommand } from "./desk-commands.js";
 // commandBody lives in the shared rules, which the browser and the api both import
 // as this same served file: importing anything out of api/ here would 404 and

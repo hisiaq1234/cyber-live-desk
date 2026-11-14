@@ -1,3 +1,6 @@
+// YouTube playlist URLs → the embed URL the desk's music panel can play.
+// Pure string work: no fetch, no API key, no audio extraction — just the right
+// youtube.com/embed URL for a playlist the host pasted in.
 const YOUTUBE_HOSTS = new Set([
   "youtube.com",
   "www.youtube.com",

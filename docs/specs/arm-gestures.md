@@ -104,8 +104,8 @@ changes beyond the vocabulary.
 
 ## Out of scope / decision notes
 
-- `crid-clean.glb` stays as `?glb=crid-clean` trial param; rig names are
-  identical so the gesture layer drives it unchanged.
+- `crid-clean.glb` was a trial rig kept for a `?glb=` param that never shipped; it was
+  removed in the dead-asset cleanup. `crid.glb` is the only model.
 - Arm IK still owns the chain during panel leans (`ikW`) — a planted hand
   plants; gesture deltas compose on top but the solve wins the arm.
 - No animation clips, no retargeting, no new dependencies. All client-side

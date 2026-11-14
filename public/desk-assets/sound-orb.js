@@ -1,3 +1,6 @@
+// The sound orb is decoration, not a meter: it lights when the desk's audio
+// element is actually playing, and goes dark the moment it stops. No mic, no
+// FFT — playback state only, so it can never claim sound that is not there.
 const STOP_EVENTS = ["pause", "ended", "emptied", "abort", "waiting", "stalled"];
 
 // Drive the decorative overlay orb from actual media playback state, not microphone input.

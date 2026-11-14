@@ -343,6 +343,29 @@ test("being yields to the cue channel: no roam while cues own the frame", async 
   bot.destroy();
 });
 
+test("say lines queue instead of overwriting each other", async () => {
+  // CRID-STATUS gap 5: two say cues close together used to lose the first line to a textContent
+  // overwrite. Now the shown line holds the bubble and up to two wait behind it.
+  const root = installDom();
+  const bot = createCridBot({ root, step: 12, position: "bc" });
+  bot.observe({ bot: { on: true } });
+  await sleep(30);
+  bot.cue("say", { text: "first line" });
+  bot.cue("say", { text: "second line" });
+  bot.cue("say", { text: "third line" });
+  const bubbles = () => bot.el.children.filter((c) => c.className === "bot-bubble").map((c) => c.textContent);
+  await sleep(100);
+  assert.deepEqual(bubbles(), ["first line"], "only the head of the queue is on the bubble");
+  const seen = [];
+  for (let i = 0; i < 50 && seen.length < 3; i++) {
+    await sleep(300);
+    const b = bubbles();
+    if (b.length && b[b.length - 1] !== seen[seen.length - 1]) seen.push(b[b.length - 1]);
+  }
+  assert.deepEqual(seen, ["first line", "second line", "third line"], "the queue drains in order");
+  bot.destroy();
+});
+
 test("being does nothing while he is off the desk", async () => {
   // The drives still step (they are cheap and pure), but no intent may fire while mode isn't on.
   const root = installDom();

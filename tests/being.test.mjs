@@ -233,3 +233,28 @@ test("the arc survives a reload through the snapshot", () => {
   const revived = createBeing({ now: LAGOS.evening + 60e3, rng: seeded(3), arc: snap });
   assert.equal(revived.peek().routine.arcAt.startedAt, LAGOS.evening, "a saved arc reseeds");
 });
+
+test("an activity in flight survives the snapshot; an expired one does not", () => {
+  // §10: state.being carries the live activity so a reload continues it, not restarts it.
+  const being = createBeing({ now: LAGOS.evening, rng: seeded(9), drives: { energy: 60, boredom: 80 } });
+  let act = null;
+  for (let i = 1; i <= 300 && !act; i++) {
+    const p = being.step(LAGOS.evening + i * 1000);
+    if (p.activity) act = p.activity;
+  }
+  assert.ok(act, "he should be doing something within five minutes");
+  const revived = createBeing({
+    now: act.startedAt + 500, rng: seeded(9), activity: act,
+    drives: { energy: 60, boredom: 80 },
+  });
+  assert.equal(revived.peek().intent.key, act.key, "the same activity is still running after reload");
+  // A snapshot older than the activity's own end is ignored — nothing resurrects half-done.
+  const dead = createBeing({
+    now: act.endsAt + 1000, rng: seeded(9), activity: act,
+    drives: { energy: 60, boredom: 80 },
+  });
+  assert.equal(dead.peek().intent.key, null, "an expired activity is not resurrected");
+  // And an unknown key is ignored without throwing.
+  const bogus = createBeing({ now: LAGOS.evening, rng: seeded(9), activity: { key: "fly", startedAt: 0, endsAt: 9e15 } });
+  assert.equal(bogus.peek().intent.key, null);
+});

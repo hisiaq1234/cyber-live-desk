@@ -36,6 +36,14 @@ local overlay page. Without those two variables the channel stays off and says s
 
 ## Landed since the last handoff
 
+- **CRID works a shift** (`feat/crid-shift-routine`): spec slice 2 of
+  `docs/specs/behaviour-drives.md`, page-side. Lagos day-plan slots move scores and drive
+  rates, the stream arc is inferred from desk/chat signals (arrival → wind-down → closed),
+  an `env()` seam carries the §5.3 modifiers, and the catalogue grew to ten activities —
+  doze, read-card, check-map and workout on verbs that already existed. The live activity
+  and arc stamps persist through `state.bot.being`, so a reload continues the same shift.
+  `say` lines queue (CRID-STATUS gap 5 closed), and `scripts/serve-desk.mjs` now answers
+  HTTP range requests so the PMTiles plate loads in local QA (probe console is clean).
 - **Rig at rest + brand overlay** (`d1f93d3`, `ee25427`, `91cafe6`): the cut-out rig animates a
   living idle on base body `000` (not only mid-stride), and `/desk?overlay=brand` is a skin over
   the main renderer.

@@ -79,8 +79,9 @@ refused for any layer not in the renderer's registry. The overlay never plays au
    (`npm run brain`) is the fast path and is not wired into the desk write.
 4. **Quiet-layer starvation.** The `long-silence` rule plus `engine.mjs` can own every tick, so the
    eight micro-emotions rarely reach the screen.
-5. **`say` is not queued.** Two lines close together overwrite each other in the bubble
-   (`crid-bot.js`), partly hidden by the brain's anti-spam gap.
+5. ~~**`say` is not queued.**~~ Fixed: `crid-bot.js` holds the shown line and queues up to two
+   more; a fourth is refused and the cue reports `failed` rather than vanishing. The cue's
+   `done` now fires when the line actually leaves the bubble, queued lines included.
 6. **`PROGRESS.md` is stale in places** (test counts, an "in flight" branch that does not exist,
    items fixed since). Treat this file and the code as the source of truth for CRID state.
 

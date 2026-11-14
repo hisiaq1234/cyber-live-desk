@@ -108,7 +108,7 @@ export function seeded(seed = 1) {
   };
 }
 
-export function createBeing({ rng = Math.random, now = 0, drives: seedDrives = {}, cooldownMs = COOLDOWN_MS, settleMs = 2500, targets = null, lastX: seedLastX = null, env = null, arc: seedArc = null, routine: useRoutine = true } = {}) {
+export function createBeing({ rng = Math.random, now = 0, drives: seedDrives = {}, cooldownMs = COOLDOWN_MS, settleMs = 2500, targets = null, lastX: seedLastX = null, env = null, arc: seedArc = null, routine: useRoutine = true, activity: seedActivity = null } = {}) {
   const drives = {
     energy: Number.isFinite(seedDrives.energy) ? seedDrives.energy : 62,
     boredom: Number.isFinite(seedDrives.boredom) ? seedDrives.boredom : 70,
@@ -118,7 +118,22 @@ export function createBeing({ rng = Math.random, now = 0, drives: seedDrives = {
   let lastAt = null;
   let lastDecision = -Infinity;
   let cooldownUntil = now + settleMs;   // he settles in before the first decision
-  let activity = null;               // { key, startedAt, endsAt, target }
+  let activity = null;               // { key, startedAt, endsAt, target, layer }
+  // §10: a reload mid-activity restores it, not restarts it — the snapshot carries the same
+  // {key, startedAt, endsAt, layer} the live activity holds. An expired or unknown key is
+  // ignored, and restoring does not re-pay the boredom relief or the cooldown (close() sets
+  // those when the restored activity actually ends).
+  if (seedActivity && ACTIVITIES[seedActivity.key]
+    && Number.isFinite(seedActivity.startedAt) && Number.isFinite(seedActivity.endsAt)
+    && seedActivity.endsAt > now) {
+    activity = {
+      key: seedActivity.key,
+      startedAt: seedActivity.startedAt,
+      endsAt: seedActivity.endsAt,
+      target: null,
+      layer: typeof seedActivity.layer === "string" ? seedActivity.layer : null,
+    };
+  }
   // The floor spot he is standing on, 0..1 across the roam band. A saved snapshot can hand it
   // back in (state.bot.being.floorX is the same number the page measured off his host element);
   // peek()/step() already expose it as intent.x, so seeding it here keeps the brain's idea of
@@ -306,6 +321,8 @@ export function createBeing({ rng = Math.random, now = 0, drives: seedDrives = {
       // §3.2: boredom is what makes him fidget faster. The body uses this as its burst interval.
       fidgetEvery: clamp(9 - 0.06 * drives.boredom, 2.5, 9),
       cooldown: activity ? 0 : Math.max(0, (cooldownUntil - t) / 1000),
+      // §10: the activity in flight, so the save file can hand it back on the next boot.
+      activity: activity ? { key: activity.key, startedAt: activity.startedAt, endsAt: activity.endsAt, layer: activity.layer || null } : null,
       // §5 for the probe and the save file: which slot he is in, which arc act is live, and
       // the raw arc stamps so a reload can pick the same story back up.
       routine: {

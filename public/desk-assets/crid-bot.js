@@ -531,7 +531,19 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     cheeky:["wasn't me","oops","just a nudge","you saw nothing"]
   };
   const setMood=(m)=>{if(!WHIMSY_LINES[m])return; mood=m; host.dataset.mood=m; const desk=document.getElementById("desk"); if(desk) desk.dataset.botMood=m;};
-  const say=(text,ms=1800)=>{if(!text)return; sayUntil=Date.now()+ms+300; let b=host.querySelector(".bot-bubble"); if(!b){b=document.createElement("div"); b.className="bot-bubble"; host.append(b);} b.style.transition=reduced?"none":""; b.textContent=text; b.style.opacity="1"; clearTimeout(bubbleTimer); bubbleTimer=setTimeout(()=>{b.style.opacity="0";},ms);};
+  // say used to overwrite the bubble: two lines close together lost the first silently
+  // (CRID-STATUS gap 5). Now a shown line holds the floor and up to two more wait in line;
+  // a fourth is refused so the cue reports failed instead of vanishing.
+  let sayBusy=false,sayQ=[];
+  const showSay=(text,ms,onDone)=>{sayBusy=true; sayUntil=Date.now()+ms+300;
+    let b=host.querySelector(".bot-bubble"); if(!b){b=document.createElement("div"); b.className="bot-bubble"; host.append(b);}
+    b.style.transition=reduced?"none":""; b.textContent=text; b.style.opacity="1";
+    clearTimeout(bubbleTimer);
+    bubbleTimer=setTimeout(()=>{b.style.opacity="0"; sayBusy=false; if(onDone)onDone();
+      const n=sayQ.shift(); if(n)showSay(n.text,n.ms,n.onDone);},ms);};
+  const say=(text,ms=1800,onDone=null)=>{if(!text)return false;
+    if(sayBusy){ if(sayQ.length>=2)return false; sayQ.push({text:String(text),ms,onDone}); return true }
+    showSay(text,ms,onDone); return true};
   const nudge=(node)=>{if(!node||reduced||document.documentElement.classList.contains("swae"))return; node.classList.add("chaos-nudged"); clearTimeout(mischiefTimer); mischiefTimer=setTimeout(()=>node.classList.remove("chaos-nudged"),700);};
   const randomLine=(m=mood)=>{const list=WHIMSY_LINES[m]||WHIMSY_LINES.idle; return list[Math.floor(Math.random()*list.length)];};
   const pct=r=>({x:(r.left+r.width/2)/innerWidth*100,y:r.top/innerHeight*100,h:r.height/innerHeight*100});
@@ -1356,6 +1368,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     being=createBeing({now:Date.now(),targets:deskTargets,...beingOpts,
       drives:beingOffline({energy:+d.energy,boredom:+d.boredom,attention:+d.attention},dtMs),
       ...(snap.arc&&snap.arc.startedAt!=null?{arc:snap.arc}:{}),
+      ...(snap.activity?{activity:snap.activity}:{}),
       ...(Number.isFinite(snap.floorX)?{lastX:snap.floorX}:{})});
     // floorX is where he was standing when the page was last alive: 0..1 across the same
     // clock-to-strip band getBeing() measures. The brain's copy was seeded above; here his
@@ -1392,7 +1405,11 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const cue=(name,{text="",onEnd}={})=>{
     if(typeof name!=="string"||!name||mode==="dead"||dying)return false;
     const end=cueEndFor(onEnd);
-    if(name==="say"){const line=String(text||"").trim().slice(0,140); if(!line){endCue(end,"failed"); return false} const ms=clamp(line.length*65,2e3,6e3); say(line,ms); if(end)setTimeout(()=>endCue(end,"done"),ms+450); return true}
+    if(name==="say"){const line=String(text||"").trim().slice(0,140); if(!line){endCue(end,"failed"); return false} const ms=clamp(line.length*65,2e3,6e3);
+      // onDone fires when the line actually leaves the bubble — queued lines included — so the
+      // cue's "done" is honest about when he finished saying it, not when it was accepted.
+      const ok=say(line,ms,()=>{if(end)endCue(end,"done")});
+      if(!ok){endCue(end,"failed"); return false} return true}
     if(name==="dropbag")return bagDrop(end);
     if(name==="pickup")return bagPickup(end);
     if(FEEL[name])return feel(name,{onEnd:end?cueEndWith(end,"done"):undefined});
@@ -1491,9 +1508,10 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     // public state document, so it stays a handful of numbers (docs/specs/behaviour-drives.md §10).
     getBeing(){const r=host.getBoundingClientRect(),cx=(r.left+r.width/2)/innerWidth*100,
       lo=minCenterX(),hi=Math.min(92,maxCenterX());
-      const arcAt=being.peek().routine&&being.peek().routine.arcAt;
-      return{v:1,savedAt:Date.now(),drives:being.peek().drives,
+      const peek=being.peek(),arcAt=peek.routine&&peek.routine.arcAt;
+      return{v:1,savedAt:Date.now(),drives:peek.drives,
         ...(arcAt?{arc:arcAt}:{}),
+        ...(peek.activity?{activity:peek.activity}:{}),
         floorX:hi>lo?clamp((cx-lo)/(hi-lo),0,1):.5,
         bag:{worn:bag.worn,...(bag.worn?{}:{x:clamp((bag.body?bag.body.x:r.left+r.width/2)/innerWidth,0,1),
           y:clamp((bag.body?bag.body.y:r.top+r.height*.22)/innerHeight,0,1)})}}},freeze(pose={}){frozen=!0;clearTimeout(timer); if(pose.mode)mode=pose.mode; if(pose.tag!==void 0)tagText=pose.tag; if(pose.subs!=null)applySubs(pose.subs,!1); lastDrawn=""; render({...REST[mode],tag:tagText,fx:pose.fx||1,sx:growth.sx,sy:growth.sy,...pose})},destroy(){disposed3d=true;clearTimeout(timer); clearTimeout(feelTimer); mo==null||mo.disconnect(); stripWatch==null||stripWatch.disconnect(); if(typeof removeEventListener=="function")removeEventListener("resize",replace); cancelJobs(); goHome(); crid3d&&crid3d.dispose(); host.remove()}}

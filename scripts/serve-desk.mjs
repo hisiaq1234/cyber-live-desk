@@ -45,7 +45,23 @@ const server = http.createServer(async (req, res) => {
   if (!f.startsWith(PUB) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) {
     res.writeHead(404); return res.end("not found");
   }
-  res.writeHead(200, { "content-type": MIME[path.extname(f).toLowerCase()] || "application/octet-stream" });
+  const type = MIME[path.extname(f).toLowerCase()] || "application/octet-stream";
+  const size = fs.statSync(f).size;
+  // PMTiles and media elements ask for byte ranges; without 206 + Content-Range the map
+  // plate dies with "no content-length header" in every headless probe.
+  const m = /bytes=(\d*)-(\d*)/.exec(req.headers.range || "");
+  if (m && (m[1] || m[2])) {
+    const start = m[1] ? +m[1] : Math.max(0, size - (+m[2] || 0));
+    const end = m[1] && m[2] ? Math.min(+m[2], size - 1) : size - 1;
+    if (start >= size || start > end) {
+      res.writeHead(416, { "content-range": `bytes */${size}` }); return res.end();
+    }
+    res.writeHead(206, { "content-type": type, "content-length": end - start + 1,
+      "content-range": `bytes ${start}-${end}/${size}`, "accept-ranges": "bytes" });
+    fs.createReadStream(f, { start, end }).pipe(res);
+    return;
+  }
+  res.writeHead(200, { "content-type": type, "content-length": size, "accept-ranges": "bytes" });
   fs.createReadStream(f).pipe(res);
 });
 server.listen(PORT, "127.0.0.1", () => console.log(`desk dev → http://127.0.0.1:${PORT}/desk`));

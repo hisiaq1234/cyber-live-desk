@@ -30,7 +30,8 @@ const MIME = {
   ".mp3": "audio/mpeg",
 };
 
-export function createBrainServer({ engine, memory, bus, personality, getStatus, log = console.log, host = "127.0.0.1", port = 7311, demo = false } = {}) {
+export function createBrainServer({ engine, memory, bus, personality, getStatus, log = console.log, host = "127.0.0.1", port = 7311, demo = false,
+  ingest = null, onBeing = null, getBeing = null } = {}) {
   const ws = new WsServer();
   const server = createServer(async (req, res) => {
     try {
@@ -69,6 +70,17 @@ export function createBrainServer({ engine, memory, bus, personality, getStatus,
     const url = new URL(req.url, `http://${req.headers.host || "127.0.0.1"}`);
     const path = url.pathname;
 
+    // The desk page is a browser on the same machine (or a tunnelled preview): it
+    // needs CORS to POST being snapshots and ingest events. Loopback-only server,
+    // no credentials — the same trust level /event already runs at.
+    res.setHeader("access-control-allow-origin", "*");
+    res.setHeader("access-control-allow-methods", "GET,POST,OPTIONS");
+    res.setHeader("access-control-allow-headers", "content-type,authorization");
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      return res.end();
+    }
+
     if (path === "/" || path === "/index.html") return sendFile(res, join(HERE, "index.html"));
     if (path === "/overlay" || path === "/overlay.html") return sendFile(res, join(HERE, "overlay.html"));
     if (path === "/overlay.js") return sendFile(res, join(HERE, "overlay.js"));
@@ -78,7 +90,34 @@ export function createBrainServer({ engine, memory, bus, personality, getStatus,
       return res.end();
     }
     if (path === "/health") return json(res, { ok: true, ...(getStatus ? getStatus() : {}), memory: memory.summary() });
-    if (path === "/state") return json(res, { status: getStatus ? getStatus() : {}, memory: memory.snapshot(), personality: personality.describe() });
+    if (path === "/state") return json(res, { status: getStatus ? getStatus() : {}, memory: memory.snapshot(), personality: personality.describe(), being: getBeing ? getBeing() : null });
+
+    /* The live desk's half of the bus: POST /being carries crid-bot's save-file
+     * snapshot (drives, floor position, bag) so the brain's copy of him is the
+     * one the stream actually ran; POST /ingest is the normalised multi-platform
+     * door (voice notes, environment reports) the bridge already understands. */
+    if (path === "/being" && req.method === "POST") {
+      try {
+        const body = await readJson(req);
+        if (onBeing) onBeing(body);
+        res.writeHead(202, { "content-type": "application/json; charset=utf-8" });
+        return res.end(JSON.stringify({ ok: true }));
+      } catch (err) {
+        res.writeHead(400, { "content-type": "application/json" });
+        return res.end(JSON.stringify({ ok: false, error: `bad body: ${err.message}` }));
+      }
+    }
+    if (path === "/ingest" && req.method === "POST") {
+      try {
+        const body = await readJson(req);
+        const fired = ingest ? ingest(body) : null;
+        res.writeHead(202, { "content-type": "application/json; charset=utf-8" });
+        return res.end(JSON.stringify({ ok: true, fired: fired ? fired.rule || true : null }));
+      } catch (err) {
+        res.writeHead(400, { "content-type": "application/json" });
+        return res.end(JSON.stringify({ ok: false, error: `bad body: ${err.message}` }));
+      }
+    }
 
     /* The desk's way in. It posts one normalised event and the brain decides what Crid
      * does — it never receives commands, only things that happened. This is also how the
@@ -169,6 +208,7 @@ export function createBrainServer({ engine, memory, bus, personality, getStatus,
         expression: expressCmd ? expressCmd.payload : null,
       },
       memory: memory.snapshot(),
+      being: getBeing ? getBeing() : null,
       personality: { name: personality.name, owner: personality.owner },
       bus: bus.snapshot(),
       demo,

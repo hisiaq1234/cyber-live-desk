@@ -37,6 +37,7 @@ import { requestXFeed } from "./x-feed-client.js";
 import { createCridBot, CUE_NAMES } from "./crid-bot.js";
 import { createCueReader, createCueReporter } from "./cue.mjs";
 import { createBeingSync } from "./being-sync.mjs";
+import { connectDeskBrain } from "./brain-link.js";
 import { createLayerRegistry } from "./layers.mjs";
 import { createLogo, LOGO_POSITIONS, LOGO_MARKS } from "./logo.js";
 import { CYBER_CSS } from "./cyber-theme.js";
@@ -1246,6 +1247,16 @@ html[data-theme="cyber"] #desk .letters-foot b{color:var(--gta-green);font-famil
   // page will not get another poll, so both events flush inside the throttle window.
   window.addEventListener("pagehide", () => beingSync.flush());
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") beingSync.flush(); });
+  // Optional local-brain lane: ?brain=http://127.0.0.1:7311 mirrors his being
+  // snapshot to the brain's /being and gives the page an /ingest door for voice
+  // notes. Off by default — the Vercel desk never talks to a loopback address.
+  const brainLink = bot ? connectDeskBrain(bot, {
+    url: new URLSearchParams(location.search).get("brain") || "",
+  }) : null;
+  if (brainLink?.on) {
+    window.addEventListener("pagehide", () => brainLink.flush());
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") brainLink.flush(); });
+  }
   const soundOrb = bot ? bot.el : h("div", { id: "sound-orb", "aria-hidden": "true" },
     h("span", { class: "orb-ring" }), h("span", { class: "orb-ring" }), h("span", { class: "orb-core" }));
   if (!bot) root.append(soundOrb);
@@ -1890,6 +1901,7 @@ html[data-theme="cyber"] #desk .letters-foot b{color:var(--gta-green);font-famil
     // Keep his save file current: throttled to one write per few polls inside being-sync, and
     // never allowed to delay or break the poll it rides on.
     beingSync.poll();
+    brainLink?.poll();
     // A cue is a one-shot: the reader remembers the stamp, so a re-poll of the same state or a
     // reload mid-gesture cannot replay it, and an unknown name is dropped here rather than thrown.
     // Nothing below touches the frame — CRID owns his own pose.

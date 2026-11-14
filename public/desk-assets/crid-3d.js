@@ -18,6 +18,7 @@ import{TwoBoneIK}from"./ik.mjs";
 import{BODY_LADDER}from"./crid/ladder.mjs";
 import{stageChannels}from"./stage.mjs";
 import{createGestureLayer}from"./gesture.mjs";
+import{createVoiceJaw}from"./voice-jaw.js";
 import{createDistanceGait}from"./gait.mjs";
 import{createCridIdle}from"./crid-idle.mjs";
 const GLB="/desk-assets/crid3d/crid.glb";
@@ -516,6 +517,17 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
     try{window.__cridBag=()=>({pivot:!!bagPivot,visible:!!(bagPivot&&bagPivot.visible),
       lag:!!bagLag,shown:bagShown})}catch{}
     const face=createFacial();let lastFaceKey=null;
+    // Speech prosody: syllabic jaw cadence (or live RMS when a stream attaches)
+    // driving jaw/lip/brow morphs and a small head nod — window.__cridVoice is
+    // the hook Gist/TTS uses to feed it real audio.
+    const voiceJaw=createVoiceJaw();let prevModelY=0;
+    try{window.__cridVoice=voiceJaw}catch{}
+    // OBS source lifecycle: the desk's OBS plugin fires these CustomEvents on the
+    // page — stop rendering (and its WebGL cost) while the source is off-air.
+    let obsVisible=true;
+    const onObsVis=e=>{obsVisible=!!(e&&e.detail&&e.detail.visible!==false)};
+    const onObsAct=e=>{obsVisible=!!(e&&e.detail&&e.detail.active!==false)};
+    if(typeof window!=="undefined"){window.addEventListener("obsSourceVisibleChanged",onObsVis);window.addEventListener("obsSourceActiveChanged",onObsAct)}
     // The alive base (crid-idle.mjs): value-noise wander through damped springs,
     // an uneven breath machine and a small keyframed move library — the same
     // structure LivLiv's idle core proves reads as a person, not a rig.
@@ -626,6 +638,9 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
       // Stage: the bot names his build; the mesh eases to that girth over ~a second so a sub
       // milestone reads as him filling out, not as a pop. First sighting snaps — no boot swell.
       if(st.stage&&st.stage!==curStage){curStage=st.stage;targetK=STAGE_K[st.stage]??1;if(appliedK<0)curK=targetK}
+      // A finished workout set trims temporary bulk off the target girth; the
+      // bot relaxes workoutTrim back toward zero over a couple of minutes.
+      targetK=Math.max(.82,(STAGE_K[curStage]??1)-(st.workoutTrim||0));
       curK+=(targetK-curK)*Math.min(1,dt*4);
       if(Math.abs(curK-appliedK)>.0005){applyGirth(curK);appliedK=curK}
       // Landing squash: ~8% spine compression for ~80 ms, then a damped recover
@@ -646,12 +661,20 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
       const idleOut=idle.update(dt,{t,mode,dying,walking,reduced,exertion:exert});
       const br=idleOut.breath,w1=idleOut.noise2,calm=reduced?.4:1;
       const mv=idleOut.move;
-      model.position.y=-feetY-by*.9*s+(walking?Math.abs(Math.sin(TAU*u))*.035*s:br*.010*s);
+      const curModelY=-feetY-by*.9*s+(walking?Math.abs(Math.sin(TAU*u))*.035*s:br*.010*s);
+      const velY=prevModelY?clamp((curModelY-prevModelY)/Math.max(dt,1e-3),-2.5,2.5):0;
+      prevModelY=curModelY;model.position.y=curModelY;
       model.scale.set(s*(1+.05*(1-bs))*sqX,s*bs*sqY,s*(1+.05*(1-bs))*sqX);
 
       const life=(mode==="on"&&!dying?1:.22)*calm;
+      // Cinematic overlap: vertical momentum ripples up the spine (pelvis leads,
+      // head follows), the gait counter-rotates pelvis vs chest, and a raised
+      // arm lifts its own clavicle — the shoulder-girdle anatomy a wave needs.
+      const vj=voiceJaw.update(dt,t,{talking:!!st.talking,text:st.speechText||""});
+      const clavL=(gest.map.armLiftL||0)*.24,clavR=(gest.map.armLiftR||0)*.24;
       const still=(walking?0:1)*life,droop=mode==="doze"?.42:mode==="dead"?.6:dying?.35:0;
       const swing=walkW;
+      const gaitYaw=gait*.09*swing,hipDrop=gait*.045*swing,spineWave=-velY*.14*life;
 
       // Standing idle is a person, not a statue: breath in the chest, weight moving
       // from foot to foot, the head looking off the same clock — now noise-driven
@@ -682,8 +705,8 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
       // Clavicles: the shoulder girdle is not a statue — it rides the breath
       // and the weight shift a beat behind the spine, and shrugs with the
       // reach channels when the stage owns it instead.
-      if(has("clavL"))pose("clavL",still*(Math.sin(t*.7+.4)*.03+shift*.02)*life,0,still*(br*.02+w1*.015)*life);
-      if(has("clavR"))pose("clavR",still*(Math.sin(t*.7+1.6)*.03-shift*.02)*life,0,-still*(br*.02+w1*.015)*life);
+      if(has("clavL"))pose("clavL",still*(Math.sin(t*.7+.4)*.03+shift*.02)*life,0,(still*(br*.02+w1*.015)+clavL)*life);
+      if(has("clavR"))pose("clavR",still*(Math.sin(t*.7+1.6)*.03-shift*.02)*life,0,-(still*(br*.02+w1*.015)+clavR)*life);
 
       // Fingers: a relaxed hand is not straight — base curl .14; a planted
       // grip (the IK lean, the stage machine's reach/seat) closes toward
@@ -747,17 +770,17 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
       // on its own slower clock. Breath stays on the chest, the head follows
       // the shift late, and looks off-axis so he is not staring through the lens.
       const leanX=(-pr*.55+(p.tr||0)*.004)*life;
-      if(has("pelvis"))pose("pelvis",leanX,0,shift*.1*life);
-      if(has("spine1"))pose("spine1",leanX,(look*.04)*life,shift*.06*life);
-      if(has("spine2"))pose("spine2",(.07*br)*life+leanX*.5,(look*.05)*life,
+      if(has("pelvis"))pose("pelvis",leanX+spineWave*.4,gaitYaw,shift*.1*life+hipDrop);
+      if(has("spine1"))pose("spine1",leanX+spineWave*.7,-gaitYaw*.4+(look*.04)*life,shift*.06*life-hipDrop*.5);
+      if(has("spine2"))pose("spine2",(.07*br)*life+leanX*.5+spineWave,-gaitYaw*.8+(look*.05)*life,
         (shift*.09+(p.hr||0)*.004+(grooving?.08*Math.sin(t*3):0))*life);
-      if(has("spine3"))pose("spine3",leanX*.25+(.05*br)*life,look*.04*life,shift*.04*life);
+      if(has("spine3"))pose("spine3",leanX*.25+(.05*br)*life+spineWave*1.1,-gaitYaw*.6+look*.04*life,shift*.04*life);
 
       // Head follows the shift late, and looks off-axis so he is not staring through the lens.
       const gx=(p.gx||0)/60,gy=(p.gy||0)/60;
       if(has("neck1"))pose("neck1",-droop*.5-gy*.3+look2*.06*life+mv.pitch*.4*life,clamp(gx,-.5,.5)*.5+look*.08*life+mv.yaw*.45*life,(shift*.03+mv.roll*.4)*life);
       if(has("neck2"))pose("neck2",-droop*.4+br*.02*life+mv.pitch*.3*life,look*.05*life+mv.yaw*.3*life,mv.roll*.3*life);
-      if(has("head"))pose("head",-droop*.55-gy*.3+br*.025*life+mv.pitch*.7*life,clamp(gx,-.6,.6)*.6+look*.16*life+mv.yaw*.8*life,(shift*.04+idleOut.roll*.05+mv.roll*.6)*life);
+      if(has("head"))pose("head",-droop*.55-gy*.3+br*.025*life+mv.pitch*.7*life+vj.headNod,clamp(gx,-.6,.6)*.6+look*.16*life+mv.yaw*.8*life,(shift*.04+idleOut.roll*.05+mv.roll*.6)*life);
 
       // Face: the performance layer — gaze saccades, the blink engine, doze/dead
       // lid hold, talking jaw, and the emotion envelope crid-bot cues in.
@@ -778,6 +801,16 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
       const chub=clamp((curK-1)/.28,0,1)*.22;
       setMorph("cheekPuffL",clamp((fc.cheekPuffL||0)+chub,0,1));
       setMorph("cheekPuffR",clamp((fc.cheekPuffR||0)+chub,0,1));
+      // Speech prosody on top of the emotion envelope: the jaw follows syllables
+      // (or live RMS), lips round on voiced sounds, brows accent the loud ones.
+      if(vj.jaw>.005){
+        setMorph("jaw",clamp(Math.max(fc.jaw||0,vj.jaw),0,1));
+        setMorph("lipRoundL",clamp((fc.lipRoundL||0)+vj.round,0,1));
+        setMorph("lipRoundR",clamp((fc.lipRoundR||0)+vj.round,0,1));
+        setMorph("mouthStretchL",clamp((fc.mouthStretchL||0)+vj.stretch,0,1));
+        setMorph("mouthStretchR",clamp((fc.mouthStretchR||0)+vj.stretch,0,1));
+        setMorph("browInnerUpL",clamp((fc.browInnerUpL||0)+vj.browAccent,0,1));
+        setMorph("browInnerUpR",clamp((fc.browInnerUpR||0)+vj.browAccent,0,1));}
 
       // Worn state comes from crid-bot's bag.worn through the snapshot: on, the
       // GLB's own outfit_bag (re-skinned to spine3 above, on the lag springs)
@@ -1005,7 +1038,7 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
       if(disposed)return;
       raf=requestAnimationFrame(frame);
       const t=performance.now()/1000,dt=clamp(t-now,0,.05);now=t;
-      if(document.hidden||ctxLost)return;
+      if(document.hidden||ctxLost||!obsVisible)return;
       const st=getState?getState():{};
       if(!ready){ready=!0;onReady&&onReady()}
       try{drive(t,dt,st);renderer.render(scene,cam)}

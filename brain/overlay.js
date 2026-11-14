@@ -26,6 +26,25 @@ const host = bot.el;
 host.dataset.presence = "hidden";
 host.dataset.sayStyle = "quip";
 
+/* The brain names the overlay's own layers ("card", "recap", "chips", "link" —
+ * reactions.mjs allowedLayers). Give crid-bot a provider that measures them in
+ * viewport px so lean()/the stage machine can resolve a real panel edge. */
+const OVERLAY_LAYERS = { card: cardEl, recap: recapEl, chips: chipsEl, link: linkEl };
+bot.setLayers((name) => {
+  const el = OVERLAY_LAYERS[String(name).toLowerCase()];
+  if (!el || host.dataset.presence === "hidden") return null;
+  const r = el.getBoundingClientRect();
+  if (!(r.width > 0 && r.height > 0)) return null;
+  const cs = getComputedStyle(el);
+  if (cs.display === "none" || cs.visibility === "hidden" || Number(cs.opacity) === 0) return null;
+  return {
+    name: String(name).toLowerCase(), node: el,
+    x: r.left, y: r.top, w: r.width, h: r.height,
+    edge: { left: r.left, right: r.right, top: r.top, bottom: r.bottom },
+    z: 0,
+  };
+});
+
 let playing = { priority: 0, until: 0 };
 let cardTimer = null;
 let recapTimer = null;
@@ -53,6 +72,7 @@ const GESTURE = {
   point: "point",
   facepalm: "facepalm",
   mindblown: "mindblown",
+  showoff: "showoff",
   shrug: "shrug",
   nod: "nod",
   "double-take": "surprise",
@@ -420,10 +440,16 @@ function moveLayer(p) {
   const dragMs = clampPct(Number(p.dragMs) || 700, 0, 4000);
   stopDrag();
 
-  const rect = el.getBoundingClientRect();
-  const tx = clampPct(((rect.left + rect.width / 2) / innerWidth) * 100, 10, 90);
-  const ty = clampPct(((rect.top + rect.height * 0.55) / innerHeight) * 100, 12, 84);
-  travelTo(tx, ty);
+  // bot.lean walks him to the panel edge and holds the contact — the same lean
+  // the stage machine uses, so his feet and planted hand land on the layer.
+  // A panel too small for a lean falls back to the raw travel walk.
+  const leaned = bot.lean(target, side);
+  if (!leaned) {
+    const rect = el.getBoundingClientRect();
+    const tx = clampPct(((rect.left + rect.width / 2) / innerWidth) * 100, 10, 90);
+    const ty = clampPct(((rect.top + rect.height * 0.55) / innerHeight) * 100, 12, 84);
+    travelTo(tx, ty);
+  }
   bot.react("peek"); // he spots it
 
   dragTimer = setTimeout(() => {
@@ -433,7 +459,7 @@ function moveLayer(p) {
     el.style.setProperty("--drag-x", DRAG_X[side]);
     el.style.setProperty("--drag-y", DRAG_Y[side]);
     dragTimer = setTimeout(() => {
-      goHome(); // he walks back, leaving the layer where he put it
+      if (leaned) bot.unlean(); else goHome(); // he lets go, leaving the layer where he put it
       el.classList.remove("dragging");
     }, dragMs + 600);
   }, travelMs);
@@ -456,6 +482,9 @@ function applySnapshot(snap) {
     const latest = mem.thoughts[mem.thoughts.length - 1];
     if (latest?.text) showChip("thought", latest.text);
   }
+  // Being restore: the brain ships his persisted drives/arc/floorX in the
+  // snapshot; observe() re-seeds them once (maybeSeedBeing guards on v:1).
+  if (snap.being) bot.observe({ bot: { being: snap.being } });
   setLink(snap.status);
 }
 
@@ -473,6 +502,7 @@ function setLink(status) {
 
 let socket = null;
 let retry = null;
+let retryMs = 2000;
 
 function connect() {
   const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
@@ -483,6 +513,7 @@ function connect() {
     return;
   }
   socket.addEventListener("open", () => {
+    retryMs = 2000; // a live connection earns the fast retry back
     socket.send(JSON.stringify({ type: "hello" }));
   });
   socket.addEventListener("message", (ev) => {
@@ -502,8 +533,21 @@ function connect() {
 
 function scheduleRetry() {
   clearTimeout(retry);
-  retry = setTimeout(connect, 2000);
+  // Exponential backoff (2s → 30s cap): a brain that is down for a minute must
+  // not be hammered by every OBS reload's worth of reconnect attempts.
+  retry = setTimeout(connect, retryMs);
+  retryMs = Math.min(retryMs * 2, 30000);
 }
+
+// OBS can throttle/hide the browser source without closing the socket — when the
+// page comes back visible, nudge the transport so the snapshot is fresh.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && (!socket || socket.readyState > 1)) {
+    clearTimeout(retry);
+    retryMs = 2000;
+    connect();
+  }
+});
 
 // Start awake: Crid is on the desk before the first command arrives.
 bot.setMode("on");

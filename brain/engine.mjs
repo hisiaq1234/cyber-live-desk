@@ -819,6 +819,42 @@ export const QUIET_RULES = [
     },
   },
   {
+    /* Show-and-tell: after a real lull he decides something is worth showing —
+     * a topic several people pushed, or the freshest moment — and he does
+     * something about it: jumps up, waves, drags the card over so the stream
+     * can read it. Priority 36 sits between recap (42) and long-silence (32):
+     * it needs the same quiet musing needs, but outranks the plain silence
+     * shrugs because it has a thing to show. */
+    id: "show-and-tell",
+    priority: 36,
+    cooldownMs: 420_000,
+    test(ctx, rule) {
+      const t = ctx.timings;
+      if (ctx.memory.quietMs(ctx.now) < t.musingMs) return null;
+      // A subject worth the desk's attention: a word at least two people pushed
+      // in the last five minutes, or the freshest moment inside the same window.
+      const topic = ctx.memory.repeatedTopic({ windowMs: 300_000, minUsers: 2, ts: ctx.now });
+      const moment = ctx.memory.recentMoments(1)[0];
+      const freshMoment = moment && ctx.now - moment.ts <= 300_000 ? moment : null;
+      const subject = topic?.word || freshMoment?.label || null;
+      if (!subject) return null;
+      const line = say1(ctx, "showAndTell", { subject }, { style: "quip", duration: 5200 });
+      if (!line) return null;
+      return {
+        rule: rule.id,
+        priority: rule.priority,
+        moment: { kind: "show", label: `showed the desk "${subject}"` },
+        why: `quiet long enough and "${subject}" is worth showing — jumping up and dragging the card over`,
+        commands: [
+          presence("engaged"),
+          gesture("showoff"),
+          moveLayer("card", "left", { travelMs: 850, dragMs: 650, why: `showing "${subject}"` }),
+          line,
+        ],
+      };
+    },
+  },
+  {
     id: "long-silence",
     priority: 32,
     cooldownMs: 75_000,

@@ -235,6 +235,11 @@
       "you missed {count} things. I kept them.",
       "since you left: {count}. I did warn you."
     ],
+    "showAndTell": [
+      "look at this. I dragged it over so you have no excuse.",
+      "pay attention — {subject}. I'm not pointing twice.",
+      "brought this to the front of the desk. read it."
+    ],
     "sub": [
       "{user}. {months} months. rent is always due.",
       "{user} subbed. noted, logged, respected.",

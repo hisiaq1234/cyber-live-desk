@@ -187,6 +187,7 @@ const FALLBACK = {
   musing: ["{catchphrase}"],
   callback: ["{ago}: {moment}."],
   recap: ["{count} moments while you were gone."],
+  showAndTell: ["look at this. I dragged it over so you have no excuse."],
   sub: ["{user}. noted."],
   gift: ["{user} gifted {count}."],
   bits: ["{bits} bits from {user}."],

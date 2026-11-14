@@ -103,7 +103,11 @@ dropbag:[{by:6,bs:.92,hy:2,mR:"down"},{mR:"up",hy:-3,hr:-4,eyes:"open"},{mR:"dow
 pickup:[{by:10,hy:4,bs:.92,eyes:"open"},{by:12,mR:"down",hr:2},{__bag:"wear",by:0,bs:1,hy:0,hr:0,tr:0}],
 // San Andreas bulk arc: a heavy build works out to slim back down — rolls onto
 // his back, push-ups, pushes back up. Idle-only, heft-gated in pickIdle.
-workout:[{by:6,bs:.92,hy:2},{pr:-84,by:4,mL:"limp",mR:"limp"},{pr:-62,mL:"push",mR:"push"},{pr:-83,by:3,mL:"push",mR:"push"},{pr:-68,by:-1,mL:"push",mR:"push"},{pr:-83,by:3,mL:"push",mR:"push"},{pr:-68,by:-1,mL:"push",mR:"push"},{pr:-55,mL:"push",mR:"push"},{pr:0,by:0,bs:1.03,hy:-3,mL:"down",mR:"down"}]};
+workout:[{by:6,bs:.92,hy:2},{pr:-84,by:4,mL:"limp",mR:"limp"},{pr:-62,mL:"push",mR:"push"},{pr:-83,by:3,mL:"push",mR:"push"},{pr:-68,by:-1,mL:"push",mR:"push"},{pr:-83,by:3,mL:"push",mR:"push"},{pr:-68,by:-1,mL:"push",mR:"push"},{pr:-55,mL:"push",mR:"push"},{__workedOut:1,pr:0,by:0,bs:1.03,hy:-3,mL:"down",mR:"down"}],
+// The agency beat the brain's show-and-tell rule plays: a jump for attention, a
+// wave at chat, then he points at the thing worth reading. mR:"push" is the
+// point — gesture.mjs has no "point" program, "push" is the extend-and-hold.
+showoff:[{by:5,bs:.9,hy:3},{by:-26,bs:1.07,hy:-5,mL:"up",mR:"up"},{by:0,bs:.94,hy:2,mL:"down",mR:"wave"},{mR:"wave",hr:4},{mR:"push",hy:-3,hr:3},{mR:"down",hy:0,hr:0}]};
 SEQ.sub=[...SEQ.cheer.slice(0,-1).map(f=>({...f,tag:"+SUB"})),...SEQ.pushup];
 // Everything he can be told to do in one word: every sequence, every micro-emotion, and "say" for
 // a line of text. The desk overlay and the server both hold this list (api/_desk-core.mjs BOT_CUES);
@@ -300,7 +304,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
       screenX:cridBody.x*UPX(),active:!!(walk&&walk.to)||!!(stage&&stage.walking&&["approach","floor","top"].includes(stage.state)),source:walk&&walk.to?"cue-layout":"stage-physics",kinematic:!!(walk&&walk.to),
       strideLength:Math.max(.08,cridBody.halfW*2.25),
       grip:cridBody.grip?{...cridBody.grip}:null},
-    lean:leanAt||stageLean(),reduced,stage:BODIES[bodyI],heft:build().heft,face:faceNow,
+    lean:leanAt||stageLean(),reduced,stage:BODIES[bodyI],heft:build().heft,workoutTrim,speechText:activeSpeechText,face:faceNow,
     stagePose:stage?{ref:stage,roll:stage.roll,pitch:stage.pitch,liftPx:stage.groundY*UPX(),
       state:stage.state,key:stage.key,trace:stage.trace,squash:stage.squashEnv||0,
       grip:STAGE_GRIP[stage.state]||0}:null,
@@ -501,12 +505,17 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   readMotion(); if(mq){const onmq=()=>{readMotion();lastDrawn=""}; mq.addEventListener?mq.addEventListener("change",onmq):mq.addListener&&mq.addListener(onmq)}
   // Kept, not just warmed: a lean bakes the drawing into a bitmap (see bakeLean), and that needs the
   // decoded frame, not a second request for it.
-  const bodyImg=new Map(); for(const b of BODIES){const im=new Image();im.src=AV(b);bodyImg.set(String(b),im)}
+  // The 2D sprites are only needed when the GLB path is off or fails — bakeLean
+  // is the sole consumer, so they load on demand there instead of seven image
+  // requests on every page load.
+  const bodyImg=new Map();
+  const bodyImgFor=b=>{const k=String(b);let im=bodyImg.get(k);
+    if(!im){im=new Image();im.src=AV(b);bodyImg.set(k,im)}return im};
   // A sprite that will not load falls back to the drawn placeholder figure rather than leaving an
   // invisible image painting over the frame.
   parts.avatarBase.addEventListener("error",()=>{parts.avatarBase.setAttribute("display","none");parts.ph.removeAttribute("display")});
   parts.avatarBase.addEventListener("load",()=>{parts.ph.setAttribute("display","none");parts.avatarBase.removeAttribute("display")});
-  let mode="dead",tagText=null,talking=!1,grooving=!1,tickN=0,waitUntil=Date.now()+3000,idleQ=[],gestureQ=[],timer=null,frozen=!1,dying=!1,
+  let mode="dead",tagText=null,talking=!1,grooving=!1,tickN=0,waitUntil=Date.now()+3000,idleQ=[],gestureQ=[],timer=null,frozen=!1,dying=!1,workoutTrim=0,
     lastAscentBeat=null,lastAscentBeatAt=0,pendingAscentBeat=null;
   // online is null, not true: "nothing has told me otherwise yet" is a different state from "the
   // desk says he is on". Starting at true made the first observe({bot:{on:true}}) a no-op — it only
@@ -543,12 +552,12 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   // say used to overwrite the bubble: two lines close together lost the first silently
   // (CRID-STATUS gap 5). Now a shown line holds the floor and up to two more wait in line;
   // a fourth is refused so the cue reports failed instead of vanishing.
-  let sayBusy=false,sayQ=[];
-  const showSay=(text,ms,onDone)=>{sayBusy=true; sayUntil=Date.now()+ms+300;
+  let sayBusy=false,sayQ=[],activeSpeechText="";
+  const showSay=(text,ms,onDone)=>{sayBusy=true; sayUntil=Date.now()+ms+300; activeSpeechText=String(text);
     let b=host.querySelector(".bot-bubble"); if(!b){b=document.createElement("div"); b.className="bot-bubble"; host.append(b);}
     b.style.transition=reduced?"none":""; b.textContent=text; b.style.opacity="1";
     clearTimeout(bubbleTimer);
-    bubbleTimer=setTimeout(()=>{b.style.opacity="0"; sayBusy=false; if(onDone)onDone();
+    bubbleTimer=setTimeout(()=>{b.style.opacity="0"; sayBusy=false; activeSpeechText=""; if(onDone)onDone();
       const n=sayQ.shift(); if(n)showSay(n.text,n.ms,n.onDone);},ms);};
   const say=(text,ms=1800,onDone=null)=>{if(!text)return false;
     if(sayBusy){ if(sayQ.length>=2)return false; sayQ.push({text:String(text),ms,onDone}); return true }
@@ -689,7 +698,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
   const bakeLean=angle=>{
     if(!canBake)return null;
     const key=`${BODIES[bodyI]}:${angle}`; if(key===bakedKey)return bakedHref;
-    const im=bodyImg.get(String(BODIES[bodyI])); if(!im||!im.complete||!im.naturalWidth)return null;
+    const im=bodyImgFor(BODIES[bodyI]); if(!im||!im.complete||!im.naturalWidth)return null;
     const c=document.createElement("canvas"); c.width=LEAN_BOX.w*LEAN_S; c.height=LEAN_BOX.h*LEAN_S;
     const g=c.getContext("2d"); if(!g)return null;
     // The canvas is the viewBox's own coordinate system, so a pixel in it is a viewBox unit and the
@@ -1191,7 +1200,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     if(typeof requestAnimationFrame!="function"){stageDrive(now);stageTick()} maybeVisit(now); maybeBag(now);
     if(now>=trAt+trFor){ // the previous beat has finished travelling: choose the next one
       let frame=null; if(walk&&!walk.done&&!gestureQ.length)gestureQ.push(...SEQ.crawl);
-      if(gestureQ.length){const head=gestureQ[0]; if(head&&head.__cueEnd!=null){gestureQ.shift(); endCue(head.__cueEnd,"done")} else {frame=gestureQ.shift(); if(frame&&frame.__bag)bagMark(frame.__bag,frame)}} else if(mode!=="dead"&&!dying){
+      if(gestureQ.length){const head=gestureQ[0]; if(head&&head.__cueEnd!=null){gestureQ.shift(); endCue(head.__cueEnd,"done")} else {frame=gestureQ.shift(); if(frame&&frame.__bag)bagMark(frame.__bag,frame); if(frame&&frame.__workedOut)workoutTrim=Math.min(.14,workoutTrim+.035)}} else if(mode!=="dead"&&!dying){
         // Against a panel, or inside a thought, he is not pottering about: the staged hold is the
         // performance, so nothing picks a wander for him until he lets go.
         if(!idleQ.length&&!walk&&!leanAt&&!pondering&&now>=waitUntil){const q=pickIdle();
@@ -1203,6 +1212,7 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     }
     // Dead/dying: render the pose (die sequence while dying, prone at rest when dead) but do not
     // run the rig/idle loop — the flat drawing carries the dead treatment and limbs stay still.
+    workoutTrim*=.9995;   // the workout's girth trim is temporary — it relaxes back over ~2 min
     render(advancePose(now));
     const fast=!dying&&mode!=="dead"&&(walk||Date.now()<trAt+trFor||(bag.body&&!world.settled(bag.body)));
     timer=setTimeout(tick,fast?ANIM:(mode==="dead"?STEP*4:STEP))};

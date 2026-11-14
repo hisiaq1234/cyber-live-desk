@@ -149,6 +149,11 @@ async function main() {
     demo: args.demo,
     log,
     getStatus: () => ({ ...status, uptimeMs: Date.now() - status.startedAt }),
+    // The bridge is attached below; these closures resolve it lazily so the desk's
+    // /being + /ingest posts land in the same world state the overlay reads.
+    ingest: (raw) => bridge?.ingest?.(raw),
+    onBeing: (snap) => bridge?.setBotBeing?.(snap),
+    getBeing: () => bridge?.getBotBeing?.() || null,
   });
 
   // The same decision also goes to the desk the stream actually shows: cueFor picks the one

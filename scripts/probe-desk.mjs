@@ -41,6 +41,7 @@ const diag = await evalJs(`JSON.stringify({
   ik: window.__cridIk ? {w:window.__cridIk.w(),dbg:window.__cridIk.dbg()} : null,
   stage: window.__cridStage ? window.__cridStage() : null,
   motor: window.__cridMotor ? window.__cridMotor() : null,
+  coverage: window.__cridCoverage ? window.__cridCoverage() : null,
   face: window.__cridFace ? Object.keys(window.__cridFace.channels()).length : null,
   canvases: [...document.querySelectorAll("canvas")].map(c => ({w:c.width,h:c.height,vis:c.offsetParent!==null})),
   botHost: !!document.querySelector(".bot-host, .crid-bot, [class*=bot]"),

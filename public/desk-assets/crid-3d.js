@@ -267,8 +267,13 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
     const E=new THREE.Euler(),Q=new THREE.Quaternion(),Q2=new THREE.Quaternion();
     // Bones the stage channels own this frame — pose() must not write them.
     let stageOwned=null;
+    // Bones commanded this frame, by any layer — the coverage probe reads it so
+    // "no part of him is ever totally idle" is checkable, not a vibe.
+    const covered=new Set();
+    const markW=n=>{if(n)covered.add(n)};
     const rot=(n,x=0,y=0,z=0)=>{const b=B(n);if(!b)return;
       if(stageOwned&&stageOwned.has(n))return;
+      markW(n);
       const P=restPQ.get(n);
       if(!P){E.set(x,y,z,"XYZ");Q.setFromEuler(E);Q2.copy(b.userData.q0).multiply(Q);b.quaternion.copy(Q2);return}
       E.set(x,y,z,"XYZ");Q.setFromEuler(E);
@@ -283,8 +288,11 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
       armL:"L_armUpper0001_bind_JNT",foreL:"L_armLower0001_bind_JNT",handL:"L_hand0001_bind_JNT",
       armR:"R_armUpper0001_bind_JNT",foreR:"R_armLower0001_bind_JNT",handR:"R_hand0001_bind_JNT",
       toeL:"L_foot0002_bind_JNT",toeR:"R_foot0002_bind_JNT",
+      tongue1:"C_tongue001_bind_JNT",tongue2:"C_tongue002_bind_JNT",
+      tongue3:"C_tongue003_bind_JNT",tongue4:"C_tongue004_bind_JNT",
       // Twist helpers (children of the 0001 bones via _SSC nodes, ~1/3 of the
       // segment's skin weight): upper/lower arm and leg, both sides.
+      clavL:"L_clavicle_bind_JNT",clavR:"R_clavicle_bind_JNT",
       tArmL:"L_armUpper0002_bind_JNT",tForeL:"L_armLower0002_bind_JNT",
       tArmR:"R_armUpper0002_bind_JNT",tForeR:"R_armLower0002_bind_JNT",
       tThighL:"L_legUpper0002_bind_JNT",tShinL:"L_legLower0002_bind_JNT",
@@ -370,6 +378,7 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
     // whatever CH_ACC names, so a climbing step is the stage's alone.
     const flushStageChannels=(dt=1/60)=>{
       CH_ACC.forEach((a,n)=>{const b=bones[n],P=restPQ.get(n);if(!b||!P)return;
+        markW(n);
         let s=CH_LAG.get(n);
         if(!s){s=[a[0],a[1],a[2]];CH_LAG.set(n,s)}
         else{const tau=CH_TAU(n),k=1-Math.exp(-dt/tau);
@@ -411,30 +420,66 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
     // every finger toward the palm on both hands (the _SSC mirror quirks cancel
     // out because the axis comes from the real geometry, not a side sign).
     const FINGERS=[],FINGER_W=[.35,.6,.85,.6],THUMB_W=[.4,.7,.5];
+    const WRISTS=[];
     {
-      const _fv=new THREE.Vector3(),_fq=new THREE.Quaternion(),
-        pv=b=>{b.getWorldPosition(_fv);return _fv.clone()};
+      const _fv=new THREE.Vector3(),_fq=new THREE.Quaternion(),_fa=new THREE.Vector3(),
+        _fd=new THREE.Vector3(),_fm=new THREE.Vector3(),_fp=new THREE.Vector3(),
+        _faW=new THREE.Vector3(),_fpW=new THREE.Vector3(),_ftW=new THREE.Vector3(),
+        _hq2=new THREE.Quaternion();
+      const pv2=b=>{b.getWorldPosition(_fv);return _fv.clone()};
       for(const side of["L","R"]){
-        const hand=B(J["hand"+side]),mid1=B(`${side}_handMiddle0001_bind_JNT`),
+        const hand=B(J["hand"+side]),fore=B(J["fore"+side]),
+          mid1=B(`${side}_handMiddle0001_bind_JNT`),
           ptr1=B(`${side}_handPointer0001_bind_JNT`),pnk1=B(`${side}_handPinky0001_bind_JNT`),
           th1=B(`${side}_handThumb0001_bind_JNT`);
         if(!hand||!mid1)continue;
-        const fwd=pv(mid1).sub(pv(hand)).normalize();
-        const across=(ptr1&&pnk1?pv(pnk1).sub(pv(ptr1)).normalize():new THREE.Vector3(1,0,0));
+        const fwd=pv2(mid1).sub(pv2(hand)).normalize();
+        const across=(ptr1&&pnk1?pv2(pnk1).sub(pv2(ptr1)).normalize():new THREE.Vector3(1,0,0));
         const palm=across.cross(fwd);
         if(palm.lengthSq()>.25){palm.normalize();
-          if(th1){const toT=pv(th1).sub(pv(hand));if(toT.dot(palm)<0)palm.negate()}
+          if(th1){const toT=pv2(th1).sub(pv2(hand));if(toT.dot(palm)<0)palm.negate()}
         }else palm.set(0,0,0);
+        const midBase=pv2(B(`${side}_handMiddle0001_bind_JNT`)||mid1);
+        // Wrist axes, measured the same way the finger hinges are: the twist
+        // axis is the forearm's own long axis (pronation/supination lives on
+        // it), the flex axis is perpendicular to both — brought into the hand
+        // bone's local frame so a local axis-angle lands anatomically.
+        if(fore&&palm.lengthSq()>.25){
+          _faW.copy(pv2(hand)).sub(pv2(fore)).normalize();
+          _fpW.copy(palm);
+          _ftW.crossVectors(_faW,_fpW);
+          if(_ftW.lengthSq()<.01)_ftW.set(1,0,0);else _ftW.normalize();
+          hand.updateWorldMatrix(!0);hand.getWorldQuaternion(_hq2).invert();
+          const twistL=_faW.clone().applyQuaternion(_hq2).normalize(),
+            flexL=_ftW.clone().applyQuaternion(_hq2).normalize();
+          WRISTS.push({b:J["hand"+side],twistAxis:twistL,flexAxis:flexL,
+            s:{tw:0,fx:0}})}
         for(const f of["Thumb","Pointer","Middle","Ring","Pinky"]){
-          const ws=f==="Thumb"?THUMB_W:FINGER_W;let dir=null;
+          const ws=f==="Thumb"?THUMB_W:FINGER_W;let dir=null,firstDir=null;
           for(let i=0;i<ws.length;i++){
             const bn=`${side}_hand${f}000${i+1}_bind_JNT`,b=B(bn);if(!b)continue;
             const ch=B(`${side}_hand${f}000${i+2}_bind_JNT`);
-            dir=ch?pv(ch).sub(pv(b)).normalize():(dir||fwd.clone());
+            dir=ch?pv2(ch).sub(pv2(b)).normalize():(dir||fwd.clone());
+            if(!firstDir)firstDir=dir.clone();
             if(palm.lengthSq()<.25)continue;
             const axis=dir.clone().cross(palm).normalize();
             b.getWorldQuaternion(_fq);axis.applyQuaternion(_fq.invert());
-            FINGERS.push({b:bn,w:ws[i],axis})}}}
+            // Abduction axis: rotating about (fingerDir x awayFromMiddle) swings
+            // the tip sideways in the palm plane — measured per finger so the
+            // spread closes toward the fist instead of splaying wider.
+            let spreadAxis=null,spreadSign=0;
+            if(f!=="Thumb"&&f!=="Middle"){
+              const fb=pv2(b);
+              _fd.copy(fb).sub(midBase);
+              _fd.addScaledVector(palm,-_fd.dot(palm));       // project into palm plane
+              if(_fd.lengthSq()>.0004){_fd.normalize();
+                _fp.copy(firstDir).cross(_fd);               // axis: +rot moves tip along +away
+                if(_fp.lengthSq()>.01){_fp.normalize();
+                  spreadAxis=_fp.clone();
+                  b.getWorldQuaternion(_fq);spreadAxis.applyQuaternion(_fq.invert());
+                  spreadSign=1}}}
+            FINGERS.push({b:bn,w:ws[i],axis,spreadAxis,spreadSign,
+              spreadW:i===0?.9:i===1?.45:.15})}}}
     }
     const has=k=>!!B(J[k]);
     // The bind pose holds his arms wide (A-pose); the relaxed hang is the baseline of every pose.
@@ -450,10 +495,16 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
     const ikSolver=new TwoBoneIK();let ikLast=null,ikDbg="";
     const _iv=new THREE.Vector3(),_id=new THREE.Vector3(),_it=new THREE.Vector3(),
       _ic=new THREE.Vector3(),_ip=new THREE.Vector3(),_io=new THREE.Vector3(),
-      _idv=new THREE.Vector3(),_iq=new THREE.Quaternion(),_ih=new THREE.Vector3(),_aq=new THREE.Quaternion();
+      _idv=new THREE.Vector3(),_iq=new THREE.Quaternion(),_ih=new THREE.Vector3(),_aq=new THREE.Quaternion(),_aq2=new THREE.Quaternion();
     try{window.__cridIk={w:()=>ikW,last:()=>ikLast,dbg:()=>ikDbg}}catch{}
     try{window.__cridGait=()=>gaitState?{phase:gaitState.phase,duty:gaitState.dutyFactor,
       left:gaitState.left,right:gaitState.right,events:gaitState.events,steps:gaitState.steps}:null}catch{}
+    // Coverage probe: which rig bones a driver wrote this frame vs which sit at
+    // their frozen rest quaternion. "Every part of him works" is checkable.
+    try{window.__cridCoverage=()=>{const all=[...Object.values(J),
+        ...FINGERS.map(f=>f.b),...WRISTS.map(w=>w.b)];
+      return{written:[...covered].sort(),frozen:all.filter(n=>!covered.has(n)).sort(),
+        total:all.length,writtenCount:covered.size}}}catch{}
     try{window.__cridBag=()=>({pivot:!!bagPivot,visible:!!(bagPivot&&bagPivot.visible),
       lag:!!bagLag,shown:bagShown})}catch{}
     const face=createFacial();let lastFaceKey=null;
@@ -490,7 +541,8 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
       spine1:[.15,.16,.15],spine2:[.14,.15,.14],spine3:[.22,.24,.22],pelvis:[.20,.20,.20],
       armL:[.14,.16,.14],foreL:[.19,.22,.19],armR:[.14,.16,.14],foreR:[.19,.22,.19],
       thighL:[.18,.20,.18],shinL:[.22,.24,.22],footL:[.26,.28,.26],toeL:[.30,.32,.30],
-      thighR:[.18,.20,.18],shinR:[.22,.24,.22],footR:[.26,.28,.26],toeR:[.30,.32,.30]};
+      thighR:[.18,.20,.18],shinR:[.22,.24,.22],footR:[.26,.28,.26],toeR:[.30,.32,.30],
+      clavL:[.13,.15,.13],clavR:[.13,.15,.13],handL:[.16,.18,.16],handR:[.16,.18,.16]};
     const lagPose=new Map();
     let frameDt=.016;                       // drive() stamps this each frame; pose() reads it
     const pose=(jk,x=0,y=0,z=0)=>{
@@ -503,6 +555,7 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
       rot(J[jk],s[0],s[1],s[2])};
 
     const drive=(t,dt,st)=>{
+      covered.clear();
       const p=st.p||{},mode=st.mode||"dead",dying=!!st.dying,
         alive=mode==="on"&&!dying,walking=!!st.walking&&alive,
         reduced=st.reduced||reducedNow(),grooving=!!st.grooving,
@@ -603,6 +656,12 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
       if(has("armR"))pose("armR",gait*.45*swing+still*(Math.sin(t*.7+1.2)*.1-shift*.05),0,-RELAX.armR.z+still*w1*.04);
       if(has("foreR"))pose("foreR",-(RELAX.foreR.x-still*Math.sin(t*.7+2)*.08-gait*.16*swing),0,0);
 
+      // Clavicles: the shoulder girdle is not a statue — it rides the breath
+      // and the weight shift a beat behind the spine, and shrugs with the
+      // reach channels when the stage owns it instead.
+      if(has("clavL"))pose("clavL",still*(Math.sin(t*.7+.4)*.03+shift*.02)*life,0,still*(br*.02+w1*.015)*life);
+      if(has("clavR"))pose("clavR",still*(Math.sin(t*.7+1.6)*.03-shift*.02)*life,0,-still*(br*.02+w1*.015)*life);
+
       // Fingers: a relaxed hand is not straight — base curl .14; a planted
       // grip (the IK lean, the stage machine's reach/seat) closes toward
       // .85; dying lets them go slack. st.grip is the stage machine's channel.
@@ -618,15 +677,46 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
       // so it doesn't claw at air during a one-armed lean.
       const plantSide=st.lean?(st.lean.dir>0?"R":"L"):null;
       for(const f of FINGERS){
+        markW(f.b);
         const a=.14+.78*(f.b[0]===plantSide?grip:grip*.35),b=B(f.b);if(!b)continue;
         _aq.setFromAxisAngle(f.axis,a*f.w*.9);
-        b.quaternion.copy(b.userData.q0).multiply(_aq)}
+        b.quaternion.copy(b.userData.q0).multiply(_aq);
+        // Spread: the relaxed hand is not a closed fan — fingers sit a few
+        // degrees apart and the gap closes as the grip does. Same measured
+        // axis family as the curl, opposite anatomical job.
+        if(f.spreadAxis){
+          const sp=(f.spreadSign||0)*(.16-.14*grip+still*w1*.03)*f.spreadW;
+          if(Math.abs(sp)>.004){_aq.setFromAxisAngle(f.spreadAxis,sp);
+            b.quaternion.multiply(_aq)}}}
+
+      // Wrists: the hand bone is a driven joint, not a passenger. Pronation
+      // twist trails the arm swing on the forearm's own axis, flex stays near
+      // neutral, and the grip sets it — flat for a planted hand, relaxed for
+      // a fist. Same spring discipline as everything else: targets ease in.
+      {
+        const twistT=(-gait*.10*swing+still*(w1*.05+shift*.03))*calm;
+        const flexT=(.04*still+grip*.05-ikW*.08)*calm;
+        for(const wr of WRISTS){const b=B(wr.b);if(!b)continue;markW(wr.b);
+          const k=1-Math.exp(-dt/.13);
+          wr.s.tw+=(twistT-wr.s.tw)*k;wr.s.fx+=(flexT-wr.s.fx)*k;
+          _aq.setFromAxisAngle(wr.flexAxis,wr.s.fx);
+          _aq2.setFromAxisAngle(wr.twistAxis,wr.s.tw);
+          b.quaternion.copy(b.userData.q0).multiply(_aq).multiply(_aq2)}}
 
       // Toes: the foot has a real toe joint (foot0002). It rolls through the
       // step — dorsiflexed in swing, plantar-flexed at push-off — instead of
       // the whole foot pivoting like a board.
       if(has("toeL"))pose("toeL",kL*.35+still*.04,0,0);
       if(has("toeR"))pose("toeR",kR*.35-still*.04,0,0);
+
+      // Tongue: speech is an act and the tongue is part of it — a whisper of
+      // noise while he talks, easing home to rest when he stops. Morphs own
+      // the jaw; these bones own what is inside it.
+      {const talk=st.talking?.5:0,tw=still*talk;
+        if(has("tongue1"))pose("tongue1",0,Math.sin(t*9.3)*.03*tw,Math.cos(t*7.1)*.02*tw);
+        if(has("tongue2"))pose("tongue2",0,Math.sin(t*9.3+.7)*.035*tw,Math.cos(t*7.1+.5)*.025*tw);
+        if(has("tongue3"))pose("tongue3",0,Math.sin(t*9.3+1.4)*.03*tw,Math.cos(t*7.1+1)*.02*tw);
+        if(has("tongue4"))pose("tongue4",0,Math.sin(t*9.3+2.1)*.025*tw,Math.cos(t*7.1+1.5)*.015*tw)}
 
       // Torso: one lean carried by pelvis and spine0001 together — they are
       // siblings under ROOT, never reparented — while spine0003 arrives late
@@ -721,6 +811,7 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
             _it.copy(cam.position).addScaledVector(_id,tt);
             _ic.copy(_ih).lerp(_it,ikW);
             sh.getWorldPosition(_ip);_ip.add(_io.set(st.lean.dir*.12,-.5,.3));
+            markW(J.armL);markW(J.foreL);markW(J.handL);markW(J.armR);markW(J.foreR);markW(J.handR);
             ikLast=ikSolver.solve({rootBone:sh,middleBone:fo,endBone:ha,target:_ic,poleTarget:_ip,preserveEndRotation:!0});
             ikLast.tgt=_ic.toArray().map(v=>+v.toFixed(3));ikLast.h0=_ih.toArray().map(v=>+v.toFixed(3));ikLast.pl=_ip.toArray().map(v=>+v.toFixed(3));
             ikLast.px=[hx0|0,hy0|0,c.x|0,c.y|0,px|0,py|0];
@@ -777,6 +868,7 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
           else _ic.set(_ip.x+fb.x*cy+fb.z*sy,floorY+fb.ankleH,_ip.z-fb.x*sy+fb.z*cy);
           _it.lerp(_ic,w);                                            // eased reach, like the hand plant
           _id.set(_it.x+sy*.5,_it.y+.5,_it.z+cy*.5);                  // pole: knees back along facing
+          markW(J["thigh"+sd]);markW(J["shin"+sd]);markW(J["foot"+sd]);
           const r2=ikSolver.solve({rootBone:th,middleBone:sn,endBone:ft,target:_it,poleTarget:_id,preserveEndRotation:!0});
           if(r2&&!r2.reachable)footDbg=1}
       }
@@ -789,6 +881,7 @@ export async function initCrid3D(host,getState,onReady,onFail,hooks={}){
       // Runs after IK so the solve's arm rotation is what gets distributed.
       for(const[mk,tk]of LIMB_TWIST){
         const b=B(J[mk]),tw=B(J[tk]);if(!b||!tw)continue;
+        markW(J[tk]);
         Q2.copy(b.userData.q0).invert().multiply(b.quaternion);   // commanded delta in rest frame
         E.set(Math.atan2(Q2.x,Q2.w),0,0,"XYZ");Q.setFromEuler(E); // half the X-twist (atan2 gives θ/2)
         tw.quaternion.copy(tw.userData.q0).multiply(Q)}

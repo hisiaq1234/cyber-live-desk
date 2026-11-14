@@ -352,12 +352,11 @@ export function createCridBot({root=document.body,swae=!1,lowPower=!1,position="
     const{w,h}=bagWH(); bagEl.style.width=`${w}px`; bagEl.style.height=`${h}px`;
     // Worn on the 3D path the pack is the GLB's own skinned bag — the SVG is only
     // ever the dropped prop on the floor, never a flat image pasted on his back.
-    // If the GLB never started there is no figure to follow either, so the worn
-    // SVG stays hidden rather than floating where he should be.
-    if(bag.worn&&(crid3d||crid3dFailed)){bagEl.style.display="none";return}
-    if(bag.worn){const r=host.getBoundingClientRect();
-      bagEl.style.left=`${r.left+r.width/2-w/2}px`; bagEl.style.top=`${r.top+r.height*.07}px`}
-    else if(bag.body){const b=bag.body;
+    // It stays hidden from the first tick: before this it had no display:none,
+    // so the flat pack flashed on screen for the ~2s the GLB took to load.
+    if(bag.worn){bagEl.style.display="none";return}
+    if(bag.body){const b=bag.body;
+      bagEl.style.display="";
       bagEl.style.left=`${b.x-w/2}px`; bagEl.style.top=`${b.y-h/2}px`}
     else bagEl.style.display="none";
     if(bag.body){bag.body.floor=floorY(); bag.body.halfH=h/2}};
